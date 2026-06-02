@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>萌力互动 · 创作者工作台</title>
+<style>
+/* ========== RESET & VARIABLES ========== */
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --orange:#E85D04;--orange-light:#F48C06;--orange-glow:rgba(232,93,4,0.12);
+  --douyin-pink:#ff0844;--douyin-cyan:#00f2fe;
+  --bg:#f9f8f6;--card:#fff;--text:#1a1a1a;--text2:#6b6b7b;--border:#e8e5df;
+  --shadow-sm:0 1px 3px rgba(0,0,0,0.04);--shadow:0 4px 24px rgba(0,0,0,0.06);
+  --radius:16px;--radius-sm:10px;
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;
+}
+body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased}
+::selection{background:var(--orange);color:#fff}
+
+/* ========== TOP NAV ========== */
+.topnav{background:linear-gradient(160deg,#1a1a2e 0%,#16213e 40%,#0f3460 100%);position:relative;overflow:hidden}
+.topnav::before{content:'';position:absolute;top:-40%;right:-10%;width:400px;height:400px;background:radial-gradient(circle,rgba(232,93,4,0.15) 0%,transparent 70%);border-radius:50%;animation:pulse 8s ease-in-out infinite}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+.nav-inner{position:relative;z-index:1;max-width:1400px;margin:0 auto;padding:20px 32px;display:flex;align-items:center;justify-content:space-between}
+.nav-brand{display:flex;align-items:center;gap:12px}
+.nav-logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--orange),var(--orange-light));display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 6px 20px rgba(232,93,4,0.3)}
+.nav-title{font-size:20px;font-weight:800;color:#fff;letter-spacing:-0.3px}
+.nav-subtitle{font-size:11px;color:rgba(255,255,255,0.4);letter-spacing:0.5px}
+.nav-tabs{display:flex;gap:4px}
+.nav-tab{position:relative;padding:10px 24px;border:none;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.55);font-size:13px;font-weight:600;cursor:pointer;border-radius:10px;transition:all 0.3s;font-family:var(--font);display:flex;align-items:center;gap:8px;letter-spacing:0.3px}
+.nav-tab:hover{background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.8)}
+.nav-tab.active{background:linear-gradient(135deg,var(--orange),var(--orange-light));color:#fff;box-shadow:0 4px 16px rgba(232,93,4,0.3)}
+.nav-tab .tab-icon{font-size:16px}
+
+/* ========== MAIN ========== */
+.main{max-width:1400px;margin:0 auto;padding:24px 32px 60px}
+
+/* ========== MODULE: KOLs ========== */
+.kol-panel{animation:slideIn 0.3s ease}
+@keyframes slideIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.platform-row{display:flex;gap:4px;margin-bottom:16px}
+.platform-pill{padding:10px 24px;border:1.5px solid var(--border);background:var(--card);border-radius:30px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);transition:all 0.3s;color:var(--text2)}
+.platform-pill.xhs.active{background:var(--orange);color:#fff;border-color:var(--orange)}
+.platform-pill.douyin.active{background:var(--douyin-pink);color:#fff;border-color:var(--douyin-pink)}
+.platform-pill:not(.active):hover{border-color:var(--orange)}
+.filter-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.filter-chip{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;background:var(--card);border:1.5px solid var(--border);border-radius:24px;font-size:12px;color:var(--text2);cursor:pointer;font-family:var(--font);transition:all 0.25s;font-weight:500}
+.filter-chip:hover{border-color:var(--orange);color:var(--orange)}
+.filter-chip.active{background:var(--orange);color:#fff;border-color:var(--orange)}
+.filter-input{border:1.5px solid var(--border);border-radius:24px;padding:6px 14px;font-size:12px;outline:none;font-family:var(--font);background:var(--card);width:100px}
+.filter-input:focus{border-color:var(--orange);box-shadow:0 0 0 3px var(--orange-glow)}
+.kol-ai-bar{display:flex;gap:8px;align-items:center;background:var(--card);border-radius:var(--radius);padding:8px 8px 8px 20px;box-shadow:var(--shadow);margin-bottom:16px;border:1px solid var(--border)}
+.kol-ai-bar:focus-within{border-color:var(--orange);box-shadow:0 0 0 4px var(--orange-glow)}
+.kol-ai-bar input{flex:1;border:none;outline:none;font-size:14px;font-family:var(--font);background:transparent;padding:8px 0}
+.kol-ai-bar input::placeholder{color:#c0bdb5}
+.kol-ai-bar button{background:linear-gradient(135deg,var(--orange),var(--orange-light));color:#fff;border:none;padding:10px 22px;border-radius:24px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)}
+.kol-ai-bar button:disabled{opacity:0.5}
+.table-wrap{background:var(--card);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+.table-scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:800px}
+th{padding:14px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;background:#fafaf8;border-bottom:2px solid #f0ede5;white-space:nowrap}
+td{padding:14px 16px;border-bottom:1px solid #f5f3ef;vertical-align:middle}
+tr:hover{background:linear-gradient(90deg,#fef9f3 0%,#fffdf8 50%,transparent 100%)}
+.kname{font-weight:700;font-size:13px;display:flex;align-items:center;gap:8px}
+.kav{width:32px;height:32px;border-radius:8px;background:#f5f3ef;display:flex;align-items:center;justify-content:center;font-size:14px}
+.fnum{font-weight:700;color:var(--orange);font-size:13px}
+.fnum.dy{color:var(--douyin-pink)}
+.tag-badge{display:inline-block;padding:2px 8px;background:#fff3e0;color:var(--orange);border-radius:10px;font-size:10px;font-weight:600;margin:1px 2px}
+.tag-badge.dy{background:#fce4ec;color:var(--douyin-pink)}
+.eng-badge{display:inline-block;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:700}
+.eng-badge.hi{background:#e8f5e9;color:#2e7d32}.eng-badge.mid{background:#fff8e1;color:#e65100}.eng-badge.lo{background:#fce4ec;color:#c62828}
+.add-btn{padding:6px 14px;border:2px solid var(--orange);border-radius:8px;background:#fff;color:var(--orange);cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font);white-space:nowrap}
+.add-btn:hover,.add-btn.in{background:var(--orange);color:#fff}
+.add-btn.dy{border-color:var(--douyin-pink);color:var(--douyin-pink)}
+.add-btn.dy:hover,.add-btn.dy.in{background:var(--douyin-pink);color:#fff}
+.cart-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:linear-gradient(135deg,var(--orange),var(--orange-light));color:#fff;border:none;border-radius:24px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);margin-left:8px}
+.cart-btn .cb{background:#fff;color:var(--orange);padding:1px 7px;border-radius:10px;font-size:11px}
+
+/* ========== MODULE: COPYWRITER ========== */
+.copy-panel{animation:slideIn 0.3s ease;display:flex;gap:24px}
+.copy-form{flex:0 0 340px;background:var(--card);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);height:fit-content}
+.copy-form h3{font-size:16px;margin-bottom:20px;display:flex;align-items:center;gap:8px}
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font);outline:none;transition:all 0.25s;background:var(--card);resize:vertical}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--orange);box-shadow:0 0 0 3px var(--orange-glow)}
+.form-group select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%236b6b7b'%3E%3Cpath d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
+.form-group textarea{min-height:80px;font-size:12px}
+.generate-btn{width:100%;padding:14px;background:linear-gradient(135deg,var(--orange),var(--orange-light));color:#fff;border:none;border-radius:var(--radius-sm);font-size:15px;font-weight:700;cursor:pointer;font-family:var(--font);transition:all 0.3s;letter-spacing:0.5px;box-shadow:0 4px 16px rgba(232,93,4,0.2)}
+.generate-btn:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(232,93,4,0.3)}
+.generate-btn:disabled{opacity:0.5;cursor:wait;transform:none}
+.copy-output{flex:1;background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);display:flex;flex-direction:column;min-height:500px}
+.copy-output-header{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.copy-output-header h3{font-size:15px;display:flex;align-items:center;gap:8px}
+.copy-actions{display:flex;gap:8px}
+.copy-actions button{padding:6px 14px;border:1.5px solid var(--border);border-radius:8px;background:var(--card);font-size:12px;cursor:pointer;font-family:var(--font);transition:all 0.2s}
+.copy-actions button:hover{border-color:var(--orange);color:var(--orange)}
+.copy-content{flex:1;padding:24px;overflow-y:auto;font-size:14px;line-height:1.8;white-space:pre-wrap}
+.copy-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#c0bdb5}
+.copy-empty .icon{font-size:48px;margin-bottom:12px}
+.copy-empty p{font-size:14px}
+.copy-loading{display:flex;align-items:center;justify-content:center;height:100%;gap:10px;color:var(--orange);font-size:14px}
+.spinner{width:20px;height:20px;border:2px solid var(--orange-glow);border-top-color:var(--orange);border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ========== MODULE: IMAGE GEN ========== */
+.image-panel{animation:slideIn 0.3s ease;display:flex;gap:24px}
+.image-form{flex:0 0 340px;background:var(--card);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);height:fit-content}
+.image-form h3{font-size:16px;margin-bottom:20px;display:flex;align-items:center;gap:8px}
+.image-gallery{flex:1}
+.image-gallery h3{font-size:15px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.image-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px}
+.image-card{background:var(--card);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-sm);transition:all 0.3s;border:1px solid var(--border)}
+.image-card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
+.image-card img{width:100%;aspect-ratio:1;object-fit:cover;display:block}
+.image-card .img-info{padding:10px 14px;font-size:11px;color:var(--text2)}
+.image-card .img-prompt{font-size:12px;color:var(--text);line-height:1.4;padding:0 14px 14px}
+.image-loading{padding:40px;text-align:center;color:var(--orange)}
+.image-loading .spinner{margin:0 auto 12px}
+
+/* ========== RESPONSIVE ========== */
+@media(max-width:900px){
+  .nav-inner{flex-direction:column;gap:12px;padding:16px 20px}
+  .copy-panel,.image-panel{flex-direction:column}
+  .copy-form,.image-form{flex:auto}
+}
+</style>
+</head>
+<body>
+
+<!-- ========== TOP NAV ========== -->
+<div class="topnav">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <div class="nav-logo">🟠</div>
+      <div><div class="nav-title">萌力互动 · 创作者工作台</div><div class="nav-subtitle">MENLIL INTERACTIVE — CREATOR WORKBENCH</div></div>
+    </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" onclick="switchModule('kols')"><span class="tab-icon">📊</span> 达人找号</button>
+      <button class="nav-tab" onclick="switchModule('copy')"><span class="tab-icon">✍️</span> 文案撰写</button>
+      <button class="nav-tab" onclick="switchModule('image')"><span class="tab-icon">🎨</span> 图片生成</button>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- ====== MODULE: KOLs ====== -->
+  <div id="kolModule" class="kol-panel">
+    <div class="platform-row">
+      <button class="platform-pill xhs active" onclick="switchKOLPlatform('xhs')">📕 小红书达人</button>
+      <button class="platform-pill douyin" onclick="switchKOLPlatform('douyin')">🎵 抖音达人</button>
+    </div>
+
+    <div class="kol-ai-bar">
+      <span style="font-size:18px">🤖</span>
+      <input type="text" id="kolAiInput" placeholder="告诉AI你要什么达人，比如：帮我找母婴类10万粉以下互动率高的达人" onkeydown="if(event.key==='Enter')kolAiSearch()">
+      <button id="kolAiBtn" onclick="kolAiSearch()">✨ AI 搜索</button>
+    </div>
+    <div id="kolAiResult" style="display:none;padding:10px 16px;margin-bottom:12px;background:#fff9f3;border:1px solid var(--orange-light);border-radius:var(--radius-sm);font-size:13px;color:var(--orange);font-weight:500"></div>
+
+    <div class="filter-row" id="kolFilters"></div>
+
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table><thead id="kolHead"></thead><tbody id="kolBody"></tbody></table>
+        <div id="kolEmpty" style="display:none;text-align:center;padding:60px;color:#ccc"><div style="font-size:48px;margin-bottom:12px">🔍</div>没有匹配的达人</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== MODULE: COPYWRITER ====== -->
+  <div id="copyModule" class="copy-panel" style="display:none">
+    <div class="copy-form">
+      <h3>✍️ 撰写文案</h3>
+      <div class="form-group">
+        <label>产品/主题</label>
+        <input type="text" id="copyProduct" placeholder="例如：AI智能体、小红书投放、新消费品牌...">
+      </div>
+      <div class="form-group">
+        <label>目标平台</label>
+        <select id="copyPlatform">
+          <option>公众号</option><option>小红书</option><option>抖音</option><option>知乎</option><option>朋友圈</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>写作风格</label>
+        <select id="copyStyle">
+          <option>经验分享（默认）</option><option>高流量爆款</option><option>清单方法论</option><option>个人故事型</option><option>身份转变型</option><option>反常识观点</option><option>资源合集</option><option>工具评测</option><option>情绪共鸣</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>额外要求（选填）</label>
+        <textarea id="copyReq" placeholder="字数、语气、重点内容、参考案例..."></textarea>
+      </div>
+      <button class="generate-btn" id="copyBtn" onclick="generateCopy()">🚀 生成文案</button>
+    </div>
+
+    <div class="copy-output">
+      <div class="copy-output-header">
+        <h3>📄 生成结果</h3>
+        <div class="copy-actions">
+          <button onclick="copyText()">📋 复制</button>
+          <button onclick="downloadText()">💾 下载</button>
+        </div>
+      </div>
+      <div class="copy-content" id="copyContent">
+        <div class="copy-empty"><div class="icon">✍️</div><p>在左侧填写信息，点击生成按钮开始</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== MODULE: IMAGE GEN ====== -->
+  <div id="imageModule" class="image-panel" style="display:none">
+    <div class="image-form">
+      <h3>🎨 生成图片</h3>
+      <div class="form-group">
+        <label>图片描述（Prompt）</label>
+        <textarea id="imgPrompt" placeholder="用自然语言描述你想要的图片，中英文都可以。例如：一只可爱的橘猫坐在窗台上，阳光透过窗帘洒在它身上，温暖午后氛围，摄影风格" style="min-height:120px"></textarea>
+      </div>
+      <div class="form-group">
+        <label>比例</label>
+        <select id="imgRatio">
+          <option value="landscape">横版 16:9</option>
+          <option value="portrait">竖版 9:16</option>
+          <option value="square">方形 1:1</option>
+        </select>
+      </div>
+      <button class="generate-btn" id="imgBtn" onclick="generateImage()">🎨 生成图片</button>
+    </div>
+
+    <div class="image-gallery">
+      <h3>🖼️ 生成历史</h3>
+      <div class="image-grid" id="imageGrid">
+        <div style="text-align:center;padding:40px;color:#ccc;grid-column:1/-1">还没有生成过图片，试试左边输入描述吧</div>
+      </div>
+      <div class="image-loading" id="imgLoading" style="display:none">
+        <div class="spinner"></div>
+        <div>正在生成中，请稍候...</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ========== DATA ==========
+const XHS = [
+  {name:"小羊咩咩",id:"xiaoyangmeme",followers:8.5,tags:["母婴","好物分享"],persona:"新手宝妈",engagement:3.2,price_img:2000,price_video:3500,avatar:"🐑"},
+  {name:"辣妈CC",id:"lamacc",followers:15.2,tags:["母婴","育儿"],persona:"二胎妈妈",engagement:2.8,price_img:5000,price_video:8000,avatar:"👩‍👧"},
+  {name:"贝贝日记",id:"beibei_diary",followers:6.8,tags:["母婴","辅食"],persona:"营养师宝妈",engagement:4.1,price_img:1500,price_video:2800,avatar:"🍼"},
+  {name:"豆豆妈妈",id:"doudoumama",followers:22.1,tags:["母婴","穿搭"],persona:"时尚宝妈",engagement:1.9,price_img:8000,price_video:12000,avatar:"👗"},
+  {name:"童趣盒子",id:"tongqu_box",followers:4.2,tags:["母婴","玩具"],persona:"早教老师",engagement:5.6,price_img:1200,price_video:2000,avatar:"🧸"},
+  {name:"护肤达人Lily",id:"lily_skincare",followers:32.6,tags:["美妆","护肤"],persona:"成分党",engagement:1.5,price_img:15000,price_video:25000,avatar:"💄"},
+  {name:"美妆测评室",id:"beauty_lab",followers:18.3,tags:["美妆","测评"],persona:"专业测评",engagement:2.3,price_img:7000,price_video:11000,avatar:"🧪"},
+  {name:"吃货小分队",id:"food_squad",followers:55.8,tags:["美食","探店"],persona:"美食博主",engagement:2.1,price_img:20000,price_video:35000,avatar:"🍜"},
+  {name:"厨房小白进阶",id:"kitchen_newbie",followers:3.1,tags:["美食","教程"],persona:"新手厨师",engagement:6.2,price_img:800,price_video:1500,avatar:"🍳"},
+  {name:"穿搭日记",id:"outfit_diary",followers:42.1,tags:["穿搭","时尚"],persona:"时尚博主",engagement:1.7,price_img:12000,price_video:20000,avatar:"👠"},
+  {name:"健身小王",id:"fit_king_wang",followers:28.3,tags:["健身","运动"],persona:"健身教练",engagement:2.5,price_img:6000,price_video:10000,avatar:"💪"},
+  {name:"旅行喵",id:"travel_cat_meow",followers:12.7,tags:["旅游","探店"],persona:"旅行博主",engagement:3.8,price_img:4000,price_video:7000,avatar:"✈️"},
+  {name:"数码控老张",id:"digital_zhang",followers:9.4,tags:["数码","测评"],persona:"数码极客",engagement:4.3,price_img:3500,price_video:6000,avatar:"📱"},
+  {name:"家有萌宠",id:"cute_pets_home",followers:38.9,tags:["宠物","日常"],persona:"宠物博主",engagement:3.5,price_img:9000,price_video:15000,avatar:"🐶"},
+  {name:"柚柚成长记",id:"youyou_grow",followers:10.5,tags:["母婴","亲子"],persona:"全职妈妈",engagement:3.5,price_img:3000,price_video:5000,avatar:"👶"},
+];
+const DY = [
+  {name:"疯狂小杨哥",id:"crazy_yang",followers:999.9,tags:["搞笑","剧情"],persona:"搞笑剧情达人",avg_plays:"5000万+",completion:62,engagement_dy:4.8,price_oral:350000,price_植入:500000,price_custom:800000,avatar:"😂"},
+  {name:"李佳琦Austin",id:"lijiaqi",followers:850.2,tags:["美妆","带货"],persona:"顶流带货主播",avg_plays:"2000万+",completion:55,engagement_dy:5.2,price_oral:500000,price_植入:800000,price_custom:1200000,avatar:"💋"},
+  {name:"痞幼",id:"piyou_official",followers:320.5,tags:["颜值","机车"],persona:"机车女神",avg_plays:"800万+",completion:48,engagement_dy:4.2,price_oral:180000,price_植入:250000,price_custom:400000,avatar:"🏍️"},
+  {name:"张同学",id:"zhang_tongxue",followers:180.3,tags:["三农","日常"],persona:"乡村记录者",avg_plays:"600万+",completion:71,engagement_dy:5.5,price_oral:80000,price_植入:120000,price_custom:200000,avatar:"🏡"},
+  {name:"小八美食",id:"xiaoba_food",followers:65.8,tags:["美食","教程"],persona:"家常菜达人",avg_plays:"200万+",completion:68,engagement_dy:5.8,price_oral:35000,price_植入:55000,price_custom:90000,avatar:"🍲"},
+  {name:"毒角SHOW",id:"dujiao_show",followers:210.7,tags:["搞笑","剧情"],persona:"反转剧情创作",avg_plays:"900万+",completion:58,engagement_dy:6.2,price_oral:220000,price_植入:350000,price_custom:550000,avatar:"🎭"},
+  {name:"房琪kiki",id:"fangqi_kiki",followers:145.2,tags:["旅游","文案"],persona:"治愈旅行博主",avg_plays:"350万+",completion:75,engagement_dy:7.1,price_oral:120000,price_植入:180000,price_custom:300000,avatar:"🌅"},
+  {name:"无穷小亮",id:"wuqiong_xiaoliang",followers:95.6,tags:["知识","科普"],persona:"博物科普达人",avg_plays:"280万+",completion:65,engagement_dy:6.5,price_oral:65000,price_植入:95000,price_custom:160000,avatar:"🔬"},
+  {name:"陈赫",id:"chenhe",followers:680.1,tags:["明星","日常"],persona:"明星生活分享",avg_plays:"1500万+",completion:42,engagement_dy:3.8,price_oral:450000,price_植入:700000,price_custom:1000000,avatar:"⭐"},
+  {name:"健身教练大鹏",id:"dapeng_fit",followers:28.3,tags:["健身","运动"],persona:"专业健身教练",avg_plays:"80万+",completion:72,engagement_dy:6.8,price_oral:18000,price_植入:28000,price_custom:45000,avatar:"🏋️"},
+  {name:"萌宠星球",id:"mengchong_planet",followers:120.5,tags:["宠物","萌宠"],persona:"萌宠治愈日常",avg_plays:"400万+",completion:60,engagement_dy:7.5,price_oral:75000,price_植入:110000,price_custom:180000,avatar:"🐱"},
+  {name:"科技狐",id:"techfox",followers:42.1,tags:["数码","科技"],persona:"数码产品测评",avg_plays:"120万+",completion:55,engagement_dy:4.5,price_oral:28000,price_植入:42000,price_custom:70000,avatar:"🦊"},
+  {name:"美妆一姐",id:"beauty_sister1",followers:88.6,tags:["美妆","教程"],persona:"化妆教程达人",avg_plays:"180万+",completion:52,engagement_dy:5.2,price_oral:55000,price_植入:85000,price_custom:130000,avatar:"💅"},
+  {name:"乡村小乔",id:"xiaoqiao_village",followers:35.2,tags:["三农","美食"],persona:"乡村美食记录",avg_plays:"90万+",completion:78,engagement_dy:8.2,price_oral:15000,price_植入:22000,price_custom:38000,avatar:"🌾"},
+  {name:"街舞阿K",id:"dancer_ak",followers:52.8,tags:["舞蹈","潮流"],persona:"街舞达人",avg_plays:"150万+",completion:50,engagement_dy:7.8,price_oral:42000,price_植入:65000,price_custom:100000,avatar:"🕺"},
+];
+
+// ========== MODULE SWITCH ==========
+function switchModule(mod){
+  document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('kolModule').style.display = mod==='kols'?'block':'none';
+  document.getElementById('copyModule').style.display = mod==='copy'?'flex':'none';
+  document.getElementById('imageModule').style.display = mod==='image'?'flex':'none';
+  if(mod==='image') loadImages();
+}
+
+// ========== KOLs ==========
+let kolPlatform='xhs', activeTag=null, cart=JSON.parse(localStorage.getItem('wb_cart')||'[]');
+
+function switchKOLPlatform(p){
+  kolPlatform=p; activeTag=null;
+  document.querySelectorAll('.platform-pill').forEach(b=>b.classList.toggle('active',b.classList.contains(p)));
+  initKOLFilters(); renderKOL();
+}
+
+function getKOLData(){ return kolPlatform==='xhs'?XHS:DY; }
+function fmtF(n){ return n>=10000?(n/10000).toFixed(1)+'万':n>=1000?(n/1000).toFixed(1)+'k':''+n; }
+
+function initKOLFilters(){
+  const tags=[...new Set(getKOLData().flatMap(k=>k.tags))].sort();
+  const row=document.getElementById('kolFilters');
+  let h=`<input type="text" class="filter-input" id="kolSearch" placeholder="🔍 搜索..." style="width:160px" oninput="renderKOL()">`;
+  tags.forEach(t=>h+=`<button class="filter-chip tag-fc" data-tag="${t}" onclick="toggleKOLTag(this,'${t}')">${t}</button>`);
+  h+=`<span style="color:var(--text2);font-size:12px;margin-left:8px">报价≤</span><input class="filter-input" id="kolPrice" placeholder="不限" style="width:80px" onchange="renderKOL()">`;
+  h+=`<button class="cart-btn" onclick="openKOLCart()">🛒 询单车 <span class="cb" id="kolCartBadge">0</span></button>`;
+  row.innerHTML=h;
+}
+
+function toggleKOLTag(btn,tag){
+  document.querySelectorAll('.tag-fc').forEach(b=>b.classList.remove('active'));
+  activeTag = activeTag===tag ? null : tag;
+  if(activeTag) btn.classList.add('active');
+  renderKOL();
+}
+
+function renderKOL(){
+  const data=getKOLData(), isXHS=kolPlatform==='xhs';
+  const search=(document.getElementById('kolSearch')?.value||'').toLowerCase();
+  const priceMax=parseInt(document.getElementById('kolPrice')?.value)||99999999;
+  let filtered=data.filter(k=>{
+    if(search&&!k.name.toLowerCase().includes(search)&&!k.id.toLowerCase().includes(search)&&!k.persona.toLowerCase().includes(search)) return false;
+    if(activeTag&&!k.tags.includes(activeTag)) return false;
+    const low=isXHS?Math.min(k.price_img,k.price_video):Math.min(k.price_oral,k.price_植入||k.price_oral);
+    return low <= priceMax;
+  });
+
+  document.getElementById('kolHead').innerHTML = isXHS
+    ?'<tr><th>达人</th><th>粉丝</th><th>标签</th><th>人设</th><th>互动率</th><th>图文报价</th><th>视频报价</th><th>操作</th></tr>'
+    :'<tr><th>达人</th><th>粉丝</th><th>标签</th><th>人设</th><th>播放量</th><th>完播率</th><th>互动率</th><th>口播报价</th><th>操作</th></tr>';
+
+  const body=document.getElementById('kolBody');
+  if(!filtered.length){ body.innerHTML=''; document.getElementById('kolEmpty').style.display='block'; }
+  else {
+    document.getElementById('kolEmpty').style.display='none';
+    body.innerHTML=filtered.map(k=>{
+      const eng=isXHS?k.engagement:k.engagement_dy;
+      const ec=eng>=4?'hi':eng>=2.5?'mid':'lo';
+      const inC=cart.includes(`${kolPlatform}:${k.id}`);
+      if(isXHS) return `<tr><td><div class="kname"><div class="kav">${k.avatar||'👤'}</div>${k.name}<span style="font-size:10px;color:#bbb;margin-left:4px">@${k.id}</span></div></td><td><span class="fnum">${fmtF(k.followers)}</span></td><td>${k.tags.map(t=>`<span class="tag-badge">${t}</span>`).join('')}</td><td>${k.persona}</td><td><span class="eng-badge ${ec}">${eng}%</span></td><td>¥${k.price_img.toLocaleString()}</td><td>¥${k.price_video.toLocaleString()}</td><td><button class="add-btn ${inC?'in':''}" onclick="toggleKOLCart('${kolPlatform}:${k.id}')">${inC?'✓ 已加入':'+ 加车'}</button></td></tr>`;
+      return `<tr><td><div class="kname"><div class="kav">${k.avatar||'👤'}</div>${k.name}<span style="font-size:10px;color:#bbb;margin-left:4px">@${k.id}</span></div></td><td><span class="fnum dy">${fmtF(k.followers)}</span></td><td>${k.tags.map(t=>`<span class="tag-badge dy">${t}</span>`).join('')}</td><td>${k.persona}</td><td style="font-weight:600">${k.avg_plays}</td><td>${k.completion}%</td><td><span class="eng-badge ${ec}">${eng}%</span></td><td>¥${(k.price_oral/10000).toFixed(1)}万</td><td><button class="add-btn dy ${inC?'in':''}" onclick="toggleKOLCart('${kolPlatform}:${k.id}')">${inC?'✓ 已加入':'+ 加车'}</button></td></tr>`;
+    }).join('');
+  }
+  document.getElementById('kolCartBadge').textContent=cart.length;
+}
+
+function toggleKOLCart(key){ const i=cart.indexOf(key); i>=0?cart.splice(i,1):cart.push(key); localStorage.setItem('wb_cart',JSON.stringify(cart)); renderKOL(); }
+function openKOLCart(){ alert(`🛒 询单车共 ${cart.length} 位达人（完整询单功能开发中）`); }
+
+async function kolAiSearch(){
+  const q=document.getElementById('kolAiInput').value.trim(); if(!q)return;
+  const btn=document.getElementById('kolAiBtn'); btn.disabled=true;btn.textContent='思考中...';
+  try{
+    const r=await fetch('http://localhost:8890/api/ai-search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,platform:kolPlatform})});
+    const d=await r.json();
+    if(d.tags){ document.querySelectorAll('.tag-fc').forEach(b=>{ if(b.dataset.tag===d.tags){b.classList.add('active');activeTag=d.tags;} }); }
+    if(d.maxPrice<999999) document.getElementById('kolPrice').value=d.maxPrice;
+    document.getElementById('kolAiResult').style.display='block';
+    document.getElementById('kolAiResult').textContent='✅ '+d.explanation;
+    renderKOL();
+  }catch(e){ document.getElementById('kolAiResult').style.display='block'; document.getElementById('kolAiResult').textContent='⚠️ 后端未启动，请先运行 start.sh'; }
+  btn.disabled=false;btn.textContent='✨ AI 搜索';
+}
+
+// ========== COPYWRITER ==========
+let lastCopyText = '';
+
+async function generateCopy(){
+  const product=document.getElementById('copyProduct').value.trim();
+  if(!product) return alert('请输入产品/主题');
+  const platform=document.getElementById('copyPlatform').value;
+  const style=document.getElementById('copyStyle').value;
+  const req=document.getElementById('copyReq').value;
+  const btn=document.getElementById('copyBtn');
+  btn.disabled=true;btn.textContent='⏳ 生成中...';
+  document.getElementById('copyContent').innerHTML='<div class="copy-loading"><div class="spinner"></div>AI 正在撰写文案...</div>';
+
+  try{
+    const r=await fetch('http://localhost:8890/api/copywriter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product,platform,style,requirements:req})});
+    const d=await r.json();
+    if(d.error){ document.getElementById('copyContent').innerHTML=`<div class="copy-empty"><p style="color:#c62828">${d.error}</p></div>`; }
+    else { lastCopyText=d.content; document.getElementById('copyContent').textContent=d.content; }
+  }catch(e){ document.getElementById('copyContent').innerHTML=`<div class="copy-empty"><p style="color:#c62828">后端未启动，请先运行 start.sh</p></div>`; }
+  btn.disabled=false;btn.textContent='🚀 生成文案';
+}
+
+function copyText(){ if(lastCopyText){ navigator.clipboard.writeText(lastCopyText); alert('✅ 已复制到剪贴板'); } }
+function downloadText(){ if(lastCopyText){ const b=new Blob([lastCopyText],{type:'text/plain;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='文案_'+new Date().toISOString().slice(0,10)+'.txt'; a.click(); } }
+
+// ========== IMAGE GEN ==========
+async function generateImage(){
+  const prompt=document.getElementById('imgPrompt').value.trim();
+  if(!prompt) return alert('请输入图片描述');
+  const ratio=document.getElementById('imgRatio').value;
+  const btn=document.getElementById('imgBtn');
+  btn.disabled=true;btn.textContent='⏳ 生成中...';
+  document.getElementById('imgLoading').style.display='block';
+
+  try{
+    const r=await fetch('http://localhost:8890/api/image-gen',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,aspect_ratio:ratio})});
+    const d=await r.json();
+    if(d.error){ alert('生成失败: '+d.error); }
+    else { loadImages(); }
+  }catch(e){ alert('后端未启动，请先运行 start.sh'); }
+  btn.disabled=false;btn.textContent='🎨 生成图片';
+  document.getElementById('imgLoading').style.display='none';
+}
+
+async function loadImages(){
+  const grid = document.getElementById('imageGrid');
+  try{
+    const r=await fetch('http://localhost:8890/api/images');
+    const d=await r.json();
+    if(!d.images||!d.images.length){ grid.innerHTML='<div style="text-align:center;padding:40px;color:#ccc;grid-column:1/-1">还没有生成过图片，试试左边输入描述吧</div>'; return; }
+    grid.innerHTML=d.images.map(img=>{
+      return `<div class="image-card"><a href="http://localhost:8890/images/${img.name}" target="_blank"><img src="http://localhost:8890/images/${img.name}" alt="${img.name}" loading="lazy" onerror="this.style.display='none'" style="cursor:pointer"></a><div class="img-info">🕐 ${img.time}（点击放大）</div></div>`;
+    }).join('');
+  }catch(e){
+    grid.innerHTML='<div style="text-align:center;padding:40px;color:#c62828;grid-column:1/-1">⚠️ 后端服务未启动，请先运行: bash ~/Desktop/creator-workbench/start.sh</div>';
+  }
+}
+
+// ========== INIT ==========
+initKOLFilters(); renderKOL();
+
+// Serve generated images statically
+(function(){
+  // images are served from the workbench/images directory
+  // the backend mounts them via /images endpoint
+})();
+</script>
+</body>
+</html>

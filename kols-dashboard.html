@@ -1,0 +1,2194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>萌力互动 · 全域营销平台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ========== RESET & BASE ========== */
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --black:#1a1a1a;--white:#ffffff;
+  --gray-50:#f8f8f8;--gray-100:#f0f0f0;--gray-200:#e0e0e0;
+  --gray-300:#b0b0b0;--gray-400:#808080;--gray-500:#606060;
+  --gray-600:#404040;--gray-700:#2a2a2a;--gray-800:#1a1a1a;--gray-900:#0a0a0a;
+  --accent:#F4845F;--accent-light:#F7A072;
+  --font:'Space Grotesk','Helvetica Neue',-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;
+}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--font);background:var(--white);color:var(--black);
+  line-height:1.6;-webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+::selection{background:var(--accent);color:var(--white)}
+
+/* ========== PAGE LOADER ========== */
+.page-loader{
+  position:fixed;inset:0;background:var(--white);z-index:10000;
+  display:flex;align-items:center;justify-content:center;
+  transition:opacity 0.8s cubic-bezier(0.4,0,0.2,1), visibility 0.8s;
+}
+.page-loader.hide{opacity:0;visibility:hidden}
+.loader-logo{
+  animation:pulse 2s ease infinite;
+}
+.loader-text{
+  font-size:clamp(48px,8vw,80px);font-weight:900;
+  color:var(--black);letter-spacing:-2px;
+  margin-top:24px;overflow:hidden;
+}
+.loader-text span{
+  display:inline-block;
+  transform:translateY(100%);
+  animation:slideUp 0.8s cubic-bezier(0.16,1,0.3,1) forwards;
+}
+.loader-text span:nth-child(2){animation-delay:0.1s}
+.loader-text span:nth-child(3){animation-delay:0.2s}
+@keyframes slideUp{
+  to{transform:translateY(0)}
+}
+@keyframes pulse{
+  0%,100%{transform:scale(1)}
+  50%{transform:scale(1.05)}
+}
+
+/* ========== SCROLL ANIMATIONS ========== */
+.fade-in{
+  opacity:0;transform:translateY(30px);
+  transition:opacity 0.8s ease, transform 0.8s ease;
+}
+.fade-in.visible{
+  opacity:1;transform:translateY(0);
+}
+.fade-in-left{
+  opacity:0;transform:translateX(-30px);
+  transition:opacity 0.8s ease, transform 0.8s ease;
+}
+.fade-in-left.visible{
+  opacity:1;transform:translateX(0);
+}
+.fade-in-right{
+  opacity:0;transform:translateX(30px);
+  transition:opacity 0.8s ease, transform 0.8s ease;
+}
+.fade-in-right.visible{
+  opacity:1;transform:translateX(0);
+}
+.scale-in{
+  opacity:0;transform:scale(0.9);
+  transition:opacity 0.6s ease, transform 0.6s ease;
+}
+.scale-in.visible{
+  opacity:1;transform:scale(1);
+}
+
+/* ========== MAGNETIC BUTTONS ========== */
+.magnetic{transition:transform 0.3s ease}
+
+/* ========== FLOATING ANIMATION ========== */
+@keyframes float{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-10px)}
+}
+.float{animation:float 3s ease-in-out infinite}
+
+/* ========== NAVIGATION ========== */
+.nav{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  padding:0 48px;height:72px;
+  display:flex;justify-content:space-between;align-items:center;
+  background:rgba(255,255,255,0.98);
+  backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--gray-100);
+  animation:slideDown 0.8s ease;
+}
+@keyframes slideDown{
+  from{transform:translateY(-100%);opacity:0}
+  to{transform:translateY(0);opacity:1}
+}
+.nav-left{display:flex;align-items:center;gap:48px}
+.nav-logo{
+  display:flex;align-items:center;gap:12px;
+  text-decoration:none;color:var(--black);
+}
+.nav-logo img{height:40px;width:auto;border-radius:8px}
+.nav-logo-text{font-size:18px;font-weight:700;letter-spacing:-0.3px}
+.nav-links{display:flex;gap:8px}
+.nav-link{
+  padding:8px 20px;font-size:14px;font-weight:500;
+  color:var(--gray-500);text-decoration:none;
+  border-radius:8px;transition:all 0.2s;
+}
+.nav-link{
+  position:relative;
+}
+.nav-link::after{
+  content:'';position:absolute;bottom:0;left:50%;
+  width:0;height:2px;background:var(--accent);
+  transition:all 0.3s ease;
+  transform:translateX(-50%);
+}
+.nav-link:hover::after,.nav-link.active::after{
+  width:80%;
+}
+.nav-link:hover{color:var(--black);background:var(--gray-50)}
+.nav-link.active{color:var(--black);background:var(--gray-100)}
+.nav-right{display:flex;align-items:center;gap:16px}
+
+/* ========== PAGE CONTAINER ========== */
+.page{
+  display:none;min-height:100vh;padding-top:72px;
+  animation:pageEnter 0.6s ease;
+}
+.page.active{display:block}
+@keyframes pageEnter{
+  from{opacity:0;transform:translateY(20px)}
+  to{opacity:1;transform:translateY(0)}
+}
+
+/* ========== HOME PAGE ========== */
+.home-hero{
+  padding:120px 48px;
+  display:flex;align-items:center;justify-content:center;
+  min-height:calc(100vh - 72px);
+  background:linear-gradient(135deg, var(--gray-50) 0%, var(--white) 100%);
+}
+.home-content{max-width:1200px;text-align:center}
+.home-tag{
+  font-size:14px;font-weight:600;letter-spacing:3px;
+  text-transform:uppercase;color:var(--accent);
+  margin-bottom:24px;
+}
+.home-title{
+  font-size:clamp(48px,6vw,80px);font-weight:900;
+  line-height:1.1;letter-spacing:-2px;
+  margin-bottom:24px;
+  background:linear-gradient(135deg, var(--black) 0%, var(--accent) 100%);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+.home-subtitle{
+  font-size:20px;color:var(--gray-400);
+  max-width:600px;margin:0 auto 48px;
+}
+.home-features{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:32px;
+  margin-top:80px;
+}
+.home-feature{
+  padding:40px;background:var(--white);
+  border:1px solid var(--gray-100);
+  text-align:left;cursor:pointer;
+  transition:all 0.3s;
+}
+.home-feature:hover{
+  transform:translateY(-8px);
+  box-shadow:0 30px 60px rgba(0,0,0,0.12);
+  border-color:var(--accent);
+}
+.home-feature::before{
+  content:'';position:absolute;top:0;left:0;right:0;
+  height:4px;background:var(--accent);
+  transform:scaleX(0);transform-origin:left;
+  transition:transform 0.3s ease;
+}
+.home-feature:hover::before{transform:scaleX(1)}
+.home-feature-icon{font-size:48px;margin-bottom:24px}
+.home-feature-title{font-size:20px;font-weight:700;margin-bottom:12px}
+.home-feature-desc{font-size:14px;color:var(--gray-400);line-height:1.8}
+
+/* Placeholder sections */
+.home-section{
+  padding:120px 48px;
+  border-top:1px solid var(--gray-100);
+}
+.home-section-title{
+  font-size:36px;font-weight:800;
+  text-align:center;margin-bottom:16px;
+}
+.home-section-desc{
+  font-size:16px;color:var(--gray-400);
+  text-align:center;margin-bottom:64px;
+}
+.placeholder-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:24px;
+  max-width:1200px;margin:0 auto;
+}
+.placeholder-card{
+  height:300px;background:var(--gray-50);
+  border:2px dashed var(--gray-200);
+  display:flex;align-items:center;justify-content:center;
+  color:var(--gray-300);font-size:14px;
+  transition:all 0.3s ease;
+}
+.placeholder-card:hover{
+  border-color:var(--accent);color:var(--accent);
+  transform:translateY(-4px);
+  box-shadow:0 20px 40px rgba(0,0,0,0.08);
+}
+
+/* ========== FIND KOL PAGE ========== */
+.page-header{
+  padding:48px 48px 0;
+  border-bottom:1px solid var(--gray-100);
+  background:var(--white);
+  animation:slideDown 0.6s ease;
+}
+@keyframes slideDown{
+  from{opacity:0;transform:translateY(-20px)}
+  to{opacity:1;transform:translateY(0)}
+}
+.page-header-inner{
+  max-width:1400px;margin:0 auto;
+  display:flex;justify-content:space-between;align-items:flex-end;
+  padding-bottom:24px;
+}
+.page-title{
+  font-size:32px;font-weight:800;letter-spacing:-0.5px;
+  background:linear-gradient(135deg, var(--black), var(--accent));
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+.page-desc{font-size:14px;color:var(--gray-400);margin-top:8px}
+
+/* AI Search in page */
+.ai-search-bar{
+  padding:24px 48px;
+  background:var(--gray-50);
+  border-bottom:1px solid var(--gray-100);
+}
+.ai-search-inner{
+  max-width:1400px;margin:0 auto;
+  display:flex;gap:12px;align-items:center;
+}
+.ai-search-input{
+  flex:1;padding:16px 24px;
+  border:2px solid var(--gray-200);
+  font-size:15px;font-family:var(--font);
+  outline:none;transition:all 0.3s ease;
+  background:var(--white);
+}
+.ai-search-input:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(244,132,95,0.2);
+}
+.ai-search-input::placeholder{color:var(--gray-300)}
+.ai-search-btn{
+  padding:16px 32px;background:var(--accent);color:var(--white);
+  border:none;font-size:15px;font-weight:600;
+  cursor:pointer;font-family:var(--font);
+  transition:background 0.2s;position:relative;overflow:hidden;
+}
+.ai-search-btn:hover{background:var(--black)}
+.ai-search-btn::after{
+  content:'';position:absolute;
+  width:100%;height:100%;top:0;left:0;
+  pointer-events:none;
+  background-image:radial-gradient(circle, rgba(255,255,255,0.3) 10%, transparent 10.01%);
+  background-repeat:no-repeat;
+  background-position:50%;
+  transform:scale(10,10);
+  opacity:0;
+  transition:transform .5s, opacity 1s;
+}
+.ai-search-btn:active::after{
+  transform:scale(0,0);
+  opacity:1;
+  transition:0s;
+}
+.ai-search-btn:disabled{opacity:0.5;cursor:not-allowed}
+.ai-result{
+  max-width:1400px;margin:16px auto 0;
+  padding:16px 24px;background:var(--accent);
+  color:var(--white);display:none;
+  font-size:14px;
+  animation:slideDown 0.4s ease;
+}
+@keyframes slideDown{
+  from{opacity:0;transform:translateY(-10px)}
+  to{opacity:1;transform:translateY(0)}
+}
+
+/* Filters */
+.filter-bar{
+  padding:20px 48px;
+  border-bottom:1px solid var(--gray-100);
+}
+.filter-inner{
+  max-width:1400px;margin:0 auto;
+  display:flex;gap:12px;flex-wrap:wrap;align-items:center;
+}
+.filter-chip{
+  padding:10px 20px;border:1.5px solid var(--gray-200);
+  background:var(--white);font-size:13px;font-weight:500;
+  cursor:pointer;transition:all 0.3s ease;font-family:var(--font);
+}
+.filter-chip:hover{
+  border-color:var(--black);
+  transform:translateY(-2px);
+  box-shadow:0 4px 12px rgba(0,0,0,0.1);
+}
+.filter-chip.active{
+  background:var(--black);color:var(--white);border-color:var(--black);
+  transform:translateY(-2px);
+  box-shadow:0 4px 12px rgba(0,0,0,0.2);
+}
+.filter-input{
+  padding:10px 16px;border:1.5px solid var(--gray-200);
+  background:var(--white);font-size:13px;font-family:var(--font);
+  outline:none;width:120px;transition:all 0.3s ease;
+}
+.filter-input:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(244,132,95,0.2);
+  transform:translateY(-2px);
+}
+.filter-input::placeholder{color:var(--gray-300)}
+.filter-select{
+  padding:10px 32px 10px 16px;border:1.5px solid var(--gray-200);
+  background:var(--white);font-size:13px;font-family:var(--font);
+  cursor:pointer;outline:none;
+  appearance:none;-webkit-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23808080'%3E%3Cpath d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center;
+}
+.filter-label{font-size:12px;font-weight:600;color:var(--gray-400);text-transform:uppercase;letter-spacing:1px}
+.filter-sep{width:1px;height:32px;background:var(--gray-200)}
+.cart-btn{
+  margin-left:auto;padding:12px 24px;
+  background:var(--accent);color:var(--white);
+  border:none;font-size:14px;font-weight:600;
+  cursor:pointer;font-family:var(--font);
+  transition:all 0.3s ease;position:relative;overflow:hidden;
+}
+.cart-btn:hover{
+  background:var(--black);
+  transform:translateY(-2px);
+  box-shadow:0 8px 24px rgba(0,0,0,0.2);
+}
+.cart-btn .badge{
+  background:rgba(255,255,255,0.3);padding:2px 8px;
+  margin-left:8px;font-size:12px;
+}
+
+/* Table */
+.table-container{
+  padding:0 48px 80px;
+}
+.table-wrap{
+  max-width:1400px;margin:0 auto;
+  overflow-x:auto;
+}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:1000px}
+thead th{
+  padding:16px 20px;text-align:left;
+  font-size:11px;font-weight:700;
+  color:var(--gray-400);text-transform:uppercase;
+  letter-spacing:1px;border-bottom:2px solid var(--black);
+}
+tbody td{
+  padding:20px;border-bottom:1px solid var(--gray-100);
+  vertical-align:middle;
+}
+tbody tr{
+  transition:all 0.2s ease;
+}
+tbody tr:hover{
+  background:var(--gray-50);
+  transform:scale(1.01);
+}
+.kol-name{display:flex;align-items:center;gap:14px}
+.kol-avatar{
+  width:44px;height:44px;display:flex;align-items:center;
+  justify-content:center;font-size:22px;
+  background:var(--gray-50);border:1px solid var(--gray-100);
+  transition:all 0.3s ease;
+}
+.kol-avatar:hover{
+  transform:scale(1.1) rotate(5deg);
+  background:var(--accent);color:var(--white);
+}
+.kol-info .name{font-weight:700;font-size:14px}
+.kol-info .id{font-size:11px;color:var(--gray-400);margin-top:2px}
+.follower-num{font-weight:800;font-size:15px}
+.tag{
+  display:inline-block;padding:4px 12px;
+  background:var(--gray-100);font-size:11px;
+  font-weight:600;margin:2px 4px;
+  transition:all 0.2s ease;
+}
+.tag:hover{
+  background:var(--accent);color:var(--white);
+  transform:translateY(-2px);
+}
+.eng{
+  display:inline-block;padding:5px 12px;
+  font-size:12px;font-weight:700;
+  transition:all 0.2s ease;
+}
+.eng:hover{transform:scale(1.05)}
+.eng.high{background:#dcfce7;color:#166534}
+.eng.mid{background:#fef3c7;color:#92400e}
+.eng.low{background:#fee2e2;color:#991b1b}
+.price{font-weight:800;font-size:14px;white-space:nowrap}
+.price small{font-weight:400;font-size:11px;color:var(--gray-400)}
+.price:hover{color:var(--accent)}
+.add-btn{
+  padding:10px 20px;border:2px solid var(--black);
+  background:var(--white);font-size:12px;font-weight:700;
+  cursor:pointer;transition:all 0.3s ease;font-family:var(--font);
+}
+.add-btn:hover{
+  background:var(--black);color:var(--white);
+  transform:translateY(-2px);
+  box-shadow:0 6px 18px rgba(0,0,0,0.15);
+}
+.add-btn.added{
+  background:var(--black);color:var(--white);
+  animation:successPulse 0.5s ease;
+}
+@keyframes successPulse{
+  0%{transform:scale(1)}
+  50%{transform:scale(1.1)}
+  100%{transform:scale(1)}
+}
+.empty-state{text-align:center;padding:80px;color:var(--gray-300)}
+.empty-state .icon{
+  font-size:48px;margin-bottom:16px;
+  animation:float 3s ease-in-out infinite;
+}
+.empty-state h3{font-size:16px;font-weight:400}
+@keyframes float{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-10px)}
+}
+
+/* ========== IMAGE GEN PAGE ========== */
+.gen-layout{
+  display:grid;grid-template-columns:1fr 1fr;
+  max-width:1400px;margin:0 auto;
+  min-height:calc(100vh - 72px);
+}
+.gen-left{
+  padding:48px;border-right:1px solid var(--gray-100);
+}
+.gen-right{
+  padding:48px;display:flex;flex-direction:column;
+}
+.gen-label{
+  font-size:12px;font-weight:700;color:var(--gray-400);
+  text-transform:uppercase;letter-spacing:1.5px;
+  margin-bottom:12px;
+}
+.gen-textarea{
+  width:100%;padding:16px;border:2px solid var(--gray-200);
+  font-size:15px;font-family:var(--font);
+  outline:none;min-height:160px;resize:vertical;
+  transition:all 0.3s ease;
+}
+.gen-textarea:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(244,132,95,0.2);
+  transform:translateY(-2px);
+}
+.gen-textarea::placeholder{color:var(--gray-300)}
+.gen-sizes{display:flex;gap:8px;margin:20px 0}
+.gen-size-btn{
+  padding:10px 20px;border:1.5px solid var(--gray-200);
+  background:var(--white);font-size:13px;font-weight:600;
+  cursor:pointer;transition:all 0.3s ease;font-family:var(--font);
+}
+.gen-size-btn:hover{
+  border-color:var(--black);
+  transform:translateY(-2px);
+  box-shadow:0 4px 12px rgba(0,0,0,0.1);
+}
+.gen-size-btn.active{
+  background:var(--black);color:var(--white);border-color:var(--black);
+  transform:translateY(-2px);
+  box-shadow:0 4px 12px rgba(0,0,0,0.2);
+}
+
+/* ========== IMAGE MODE TABS ========== */
+.gen-mode-tabs{
+  display:flex;gap:8px;margin-bottom:16px;
+}
+.gen-mode-tab{
+  flex:1;padding:12px;border:2px solid var(--gray-200);
+  background:var(--white);font-size:14px;font-weight:600;
+  cursor:pointer;transition:all 0.3s;font-family:var(--font);
+  text-align:center;
+}
+.gen-mode-tab:hover{border-color:var(--black)}
+.gen-mode-tab.active{
+  background:var(--black);color:var(--white);border-color:var(--black);
+}
+
+/* ========== IMAGE UPLOAD ========== */
+.gen-upload{
+  padding:40px;border:2px dashed var(--gray-200);
+  text-align:center;cursor:pointer;transition:all 0.3s;
+}
+.gen-upload:hover{
+  border-color:var(--accent);
+  background:var(--gray-50);
+}
+.gen-upload-icon{font-size:48px;margin-bottom:16px}
+.gen-upload-text{font-size:16px;font-weight:600;margin-bottom:8px}
+.gen-upload-hint{font-size:13px;color:var(--gray-400)}
+.gen-btn{
+  width:100%;padding:16px;background:var(--accent);color:var(--white);
+  border:none;font-size:15px;font-weight:700;cursor:pointer;
+  font-family:var(--font);transition:all 0.3s ease;margin-top:24px;
+  position:relative;overflow:hidden;
+}
+.gen-btn:hover{
+  background:var(--black);
+  transform:translateY(-2px);
+  box-shadow:0 10px 30px rgba(0,0,0,0.2);
+}
+.gen-btn:active{transform:translateY(0)}
+.gen-btn:disabled{opacity:0.5;cursor:not-allowed}
+.gen-preview{
+  flex:1;display:flex;align-items:center;justify-content:center;
+  background:var(--gray-50);position:relative;
+  transition:all 0.3s ease;
+}
+.gen-preview:hover{background:var(--gray-100)}
+.gen-preview-title{
+  position:absolute;top:0;left:0;
+  font-size:14px;font-weight:700;color:var(--gray-400);
+  text-transform:uppercase;letter-spacing:1px;
+}
+.gen-placeholder{text-align:center;color:var(--gray-300)}
+.gen-placeholder .icon{font-size:64px;margin-bottom:16px}
+.gen-placeholder p{font-size:14px}
+.gen-result{max-width:100%;max-height:80%;display:none}
+.gen-loading{display:none;text-align:center}
+.gen-loading .spinner{
+  width:48px;height:48px;border:3px solid var(--gray-200);
+  border-top-color:var(--accent);border-radius:50%;
+  animation:spin 0.8s linear infinite;margin:0 auto 16px;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.gen-loading p{
+  animation:pulse 1.5s ease infinite;
+}
+@keyframes pulse{
+  0%,100%{opacity:1}
+  50%{opacity:0.5}
+}
+
+/* ========== COPYWRITING PAGE ========== */
+.copy-layout{
+  display:grid;grid-template-columns:1fr 1fr;
+  max-width:1400px;margin:0 auto;
+  min-height:calc(100vh - 72px);
+}
+.copy-left{padding:48px;border-right:1px solid var(--gray-100)}
+.copy-right{padding:48px;display:flex;flex-direction:column}
+.copy-output{
+  flex:1;white-space:pre-wrap;line-height:2;
+  font-size:15px;padding:24px;background:var(--gray-50);
+  min-height:300px;transition:all 0.3s ease;
+}
+.copy-output:not(.empty):hover{
+  background:var(--white);
+  box-shadow:0 4px 12px rgba(0,0,0,0.08);
+}
+.copy-output.empty{color:var(--gray-300);display:flex;align-items:center;justify-content:center}
+.copy-actions{
+  display:flex;gap:12px;margin-top:24px;
+}
+.copy-actions .gen-btn{flex:1;margin-top:0}
+.copy-actions .secondary{
+  background:var(--white);color:var(--black);border:2px solid var(--black);
+}
+.copy-actions .secondary:hover{background:var(--black);color:var(--white)}
+
+/* ========== KNOWLEDGE PAGE ========== */
+.knowledge-layout{
+  max-width:1400px;margin:0 auto;
+  padding:48px;
+}
+.knowledge-section{
+  margin-bottom:64px;
+}
+.knowledge-title{
+  font-size:28px;font-weight:800;
+  margin-bottom:32px;padding-bottom:16px;
+  border-bottom:2px solid var(--black);
+}
+.knowledge-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:24px;
+}
+.knowledge-card{
+  background:var(--white);border:1px solid var(--gray-100);
+  overflow:hidden;cursor:pointer;transition:all 0.3s ease;
+}
+.knowledge-card:hover{
+  box-shadow:0 12px 32px rgba(0,0,0,0.1);
+  transform:translateY(-4px);
+  border-color:var(--accent);
+}
+.knowledge-card-header{
+  padding:20px 24px;font-size:16px;font-weight:700;
+  background:var(--gray-50);border-bottom:1px solid var(--gray-100);
+  display:flex;justify-content:space-between;align-items:center;
+}
+.knowledge-arrow{
+  font-size:18px;color:var(--gray-400);
+  transition:transform 0.3s;
+}
+.knowledge-card:hover .knowledge-arrow{transform:translateX(4px)}
+.knowledge-card-body{
+  padding:24px;display:none;
+}
+.knowledge-card.open .knowledge-card-body{display:block}
+.knowledge-card.open .knowledge-arrow{transform:rotate(90deg)}
+.knowledge-item{
+  font-size:14px;line-height:1.8;
+  padding:8px 0;border-bottom:1px solid var(--gray-50);
+  transition:all 0.2s ease;
+}
+.knowledge-item:last-child{border-bottom:none}
+.knowledge-item:hover{
+  background:var(--gray-50);
+  padding-left:8px;
+}
+.knowledge-label{
+  display:inline-block;min-width:80px;
+  font-weight:600;color:var(--accent);
+}
+.knowledge-template{
+  display:flex;flex-direction:column;gap:12px;
+}
+.knowledge-step{
+  font-size:13px;line-height:1.6;
+  padding:12px 16px;background:var(--gray-50);
+  border-left:3px solid var(--accent);
+  transition:all 0.3s ease;
+  animation:slideInLeft 0.4s ease;
+}
+.knowledge-step:hover{
+  background:var(--white);
+  transform:translateX(8px);
+  box-shadow:0 4px 12px rgba(0,0,0,0.08);
+}
+@keyframes slideInLeft{
+  from{opacity:0;transform:translateX(-20px)}
+  to{opacity:1;transform:translateX(0)}
+}
+
+/* ========== ARTICLE PAGE ========== */
+.article-layout{
+  display:grid;grid-template-columns:1fr 1fr;
+  max-width:1400px;margin:0 auto;
+  min-height:calc(100vh - 72px);
+}
+.article-left{padding:48px;border-right:1px solid var(--gray-100)}
+.article-right{padding:48px;display:flex;flex-direction:column}
+.article-output{
+  flex:1;white-space:pre-wrap;line-height:2;
+  font-size:15px;padding:32px;background:var(--gray-50);
+  min-height:400px;overflow-y:auto;transition:all 0.3s ease;
+}
+.article-output:not(.empty):hover{
+  background:var(--white);
+  box-shadow:0 4px 12px rgba(0,0,0,0.08);
+}
+.article-output.empty{color:var(--gray-300);display:flex;align-items:center;justify-content:center}
+.article-actions{
+  display:flex;gap:12px;margin-top:24px;
+}
+.article-actions .gen-btn{flex:1;margin-top:0}
+.article-actions .secondary{
+  background:var(--white);color:var(--black);border:2px solid var(--black);
+}
+.article-actions .secondary:hover{background:var(--black);color:var(--white)}
+
+/* ========== ASSETS PAGE ========== */
+.assets-header{
+  padding:48px 48px 0;
+}
+.assets-header-inner{
+  max-width:1400px;margin:0 auto;
+  display:flex;justify-content:space-between;align-items:center;
+}
+.assets-search{
+  display:flex;gap:12px;
+}
+.assets-search input{
+  padding:12px 20px;border:2px solid var(--gray-200);
+  font-size:14px;font-family:var(--font);
+  outline:none;width:300px;transition:all 0.3s ease;
+}
+.assets-search input:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(244,132,95,0.2);
+  transform:translateY(-2px);
+}
+.assets-tabs{
+  display:flex;gap:8px;padding:24px 48px;
+  border-bottom:1px solid var(--gray-100);
+}
+.assets-tab{
+  padding:10px 24px;border:1.5px solid var(--gray-200);
+  background:var(--white);font-size:13px;font-weight:600;
+  cursor:pointer;transition:all 0.3s ease;font-family:var(--font);
+}
+.assets-tab:hover{
+  border-color:var(--black);
+  transform:translateY(-2px);
+  box-shadow:0 4px 12px rgba(0,0,0,0.1);
+}
+.assets-tab.active{
+  background:var(--black);color:var(--white);border-color:var(--black);
+  transform:translateY(-2px);
+  box-shadow:0 4px 12px rgba(0,0,0,0.2);
+}
+.assets-grid{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:24px;
+  padding:48px;max-width:1400px;margin:0 auto;
+}
+.asset-card{
+  background:var(--white);border:1px solid var(--gray-100);
+  overflow:hidden;cursor:pointer;transition:all 0.3s ease;
+}
+.asset-card:hover{
+  transform:translateY(-8px);
+  box-shadow:0 24px 48px rgba(0,0,0,0.12);
+  border-color:var(--accent);
+}
+.asset-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;
+  height:4px;background:var(--accent);
+  transform:scaleX(0);transform-origin:left;
+  transition:transform 0.3s ease;z-index:1;
+}
+.asset-card:hover::before{transform:scaleX(1)}
+.asset-preview{
+  height:200px;background:var(--gray-50);
+  display:flex;align-items:center;justify-content:center;
+  font-size:48px;color:var(--gray-200);
+  overflow:hidden;
+}
+.asset-preview img{width:100%;height:100%;object-fit:cover}
+.asset-info{padding:16px}
+.asset-title{
+  font-size:14px;font-weight:600;margin-bottom:4px;
+  transition:color 0.2s ease;
+}
+.asset-card:hover .asset-title{color:var(--accent)}
+.asset-meta{font-size:12px;color:var(--gray-400)}
+.asset-empty{
+  grid-column:span 4;text-align:center;
+  padding:120px;color:var(--gray-300);
+}
+.asset-empty .icon{
+  font-size:64px;margin-bottom:24px;
+  animation:float 3s ease-in-out infinite;
+}
+.asset-empty h3{font-size:18px;font-weight:400}
+@keyframes float{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-10px)}
+}
+
+/* ========== SIDEBAR ========== */
+.overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,0.4);
+  z-index:99;display:none;backdrop-filter:blur(4px);
+}
+.overlay.show{display:block}
+.sidebar{
+  position:fixed;right:0;top:0;bottom:0;width:480px;
+  background:var(--white);z-index:100;
+  transform:translateX(100%);
+  transition:transform 0.5s cubic-bezier(0.16,1,0.3,1);
+  display:flex;flex-direction:column;
+  box-shadow:-20px 0 60px rgba(0,0,0,0.1);
+}
+.sidebar.open{transform:translateX(0)}
+.sidebar.open .sidebar-header{animation:slideInRight 0.5s ease 0.2s both}
+.sidebar.open .sidebar-body{animation:slideInRight 0.5s ease 0.3s both}
+.sidebar.open .sidebar-footer{animation:slideInRight 0.5s ease 0.4s both}
+@keyframes slideInRight{
+  from{opacity:0;transform:translateX(30px)}
+  to{opacity:1;transform:translateX(0)}
+}
+.sidebar-header{
+  padding:32px;border-bottom:1px solid var(--gray-100);
+  display:flex;justify-content:space-between;align-items:center;
+}
+.sidebar-header h2{font-size:24px;font-weight:800}
+.sidebar-close{
+  width:40px;height:40px;display:flex;align-items:center;
+  justify-content:center;border:1px solid var(--gray-200);
+  background:var(--white);font-size:18px;cursor:pointer;
+  transition:all 0.3s ease;
+}
+.sidebar-close:hover{
+  background:var(--black);color:var(--white);border-color:var(--black);
+  transform:rotate(90deg);
+}
+.sidebar-body{flex:1;overflow-y:auto;padding:32px}
+.cart-item{
+  padding:20px 0;border-bottom:1px solid var(--gray-100);
+  display:flex;justify-content:space-between;align-items:flex-start;
+}
+.cart-item:last-child{border-bottom:none}
+.cart-item .name{font-weight:700;font-size:15px;margin-bottom:4px}
+.cart-item .meta{font-size:12px;color:var(--gray-400)}
+.cart-item .remove{
+  padding:8px 14px;border:1px solid var(--gray-200);
+  background:var(--white);font-size:12px;font-weight:600;
+  cursor:pointer;transition:all 0.3s ease;font-family:var(--font);
+}
+.cart-item .remove:hover{
+  background:#fee2e2;border-color:#fca5a5;color:#991b1b;
+  transform:scale(1.05);
+}
+.sidebar-footer{
+  padding:32px;border-top:2px solid var(--black);
+}
+.total-row{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:24px;
+}
+.total-label{font-size:14px;color:var(--gray-400)}
+.total-num{font-size:32px;font-weight:900}
+.submit-btn{
+  width:100%;padding:18px;background:var(--accent);color:var(--white);
+  border:none;font-size:15px;font-weight:700;cursor:pointer;
+  font-family:var(--font);transition:all 0.3s ease;
+  position:relative;overflow:hidden;
+}
+.submit-btn:hover{
+  background:var(--black);
+  transform:translateY(-2px);
+  box-shadow:0 12px 32px rgba(0,0,0,0.2);
+}
+
+/* ========== LIGHTBOX ========== */
+.lightbox{
+  position:fixed;inset:0;background:rgba(0,0,0,0.9);
+  z-index:200;display:none;align-items:center;justify-content:center;
+  cursor:pointer;backdrop-filter:blur(10px);
+}
+.lightbox.show{display:flex;animation:fadeIn 0.3s ease}
+.lightbox img{
+  max-width:90%;max-height:90vh;object-fit:contain;
+  animation:lightboxEnter 0.4s ease;
+}
+@keyframes lightboxEnter{
+  from{opacity:0;transform:scale(0.9)}
+  to{opacity:1;transform:scale(1)}
+}
+.lightbox-close{
+  position:absolute;top:24px;right:24px;
+  width:48px;height:48px;display:flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,0.1);border:none;color:var(--white);
+  font-size:24px;cursor:pointer;transition:all 0.3s ease;
+}
+.lightbox-close:hover{
+  background:rgba(255,255,255,0.2);
+  transform:rotate(90deg);
+}
+
+/* ========== TEXT MODAL ========== */
+.text-modal{
+  position:fixed;inset:0;background:rgba(0,0,0,0.6);
+  z-index:200;display:none;align-items:center;justify-content:center;
+  backdrop-filter:blur(8px);
+}
+.text-modal.show{display:flex;animation:fadeIn 0.3s ease}
+.text-modal-content{
+  width:90%;max-width:800px;max-height:85vh;
+  background:var(--white);border-radius:8px;
+  overflow:hidden;display:flex;flex-direction:column;
+  animation:modalEnter 0.3s ease;
+}
+@keyframes modalEnter{
+  from{opacity:0;transform:scale(0.95) translateY(20px)}
+  to{opacity:1;transform:scale(1) translateY(0)}
+}
+.text-modal-header{
+  padding:24px 32px;border-bottom:1px solid var(--gray-100);
+  display:flex;justify-content:space-between;align-items:center;
+}
+.text-modal-close{
+  width:40px;height:40px;display:flex;align-items:center;justify-content:center;
+  background:var(--gray-50);border:none;font-size:18px;cursor:pointer;
+  transition:all 0.2s;border-radius:8px;
+}
+.text-modal-close:hover{background:var(--gray-100)}
+.text-modal-title{
+  font-size:20px;font-weight:700;padding:24px 32px 0;
+}
+.text-modal-body{
+  padding:24px 32px;overflow-y:auto;flex:1;
+  white-space:pre-wrap;line-height:2;font-size:15px;
+}
+.text-modal-copy{
+  margin:0 32px 32px;padding:14px;
+  background:var(--accent);color:var(--white);
+  border:none;font-size:14px;font-weight:600;
+  cursor:pointer;font-family:var(--font);
+  transition:background 0.2s;
+}
+.text-modal-copy:hover{background:var(--black)}
+
+/* ========== FOOTER ========== */
+.footer{
+  padding:48px;
+  background:var(--gray-900);color:var(--white);
+  display:flex;justify-content:space-between;align-items:center;
+}
+.footer-brand{display:flex;align-items:center;gap:12px;font-size:18px;font-weight:700}
+.footer-brand img{
+  height:36px;border-radius:6px;
+  transition:all 0.3s ease;
+}
+.footer-brand img:hover{
+  transform:scale(1.1) rotate(5deg);
+}
+.footer-copy{font-size:13px;color:var(--gray-400)}
+
+/* ========== RESPONSIVE ========== */
+@media(max-width:1024px){
+  .home-features{grid-template-columns:1fr}
+  .gen-layout,.copy-layout{grid-template-columns:1fr}
+  .gen-left,.copy-left{border-right:none;border-bottom:1px solid var(--gray-100)}
+  .assets-grid{grid-template-columns:repeat(2,1fr)}
+  .asset-empty{grid-column:span 2}
+}
+@media(max-width:768px){
+  .nav{padding:0 24px}
+  .nav-links{display:none}
+  .home-hero{padding:80px 24px}
+  .home-features{gap:24px}
+  .page-header,.ai-search-bar,.filter-bar,.table-container{padding-left:24px;padding-right:24px}
+  .gen-left,.gen-right,.copy-left,.copy-right{padding:24px}
+  .assets-header,.assets-tabs{padding-left:24px;padding-right:24px}
+  .assets-grid{padding:24px;grid-template-columns:1fr}
+  .asset-empty{grid-column:span 1}
+  .sidebar{width:100%}
+  .footer{flex-direction:column;gap:24px;text-align:center}
+}
+</style>
+</head>
+<body>
+
+<!-- Page Loader -->
+<div class="page-loader" id="pageLoader">
+  <div style="text-align:center">
+    <img src="logo.jpg" alt="萌力互动" class="loader-logo" style="border-radius:24px;width:120px;height:120px">
+    <div class="loader-text">
+      <span>萌</span><span>力</span><span>互动</span>
+    </div>
+  </div>
+</div>
+
+<!-- Navigation -->
+<nav class="nav">
+  <div class="nav-left">
+    <a href="#" class="nav-logo" onclick="showPage('home')">
+      <img src="logo.jpg" alt="萌力互动">
+      <span class="nav-logo-text">萌力互动</span>
+    </a>
+    <div class="nav-links">
+      <a href="#" class="nav-link active" data-page="home" onclick="showPage('home')">首页</a>
+      <a href="#" class="nav-link" data-page="find" onclick="showPage('find')">找号</a>
+      <a href="#" class="nav-link" data-page="image" onclick="showPage('image')">图片生成</a>
+      <a href="#" class="nav-link" data-page="copy" onclick="showPage('copy')">文案撰写</a>
+      <a href="#" class="nav-link" data-page="article" onclick="showPage('article')">公众号推文</a>
+      <a href="#" class="nav-link" data-page="knowledge" onclick="showPage('knowledge')">品牌知识库</a>
+      <a href="#" class="nav-link" data-page="assets" onclick="showPage('assets')">素材库</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ========== HOME PAGE ========== -->
+<div class="page active" id="pageHome">
+  <div class="home-hero">
+    <div class="home-content">
+      <div class="home-tag fade-in">Mengli Interactive</div>
+      <h1 class="home-title fade-in" style="transition-delay:0.2s">萌力互动<br>全域营销平台</h1>
+      <p class="home-subtitle fade-in" style="transition-delay:0.4s">连接品牌与创作者，用数据驱动营销决策</p>
+
+      <div class="home-features">
+        <div class="home-feature fade-in" style="transition-delay:0.6s" onclick="showPage('find')">
+          <div class="home-feature-icon">🔍</div>
+          <div class="home-feature-title">达人查找</div>
+          <div class="home-feature-desc">AI 智能匹配，快速找到最适合品牌合作的达人</div>
+        </div>
+        <div class="home-feature fade-in" style="transition-delay:0.8s" onclick="showPage('image')">
+          <div class="home-feature-icon">🎨</div>
+          <div class="home-feature-title">图片生成</div>
+          <div class="home-feature-desc">AI 创意生图，一键生成营销素材和宣传海报</div>
+        </div>
+        <div class="home-feature fade-in" style="transition-delay:1.0s" onclick="showPage('copy')">
+          <div class="home-feature-icon">✍️</div>
+          <div class="home-feature-title">文案撰写</div>
+          <div class="home-feature-desc">智能文案创作，适配各平台风格的种草内容</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Case Studies Section -->
+  <div class="home-section">
+    <h2 class="home-section-title fade-in">精选案例</h2>
+    <p class="home-section-desc fade-in">我们为品牌打造的营销奇迹</p>
+    <div class="placeholder-grid">
+      <div class="placeholder-card fade-in-left">案例展示 1</div>
+      <div class="placeholder-card fade-in">案例展示 2</div>
+      <div class="placeholder-card fade-in-right">案例展示 3</div>
+    </div>
+  </div>
+
+  <!-- About Section -->
+  <div class="home-section">
+    <h2 class="home-section-title fade-in">关于我们</h2>
+    <p class="home-section-desc fade-in">萌力互动 — 您的全域营销合作伙伴</p>
+    <div class="placeholder-grid">
+      <div class="placeholder-card fade-in-left">公司介绍</div>
+      <div class="placeholder-card fade-in">团队风采</div>
+      <div class="placeholder-card fade-in-right">合作伙伴</div>
+    </div>
+  </div>
+
+  <footer class="footer fade-in">
+    <div class="footer-brand">
+      <img src="logo.jpg" alt="萌力互动">
+      <span>萌力互动</span>
+    </div>
+    <div class="footer-copy">© 2024 Mengli Interactive. All rights reserved.</div>
+  </footer>
+</div>
+
+<!-- ========== FIND KOL PAGE ========== -->
+<div class="page" id="pageFind">
+  <div class="page-header">
+    <div class="page-header-inner">
+      <div>
+        <h1 class="page-title">达人查找</h1>
+        <p class="page-desc">AI 智能匹配，快速找到最适合的达人</p>
+      </div>
+      <button class="cart-btn" onclick="openCart()">询单车 <span class="badge" id="cartBadge">0</span></button>
+    </div>
+  </div>
+
+  <div class="ai-search-bar">
+    <div class="ai-search-inner">
+      <input type="text" class="ai-search-input" id="aiInput" placeholder="用自然语言描述你想要的达人，如：找母婴类10万粉以下互动率高的..." onkeydown="if(event.key==='Enter')aiSearch()">
+      <button class="ai-search-btn" id="aiBtn" onclick="aiSearch()">AI 搜索</button>
+    </div>
+    <div class="ai-result" id="aiResult"></div>
+  </div>
+
+  <div class="filter-bar">
+    <div class="filter-inner" id="filterRow"></div>
+  </div>
+
+  <div class="table-container">
+    <div class="table-wrap">
+      <table>
+        <thead id="tableHead"></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+      <div class="empty-state" id="emptyState" style="display:none">
+        <div class="icon">🔍</div>
+        <h3>没有匹配的达人，试试调整筛选条件</h3>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== IMAGE GEN PAGE ========== -->
+<div class="page" id="pageImage">
+  <div class="page-header">
+    <div class="page-header-inner">
+      <div>
+        <h1 class="page-title">图片生成</h1>
+        <p class="page-desc">AI 创意生图，一键生成营销素材</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="gen-layout">
+    <div class="gen-left">
+      <div class="gen-label">生成模式</div>
+      <div class="gen-mode-tabs">
+        <button class="gen-mode-tab active" onclick="switchImgMode('text2img',this)">文生图</button>
+        <button class="gen-mode-tab" onclick="switchImgMode('img2img',this)">图生图</button>
+      </div>
+
+      <div id="text2imgSection">
+        <div class="gen-label" style="margin-top:24px">图片描述</div>
+        <textarea class="gen-textarea" id="imgPrompt" placeholder="描述你想要的图片，如：可爱的卡通小象，橙色主题，简约风格..."></textarea>
+      </div>
+
+      <div id="img2imgSection" style="display:none">
+        <div class="gen-label" style="margin-top:24px">参考图片</div>
+        <div class="gen-upload" id="imgUpload" onclick="document.getElementById('imgFileInput').click()">
+          <input type="file" id="imgFileInput" accept="image/*" style="display:none" onchange="handleImgUpload(event)">
+          <div class="gen-upload-icon">📷</div>
+          <div class="gen-upload-text">点击上传参考图片</div>
+          <div class="gen-upload-hint">支持 JPG、PNG 格式</div>
+        </div>
+        <img id="imgPreview" src="" alt="" style="display:none;max-width:100%;margin-top:16px;border-radius:8px">
+
+        <div class="gen-label" style="margin-top:24px">修改要求</div>
+        <textarea class="gen-textarea" id="img2imgPrompt" placeholder="描述你想要的修改，如：把背景改成蓝色、添加一个帽子、改成卡通风格..."></textarea>
+      </div>
+
+      <div class="gen-label" style="margin-top:24px">图片尺寸</div>
+      <div class="gen-sizes">
+        <button class="gen-size-btn active" onclick="setImgSize('1024x1024',this)">1:1 方形</button>
+        <button class="gen-size-btn" onclick="setImgSize('1792x1024',this)">16:9 横版</button>
+        <button class="gen-size-btn" onclick="setImgSize('1024x1792',this)">9:16 竖版</button>
+      </div>
+
+      <button class="gen-btn" id="imgBtn" onclick="genImage()">生成图片</button>
+    </div>
+    <div class="gen-right">
+      <div class="gen-preview">
+        <div class="gen-preview-title">预览</div>
+        <div class="gen-placeholder" id="imgPlaceholder">
+          <div class="icon">🎨</div>
+          <p>输入描述，点击生成</p>
+        </div>
+        <div class="gen-loading" id="imgLoading">
+          <div class="spinner"></div>
+          <p style="color:var(--gray-400);font-size:13px">AI 创作中...</p>
+        </div>
+        <img class="gen-result" id="imgResult" src="" alt="">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== COPYWRITING PAGE ========== -->
+<div class="page" id="pageCopy">
+  <div class="page-header">
+    <div class="page-header-inner">
+      <div>
+        <h1 class="page-title">文案撰写</h1>
+        <p class="page-desc">萌力互动专属文案工作室 · KOC/UGC 社交文案</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="copy-layout">
+    <div class="copy-left">
+      <div class="gen-label">文案类型</div>
+      <select class="gen-textarea" id="copyType" style="min-height:auto;padding:16px;cursor:pointer">
+        <option value="种草科普">种草科普 - 产品安利/选品指南</option>
+        <option value="误区纠正">误区纠正 - 知识纠偏/专业解读</option>
+        <option value="场景种草">场景种草 - 生活场景植入</option>
+        <option value="节点促销">节点促销 - 618/双11/节日</option>
+        <option value="送礼场景">送礼场景 - 送长辈/送朋友</option>
+        <option value="通用文案">通用文案 - 自由创作</option>
+      </select>
+
+      <div class="gen-label" style="margin-top:24px">品牌</div>
+      <select class="gen-textarea" id="copyBrand" style="min-height:auto;padding:16px;cursor:pointer">
+        <option value="">通用品牌</option>
+        <option value="听研 BIOLAB">听研 BIOLAB - 科技护肤</option>
+        <option value="汤臣倍健">汤臣倍健 - 保健品</option>
+        <option value="她多维">她多维 - 女性维生素</option>
+        <option value="SLIM蛋">SLIM蛋 - 蛋白粉</option>
+        <option value="臻钻蛋白粉">臻钻蛋白粉 - 高端蛋白</option>
+        <option value="特医">特医 - 特医食品</option>
+      </select>
+
+      <div class="gen-label" style="margin-top:24px">发布平台</div>
+      <select class="gen-textarea" id="copyPlatform" style="min-height:auto;padding:16px;cursor:pointer">
+        <option value="小红书">小红书 - 种草笔记</option>
+        <option value="朋友圈">朋友圈 - 日常分享</option>
+        <option value="公众号">公众号 - 深度长文</option>
+        <option value="短视频脚本">短视频 - 口播脚本</option>
+      </select>
+
+      <div class="gen-label" style="margin-top:24px">产品/主题</div>
+      <input type="text" class="gen-textarea" id="copyProduct" placeholder="如：超上扬精华、钙片、蛋白粉..." style="min-height:auto;padding:16px">
+
+      <div class="gen-label" style="margin-top:24px">补充要求</div>
+      <textarea class="gen-textarea" id="copyExtra" placeholder="如：突出性价比、强调温和不刺激、200字左右..."></textarea>
+
+      <button class="gen-btn" id="copyBtn" onclick="genCopy()">生成文案</button>
+    </div>
+    <div class="copy-right">
+      <div class="gen-label">生成结果</div>
+      <div class="copy-output empty" id="copyOutput">点击「生成文案」开始创作</div>
+      <div class="copy-actions">
+        <button class="gen-btn" id="copyRetry" onclick="genCopy()" style="display:none">重新生成</button>
+        <button class="gen-btn secondary" onclick="copyText()">复制文案</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== ARTICLE PAGE ========== -->
+<div class="page" id="pageArticle">
+  <div class="page-header">
+    <div class="page-header-inner">
+      <div>
+        <h1 class="page-title">公众号推文</h1>
+        <p class="page-desc">专业公众号文章创作 · 结构化输出</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="article-layout">
+    <div class="article-left">
+      <div class="gen-label">文章类型</div>
+      <select class="gen-textarea" id="articleType" style="min-height:auto;padding:16px;cursor:pointer">
+        <option value="种草推荐">种草推荐 - 产品安利</option>
+        <option value="品牌故事">品牌故事 - 品牌介绍</option>
+        <option value="行业干货">行业干货 - 知识分享</option>
+        <option value="活动宣传">活动宣传 - 活动推广</option>
+        <option value="用户案例">用户案例 - 成功故事</option>
+        <option value="产品评测">产品评测 - 深度测评</option>
+        <option value="节日营销">节日营销 - 节点推广</option>
+      </select>
+
+      <div class="gen-label" style="margin-top:24px">品牌</div>
+      <select class="gen-textarea" id="articleBrand" style="min-height:auto;padding:16px;cursor:pointer">
+        <option value="">通用品牌</option>
+        <option value="听研 BIOLAB">听研 BIOLAB - 科技护肤</option>
+        <option value="汤臣倍健">汤臣倍健 - 保健品</option>
+        <option value="她多维">她多维 - 女性维生素</option>
+        <option value="SLIM蛋">SLIM蛋 - 蛋白粉</option>
+        <option value="臻钻蛋白粉">臻钻蛋白粉 - 高端蛋白</option>
+        <option value="特医">特医 - 特医食品</option>
+      </select>
+
+      <div class="gen-label" style="margin-top:24px">文章主题</div>
+      <input type="text" class="gen-textarea" id="articleTopic" placeholder="如：听研超上扬精华新品上市、汤臣倍健钙片选购指南..." style="min-height:auto;padding:16px">
+
+      <div class="gen-label" style="margin-top:24px">目标人群</div>
+      <input type="text" class="gen-textarea" id="articleAudience" placeholder="如：25-35岁宝妈、职场新人、健身爱好者..." style="min-height:auto;padding:16px">
+
+      <div class="gen-label" style="margin-top:24px">核心卖点 / 要点</div>
+      <textarea class="gen-textarea" id="articlePoints" placeholder="列出文章要突出的3-5个要点..."></textarea>
+
+      <div class="gen-label" style="margin-top:24px">补充要求</div>
+      <textarea class="gen-textarea" id="articleExtra" placeholder="如：语气轻松活泼、需要插入表情包、字数1500字左右..."></textarea>
+
+      <button class="gen-btn" id="articleBtn" onclick="genArticle()">生成推文</button>
+    </div>
+    <div class="article-right">
+      <div class="gen-label">生成结果</div>
+      <div class="article-output empty" id="articleOutput">点击「生成推文」开始创作</div>
+      <div class="article-actions">
+        <button class="gen-btn" id="articleRetry" onclick="genArticle()" style="display:none">重新生成</button>
+        <button class="gen-btn secondary" onclick="copyArticle()">复制全文</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== KNOWLEDGE PAGE ========== -->
+<div class="page" id="pageKnowledge">
+  <div class="page-header">
+    <div class="page-header-inner">
+      <div>
+        <h1 class="page-title">品牌知识库</h1>
+        <p class="page-desc">萌力互动 · 品牌调性与写作规范</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="knowledge-layout">
+    <!-- Brand Voice Section -->
+    <div class="knowledge-section">
+      <h2 class="knowledge-title">品牌调性</h2>
+      <div class="knowledge-grid">
+        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+          <div class="knowledge-card-header">
+            <span>萌力互动</span>
+            <span class="knowledge-arrow">→</span>
+          </div>
+          <div class="knowledge-card-body">
+            <div class="knowledge-item"><span class="knowledge-label">标语</span>创意 · 高效 · 品质</div>
+            <div class="knowledge-item"><span class="knowledge-label">个性</span>年轻、活力、创新、专业、值得信赖</div>
+            <div class="knowledge-item"><span class="knowledge-label">语言风格</span>简洁有力、有记忆点、拒绝废话、拒绝AI腔</div>
+            <div class="knowledge-item"><span class="knowledge-label">对标水准</span>Awwwards 级别文案，苹果式简洁 + 耐克式力量感</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Writing Templates Section -->
+    <div class="knowledge-section">
+      <h2 class="knowledge-title">KOC 文案写作范式</h2>
+      <div class="knowledge-grid">
+        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+          <div class="knowledge-card-header">
+            <span>种草科普文</span>
+            <span class="knowledge-arrow">→</span>
+          </div>
+          <div class="knowledge-card-body">
+            <div class="knowledge-template">
+              <div class="knowledge-step">【钩子开头】急急急！/ 现在谁还在交XX智商税？</div>
+              <div class="knowledge-step">【痛点共鸣】一说到XX，80%的人第一反应...</div>
+              <div class="knowledge-step">【认知颠覆】⚠️只补XX不补YY = 白补</div>
+              <div class="knowledge-step">【方法论】选XX不看这几点，补了也白补</div>
+              <div class="knowledge-step">【产品嵌入】XX产品，基本把大家的需求全满足了</div>
+              <div class="knowledge-step">【卖点拆解】数据+场景+感受</div>
+              <div class="knowledge-step">【连带推荐】他们家还有YY和ZZ也是家中常备</div>
+              <div class="knowledge-step">【CTA】有需要的姐妹真的可以去看看~</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+          <div class="knowledge-card-header">
+            <span>误区纠正文</span>
+            <span class="knowledge-arrow">→</span>
+          </div>
+          <div class="knowledge-card-body">
+            <div class="knowledge-template">
+              <div class="knowledge-step">【身份锚定】补钙5年都错了？快来自查误区！</div>
+              <div class="knowledge-step">【症状共鸣】腰酸、抽筋、关节不适却依然找上门？</div>
+              <div class="knowledge-step">【自查清单】中2条以上，效果大打折扣</div>
+              <div class="knowledge-step">【科学解释】事实上，XX要真正进入XX，需要一个明确的"XX系统"</div>
+              <div class="knowledge-step">【产品解决方案】这也是为什么更推荐XX产品</div>
+              <div class="knowledge-step">【升级推荐】如果还想要更顶配的，可以看看XX</div>
+              <div class="knowledge-step">【金句收尾】关键不在吃得多，而在吃得准！</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+          <div class="knowledge-card-header">
+            <span>场景种草文</span>
+            <span class="knowledge-arrow">→</span>
+          </div>
+          <div class="knowledge-card-body">
+            <div class="knowledge-template">
+              <div class="knowledge-step">【场景代入】减脂期运动量翻倍，每天暴汗……</div>
+              <div class="knowledge-step">【痛点引爆】结果呢？身体却悄悄亮起红灯</div>
+              <div class="knowledge-step">【原因分析】这是因为XX期XX不能满足需求</div>
+              <div class="knowledge-step">【成分教育】但XX不仅要补得进，还要留得住</div>
+              <div class="knowledge-step">【产品展开】高含量XX，不愧是卷王选出来的卷王成分！</div>
+              <div class="knowledge-step">【体验描述】吞服方便不是那种大颗粒，酸奶质地好吸收</div>
+              <div class="knowledge-step">【效果承诺】合理补充+XX！XX轻松拿捏~</div>
+              <div class="knowledge-step">【连带】之前还试他们家YY和ZZ，成分也是实打实的顶</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+          <div class="knowledge-card-header">
+            <span>节点促销文</span>
+            <span class="knowledge-arrow">→</span>
+          </div>
+          <div class="knowledge-card-body">
+            <div class="knowledge-template">
+              <div class="knowledge-step">【节点引爆】一年一度的618又双叒来了😆</div>
+              <div class="knowledge-step">【场景切入】今年是时候给XX更新一波了</div>
+              <div class="knowledge-step">【人群细分】过了45岁的→多合一；久坐腰酸的→金标</div>
+              <div class="knowledge-step">【权威背书】霸榜🍑各大榜单榜首的XX可不是吹的</div>
+              <div class="knowledge-step">【核心卖点深挖】这瓶能成为榜单王者，核心就是它的XX+XX</div>
+              <div class="knowledge-step">【数据碾压】行业起效量才XX，它直接超了XX%！</div>
+              <div class="knowledge-step">【体验加分】而且它完全不噎人，超mini小颗粒</div>
+              <div class="knowledge-step">【紧迫感】XX大促来临，跟着榜单买才是硬道理~</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+          <div class="knowledge-card-header">
+            <span>送礼场景文</span>
+            <span class="knowledge-arrow">→</span>
+          </div>
+          <div class="knowledge-card-body">
+            <div class="knowledge-template">
+              <div class="knowledge-step">【节日切入】又到XX节选礼物纠结症犯的时候了</div>
+              <div class="knowledge-step">【往年对比】往年送花送包，妈妈们是不是嘴上说喜欢转头就收进柜子😂</div>
+              <div class="knowledge-step">【情感升华】今年得来点不一样的了——不如送她一份能"撑腰"的实在心意</div>
+              <div class="knowledge-step">【衰老焦虑】殊不知45+后，XX速度直接翻倍</div>
+              <div class="knowledge-step">【具体症状】逛一会儿街就喊累，坐下起身需要扶扶手</div>
+              <div class="knowledge-step">【紧迫感】补XX这事真拖不得了‼️</div>
+              <div class="knowledge-step">【产品引出】挖到XX产品，直接封神</div>
+              <div class="knowledge-step">【权威背书】它的实力早就被专业认可了——作为XX合作伙伴</div>
+              <div class="knowledge-step">【情感收尾】XX节的意义从来不是多贵重的礼物，而是让XX知道，我们一直把TA的健康放在心上</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Brand Portfolio Section -->
+    <div class="knowledge-section">
+      <h2 class="knowledge-title">合作品牌</h2>
+      <div class="knowledge-grid">
+        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+          <div class="knowledge-card-header">
+            <span>听研 BIOLAB</span>
+            <span class="knowledge-arrow">→</span>
+          </div>
+          <div class="knowledge-card-body">
+            <div class="knowledge-item"><span class="knowledge-label">品类</span>科技护肤</div>
+            <div class="knowledge-item"><span class="knowledge-label">明星产品</span>超上扬精华、乳霜绷带膜、龙血神仙水、黄油次抛、红毯面膜、水光仪</div>
+            <div class="knowledge-item"><span class="knowledge-label">文案库</span>272篇已发布小红书KOC稿件</div>
+          </div>
+        </div>
+        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+          <div class="knowledge-card-header">
+            <span>汤臣倍健</span>
+            <span class="knowledge-arrow">→</span>
+          </div>
+          <div class="knowledge-card-body">
+            <div class="knowledge-item"><span class="knowledge-label">品类</span>保健品</div>
+            <div class="knowledge-item"><span class="knowledge-label">核心产品</span>钙系列、蛋白粉系列</div>
+            <div class="knowledge-item"><span class="knowledge-label">文案库</span>26篇实战文案</div>
+          </div>
+        </div>
+        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+          <div class="knowledge-card-header">
+            <span>她多维</span>
+            <span class="knowledge-arrow">→</span>
+          </div>
+          <div class="knowledge-card-body">
+            <div class="knowledge-item"><span class="knowledge-label">品类</span>女性维生素</div>
+            <div class="knowledge-item"><span class="knowledge-label">文案库</span>24篇</div>
+          </div>
+        </div>
+        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+          <div class="knowledge-card-header">
+            <span>SLIM蛋</span>
+            <span class="knowledge-arrow">→</span>
+          </div>
+          <div class="knowledge-card-body">
+            <div class="knowledge-item"><span class="knowledge-label">品类</span>蛋白粉</div>
+            <div class="knowledge-item"><span class="knowledge-label">文案库</span>40篇</div>
+          </div>
+        </div>
+        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+          <div class="knowledge-card-header">
+            <span>臻钻蛋白粉</span>
+            <span class="knowledge-arrow">→</span>
+          </div>
+          <div class="knowledge-card-body">
+            <div class="knowledge-item"><span class="knowledge-label">品类</span>高端蛋白</div>
+            <div class="knowledge-item"><span class="knowledge-label">文案库</span>115篇</div>
+          </div>
+        </div>
+        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+          <div class="knowledge-card-header">
+            <span>特医</span>
+            <span class="knowledge-arrow">→</span>
+          </div>
+          <div class="knowledge-card-body">
+            <div class="knowledge-item"><span class="knowledge-label">品类</span>特医食品</div>
+            <div class="knowledge-item"><span class="knowledge-label">文案库</span>32篇</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Censorship Section -->
+    <div class="knowledge-section">
+      <h2 class="knowledge-title">小红书卡审词避坑</h2>
+      <div class="knowledge-grid">
+        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+          <div class="knowledge-card-header">
+            <span>⚠️ 常见违禁词</span>
+            <span class="knowledge-arrow">→</span>
+          </div>
+          <div class="knowledge-card-body">
+            <div class="knowledge-item">❌ 绝对化用语：最好、第一、唯一、100%</div>
+            <div class="knowledge-item">❌ 医疗用语：治疗、治愈、药效、处方</div>
+            <div class="knowledge-item">❌ 虚假宣传：立即见效、永不反弹、根治</div>
+            <div class="knowledge-item">❌ 诱导用语：不买就亏、错过再无、限时秒杀</div>
+          </div>
+        </div>
+        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+          <div class="knowledge-card-header">
+            <span>✅ 安全替代表达</span>
+            <span class="knowledge-arrow">→</span>
+          </div>
+          <div class="knowledge-card-body">
+            <div class="knowledge-item">✓ 最好 → 个人觉得很不错 / 很推荐</div>
+            <div class="knowledge-item">✓ 治疗 → 帮助改善 / 辅助调理</div>
+            <div class="knowledge-item">✓ 立即见效 → 坚持使用一段时间后</div>
+            <div class="knowledge-item">✓ 100% → 大部分 / 绝大多数</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== ASSETS PAGE ========== -->
+<div class="page" id="pageAssets">
+  <div class="assets-header">
+    <div class="assets-header-inner">
+      <div>
+        <h1 class="page-title">素材库</h1>
+        <p class="page-desc">管理你的图片和文案素材</p>
+      </div>
+      <div class="assets-search">
+        <input type="text" placeholder="搜索素材..." id="assetsSearchInput" oninput="filterAssets()">
+      </div>
+    </div>
+  </div>
+
+  <div class="assets-tabs">
+    <button class="assets-tab active" onclick="switchAssetsTab('all',this)">全部</button>
+    <button class="assets-tab" onclick="switchAssetsTab('image',this)">图片</button>
+    <button class="assets-tab" onclick="switchAssetsTab('copy',this)">文案</button>
+    <button class="assets-tab" onclick="switchAssetsTab('article',this)">推文</button>
+  </div>
+
+  <div class="assets-grid" id="assetsGrid">
+    <div class="asset-empty">
+      <div class="icon">📁</div>
+      <h3>暂无素材，去生成图片或文案吧</h3>
+    </div>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+  <img id="lightboxImg" src="" alt="">
+</div>
+
+<!-- Text Modal -->
+<div class="text-modal" id="textModal" onclick="closeTextModal()">
+  <div class="text-modal-content" onclick="event.stopPropagation()">
+    <button class="text-modal-close" onclick="closeTextModal()">✕</button>
+    <h3 class="text-modal-title" id="textModalTitle"></h3>
+    <div class="text-modal-body" id="textModalBody"></div>
+    <button class="text-modal-copy" onclick="copyModalText()">复制全文</button>
+  </div>
+</div>
+
+<!-- Cart Sidebar -->
+<div class="overlay" id="overlay" onclick="closeCart()"></div>
+<div class="sidebar" id="cartSidebar">
+  <div class="sidebar-header">
+    <h2>询单车</h2>
+    <button class="sidebar-close" onclick="closeCart()">✕</button>
+  </div>
+  <div class="sidebar-body" id="cartBody"></div>
+  <div class="sidebar-footer">
+    <div class="total-row">
+      <span class="total-label">预估总预算</span>
+      <span class="total-num" id="cartTotal">¥0</span>
+    </div>
+    <button class="submit-btn" onclick="submitInquiry()">发起询单（<span id="cartItemCount">0</span> 位达人）</button>
+  </div>
+</div>
+
+<script>
+// ========== DATA ==========
+const XHS_DATA = [
+  {name:"小羊咩咩",id:"xiaoyangmeme",followers:8.5,tags:["母婴","好物分享"],persona:"新手宝妈",engagement:3.2,price_img:2000,price_video:3500,contact:"微信: xiaoyang888",avatar:"🐑"},
+  {name:"辣妈CC",id:"lamacc",followers:15.2,tags:["母婴","育儿"],persona:"二胎妈妈",engagement:2.8,price_img:5000,price_video:8000,contact:"微信: ccmom666",avatar:"👩‍👧"},
+  {name:"贝贝日记",id:"beibei_diary",followers:6.8,tags:["母婴","辅食"],persona:"营养师宝妈",engagement:4.1,price_img:1500,price_video:2800,contact:"小红书私信",avatar:"🍼"},
+  {name:"豆豆妈妈",id:"doudoumama",followers:22.1,tags:["母婴","穿搭"],persona:"时尚宝妈",engagement:1.9,price_img:8000,price_video:12000,contact:"微信: doudou520",avatar:"👗"},
+  {name:"童趣盒子",id:"tongqu_box",followers:4.2,tags:["母婴","玩具"],persona:"早教老师",engagement:5.6,price_img:1200,price_video:2000,contact:"小红书私信",avatar:"🧸"},
+  {name:"护肤达人Lily",id:"lily_skincare",followers:32.6,tags:["美妆","护肤"],persona:"成分党",engagement:1.5,price_img:15000,price_video:25000,contact:"微信: lilybeauty",avatar:"💄"},
+  {name:"美妆测评室",id:"beauty_lab",followers:18.3,tags:["美妆","测评"],persona:"专业测评",engagement:2.3,price_img:7000,price_video:11000,contact:"小红书私信",avatar:"🧪"},
+  {name:"吃货小分队",id:"food_squad",followers:55.8,tags:["美食","探店"],persona:"美食博主",engagement:2.1,price_img:20000,price_video:35000,contact:"微信: yummy888",avatar:"🍜"},
+  {name:"厨房小白进阶",id:"kitchen_newbie",followers:3.1,tags:["美食","教程"],persona:"新手厨师",engagement:6.2,price_img:800,price_video:1500,contact:"微信: cook123",avatar:"🍳"},
+  {name:"穿搭日记",id:"outfit_diary",followers:42.1,tags:["穿搭","时尚"],persona:"时尚博主",engagement:1.7,price_img:12000,price_video:20000,contact:"微信: outfit888",avatar:"👠"},
+  {name:"健身小王",id:"fit_king_wang",followers:28.3,tags:["健身","运动"],persona:"健身教练",engagement:2.5,price_img:6000,price_video:10000,contact:"微信: fitwang666",avatar:"💪"},
+  {name:"旅行喵",id:"travel_cat_meow",followers:12.7,tags:["旅游","探店"],persona:"旅行博主",engagement:3.8,price_img:4000,price_video:7000,contact:"小红书私信",avatar:"✈️"},
+  {name:"数码控老张",id:"digital_zhang",followers:9.4,tags:["数码","测评"],persona:"数码极客",engagement:4.3,price_img:3500,price_video:6000,contact:"微信: digizhang",avatar:"📱"},
+  {name:"家有萌宠",id:"cute_pets_home",followers:38.9,tags:["宠物","日常"],persona:"宠物博主",engagement:3.5,price_img:9000,price_video:15000,contact:"微信: petlover99",avatar:"🐶"},
+  {name:"柚柚成长记",id:"youyou_grow",followers:10.5,tags:["母婴","亲子"],persona:"全职妈妈",engagement:3.5,price_img:3000,price_video:5000,contact:"微信: youyoumm",avatar:"👶"},
+];
+
+const DOUYIN_DATA = [
+  {name:"疯狂小杨哥",id:"crazy_yang",followers:999.9,tags:["搞笑","剧情"],persona:"搞笑剧情达人",avg_plays:"5000万+",completion:62,likes_avg:"120万",shares_avg:"8.5万",engagement_dy:4.8,price_oral:350000,price_植入:500000,price_custom:800000,fans_profile:"18-35岁 男62% 新一线城市",avatar:"😂"},
+  {name:"李佳琦Austin",id:"lijiaqi",followers:850.2,tags:["美妆","带货"],persona:"顶流带货主播",avg_plays:"2000万+",completion:55,likes_avg:"85万",shares_avg:"12万",engagement_dy:5.2,price_oral:500000,price_植入:800000,price_custom:1200000,fans_profile:"22-35岁 女78% 一二线城市",avatar:"💋"},
+  {name:"痞幼",id:"piyou_official",followers:320.5,tags:["颜值","机车"],persona:"机车女神",avg_plays:"800万+",completion:48,likes_avg:"42万",shares_avg:"3.2万",engagement_dy:4.2,price_oral:180000,price_植入:250000,price_custom:400000,fans_profile:"18-30岁 男72%",avatar:"🏍️"},
+  {name:"张同学",id:"zhang_tongxue",followers:180.3,tags:["三农","日常"],persona:"乡村生活记录者",avg_plays:"600万+",completion:71,likes_avg:"38万",shares_avg:"6.8万",engagement_dy:5.5,price_oral:80000,price_植入:120000,price_custom:200000,fans_profile:"25-45岁 男女均衡 下沉城市",avatar:"🏡"},
+  {name:"小八美食",id:"xiaoba_food",followers:65.8,tags:["美食","教程"],persona:"家常菜达人",avg_plays:"200万+",completion:68,likes_avg:"12万",shares_avg:"4.5万",engagement_dy:5.8,price_oral:35000,price_植入:55000,price_custom:90000,fans_profile:"25-40岁 女65% 家庭用户",avatar:"🍲"},
+];
+
+// ========== STATE ==========
+let currentPage = 'home';
+let currentPlatform = 'xhs';
+let activeTag = null;
+let cart = JSON.parse(localStorage.getItem('kols_cart') || '[]');
+let assets = JSON.parse(localStorage.getItem('menlil_assets') || '[]');
+let currentAssetTab = 'all';
+
+function getData(){ return currentPlatform==='xhs' ? XHS_DATA : DOUYIN_DATA; }
+
+// ========== PAGE NAVIGATION ==========
+function showPage(page){
+  currentPage = page;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page' + page.charAt(0).toUpperCase() + page.slice(1)).classList.add('active');
+  document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+  document.querySelector(`.nav-link[data-page="${page}"]`).classList.add('active');
+
+  if(page === 'find'){
+    initFilters();
+    render();
+  }
+  if(page === 'assets'){
+    renderAssets();
+  }
+}
+
+// ========== FILTERS ==========
+function getAvailableTags(){
+  const tags = new Set();
+  getData().forEach(k => k.tags.forEach(t => tags.add(t)));
+  return [...tags].sort();
+}
+
+function initFilters(){
+  const row = document.getElementById('filterRow');
+  const tags = getAvailableTags();
+  const isXHS = currentPlatform === 'xhs';
+
+  let html = `<input type="text" class="filter-input" id="searchInput" placeholder="搜索..." style="width:180px" oninput="render()">`;
+  html += '<div class="filter-sep"></div>';
+  tags.forEach(tag => {
+    html += `<button class="filter-chip tag-chip" data-tag="${tag}" onclick="toggleTag(this,'${tag}')">${tag}</button>`;
+  });
+  html += '<div class="filter-sep"></div>';
+  html += `<span class="filter-label">报价 ≤</span><input type="number" class="filter-input" id="priceMax" placeholder="不限" style="width:100px" onchange="render()">`;
+  html += `<span class="filter-label">粉丝 ≤</span><input type="number" class="filter-input" id="followerMax" placeholder="不限" style="width:100px" onchange="render()">`;
+  html += `<select class="filter-select" id="engFilter" onchange="render()">
+    <option value="">全部互动率</option>
+    <option value="high">≥ 3%</option>
+    <option value="mid">2%-3%</option>
+    <option value="low">&lt; 2%</option>
+  </select>`;
+
+  row.innerHTML = html;
+}
+
+function toggleTag(btn, tag){
+  document.querySelectorAll('.tag-chip').forEach(b => b.classList.remove('active'));
+  if(activeTag === tag) activeTag = null;
+  else { activeTag = tag; btn.classList.add('active'); }
+  render();
+}
+
+// ========== RENDER ==========
+function render(){
+  const data = getData();
+  const isXHS = currentPlatform === 'xhs';
+  const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
+  const priceMax = parseInt(document.getElementById('priceMax')?.value) || 99999999;
+  const followerMax = parseFloat(document.getElementById('followerMax')?.value) || 9999;
+  const engFilter = document.getElementById('engFilter')?.value || '';
+
+  let filtered = data.filter(k => {
+    if(search && !k.name.toLowerCase().includes(search) && !k.id.toLowerCase().includes(search) && !k.persona.toLowerCase().includes(search)) return false;
+    if(activeTag && !k.tags.includes(activeTag)) return false;
+    const lowestPrice = isXHS ? Math.min(k.price_img, k.price_video) : Math.min(k.price_oral, k.price_植入||k.price_oral, k.price_custom||k.price_oral);
+    if(lowestPrice > priceMax) return false;
+    if(k.followers > followerMax) return false;
+    const eng = isXHS ? k.engagement : k.engagement_dy;
+    if(engFilter === 'high' && eng < 3) return false;
+    if(engFilter === 'mid' && (eng < 2 || eng >= 3)) return false;
+    if(engFilter === 'low' && eng >= 2) return false;
+    return true;
+  });
+
+  const thead = document.getElementById('tableHead');
+  if(isXHS){
+    thead.innerHTML = `<tr><th>达人</th><th>粉丝</th><th>标签</th><th>人设</th><th>互动率</th><th>图文报价</th><th>视频报价</th><th>联系方式</th><th>操作</th></tr>`;
+  } else {
+    thead.innerHTML = `<tr><th>达人</th><th>粉丝</th><th>标签</th><th>人设</th><th>播放量</th><th>完播率</th><th>互动率</th><th>口播报价</th><th>植入报价</th><th>操作</th></tr>`;
+  }
+
+  const tbody = document.getElementById('tableBody');
+  const empty = document.getElementById('emptyState');
+
+  if(filtered.length === 0){
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+  } else {
+    empty.style.display = 'none';
+    tbody.innerHTML = filtered.map(k => {
+      const inCart = cart.includes(k.id);
+      const eng = isXHS ? k.engagement : k.engagement_dy;
+      const engClass = eng >= 4 ? 'high' : eng >= 2.5 ? 'mid' : 'low';
+
+      if(isXHS){
+        return `<tr>
+          <td><div class="kol-name"><div class="kol-avatar">${k.avatar||'👤'}</div><div class="kol-info"><div class="name">${k.name}</div><div class="id">@${k.id}</div></div></div></td>
+          <td><span class="follower-num">${fmtFollowers(k.followers)}</span></td>
+          <td>${k.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</td>
+          <td>${k.persona}</td>
+          <td><span class="eng ${engClass}">${k.engagement}%</span></td>
+          <td class="price">¥${k.price_img.toLocaleString()}</td>
+          <td class="price">¥${k.price_video.toLocaleString()}</td>
+          <td style="font-size:12px;color:var(--gray-400)">${k.contact}</td>
+          <td><button class="add-btn ${inCart?'added':''}" onclick="toggleCart('${k.id}')">${inCart?'已加入':'加入'}</button></td>
+        </tr>`;
+      } else {
+        return `<tr>
+          <td><div class="kol-name"><div class="kol-avatar">${k.avatar||'👤'}</div><div class="kol-info"><div class="name">${k.name}</div><div class="id">@${k.id}</div></div></div></td>
+          <td><span class="follower-num">${fmtFollowers(k.followers)}</span></td>
+          <td>${k.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</td>
+          <td>${k.persona}</td>
+          <td style="font-weight:600">${k.avg_plays}</td>
+          <td><span class="eng ${k.completion>=60?'high':'mid'}">${k.completion}%</span></td>
+          <td><span class="eng ${engClass}">${k.engagement_dy}%</span></td>
+          <td class="price">¥${(k.price_oral/10000).toFixed(1)}<small>万</small></td>
+          <td class="price">¥${(k.price_植入/10000).toFixed(1)}<small>万</small></td>
+          <td><button class="add-btn ${inCart?'added':''}" onclick="toggleCart('${k.id}')">${inCart?'已加入':'加入'}</button></td>
+        </tr>`;
+      }
+    }).join('');
+  }
+
+  updateCartBadge();
+}
+
+function fmtFollowers(n){
+  if(n >= 10000) return (n/10000).toFixed(1)+'万';
+  if(n >= 1000) return (n/1000).toFixed(1)+'k';
+  return n.toString();
+}
+
+// ========== CART ==========
+function toggleCart(id){
+  const idx = cart.indexOf(id);
+  if(idx >= 0) cart.splice(idx,1);
+  else cart.push(id);
+  localStorage.setItem('kols_cart', JSON.stringify(cart));
+  render();
+  if(document.getElementById('cartSidebar').classList.contains('open')) renderCartSidebar();
+}
+
+function openCart(){
+  document.getElementById('cartSidebar').classList.add('open');
+  document.getElementById('overlay').classList.add('show');
+  renderCartSidebar();
+}
+function closeCart(){
+  document.getElementById('cartSidebar').classList.remove('open');
+  document.getElementById('overlay').classList.remove('show');
+}
+
+function renderCartSidebar(){
+  const body = document.getElementById('cartBody');
+  const allData = [...XHS_DATA, ...DOUYIN_DATA];
+  const items = cart.map(id => allData.find(d => d.id === id)).filter(Boolean);
+
+  if(items.length===0){
+    body.innerHTML = '<div class="empty-state"><div class="icon">🛒</div><h3>询单车是空的</h3></div>';
+  } else {
+    body.innerHTML = items.map(item => {
+      const isXHS = XHS_DATA.includes(item);
+      const price = isXHS ? `图文¥${item.price_img.toLocaleString()} / 视频¥${item.price_video.toLocaleString()}` : `口播¥${(item.price_oral/10000).toFixed(1)}万`;
+      return `<div class="cart-item">
+        <div><div class="name">${item.name}</div><div class="meta">${fmtFollowers(item.followers)}粉丝 · ${item.tags.join(' / ')} · ${price}</div></div>
+        <button class="remove" onclick="toggleCart('${item.id}')">移除</button>
+      </div>`;
+    }).join('');
+  }
+
+  const total = items.reduce((sum,item)=>{
+    const isXHS = XHS_DATA.includes(item);
+    if(isXHS) return sum + Math.round((item.price_img+item.price_video)/2);
+    return sum + item.price_oral;
+  }, 0);
+
+  document.getElementById('cartTotal').textContent = '¥'+total.toLocaleString();
+  document.getElementById('cartItemCount').textContent = items.length;
+}
+
+function submitInquiry(){
+  if(cart.length===0) return alert('请先添加达人');
+  alert(`已向 ${cart.length} 位达人发起询单`);
+  cart = [];
+  localStorage.setItem('kols_cart', JSON.stringify(cart));
+  closeCart();
+  render();
+}
+
+function updateCartBadge(){
+  document.getElementById('cartBadge').textContent = cart.length;
+}
+
+// ========== AI SEARCH ==========
+async function aiSearch(){
+  const input = document.getElementById('aiInput');
+  const query = input.value.trim();
+  if(!query) return;
+
+  const btn = document.getElementById('aiBtn');
+  btn.disabled = true; btn.textContent = '思考中...';
+  document.getElementById('aiResult').style.display = 'none';
+
+  try{
+    const resp = await fetch('http://localhost:8899/', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ query, platform: currentPlatform })
+    });
+    const data = await resp.json();
+
+    document.getElementById('searchInput').value = data.search || '';
+    if(data.tags){
+      const t = data.tags.split(',')[0].trim();
+      document.querySelectorAll('.tag-chip').forEach(b => b.classList.toggle('active', b.dataset.tag === t));
+      activeTag = t;
+    }
+    document.getElementById('priceMax').value = data.maxPrice >= 999999 ? '' : data.maxPrice;
+    document.getElementById('followerMax').value = data.maxFollowers >= 9999 ? '' : data.maxFollowers;
+
+    if(data.minEngagement){
+      const eng = data.minEngagement;
+      const sel = document.getElementById('engFilter');
+      if(eng >= 3) sel.value = 'high';
+      else if(eng >= 2) sel.value = 'mid';
+      else sel.value = 'low';
+    } else {
+      document.getElementById('engFilter').value = '';
+    }
+
+    const result = document.getElementById('aiResult');
+    result.style.display = 'block';
+    result.textContent = data.explanation || 'AI 已帮你筛选好了';
+    render();
+  } catch(e){
+    const result = document.getElementById('aiResult');
+    result.style.display = 'block';
+    result.textContent = 'AI 代理未启动，请先运行 kols-proxy.sh';
+  }
+
+  btn.disabled = false; btn.textContent = 'AI 搜索';
+}
+
+// ========== IMAGE GEN ==========
+let imgSize = '1024x1024';
+let imgMode = 'text2img';
+let img2imgBase64 = '';
+
+function setImgSize(size, btn){
+  imgSize = size;
+  document.querySelectorAll('.gen-size-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function switchImgMode(mode, btn){
+  imgMode = mode;
+  document.querySelectorAll('.gen-mode-tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('text2imgSection').style.display = mode === 'text2img' ? 'block' : 'none';
+  document.getElementById('img2imgSection').style.display = mode === 'img2img' ? 'block' : 'none';
+}
+
+function handleImgUpload(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    img2imgBase64 = e.target.result;
+    document.getElementById('imgPreview').src = img2imgBase64;
+    document.getElementById('imgPreview').style.display = 'block';
+    document.getElementById('imgUpload').style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function genImage(){
+  let prompt = '';
+  let requestBody = {};
+
+  if(imgMode === 'text2img'){
+    prompt = document.getElementById('imgPrompt').value.trim();
+    if(!prompt){ alert('请输入图片描述'); return; }
+    requestBody = { action:'image_gen', prompt, size:imgSize };
+  } else {
+    prompt = document.getElementById('img2imgPrompt').value.trim();
+    if(!img2imgBase64){ alert('请上传参考图片'); return; }
+    if(!prompt){ alert('请输入修改要求'); return; }
+    requestBody = { action:'image_edit', prompt, image:img2imgBase64, size:imgSize };
+  }
+
+  document.getElementById('imgBtn').disabled = true;
+  document.getElementById('imgPlaceholder').style.display = 'none';
+  document.getElementById('imgLoading').style.display = 'block';
+  document.getElementById('imgResult').style.display = 'none';
+
+  try{
+    const resp = await fetch('http://localhost:8899/', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(requestBody)
+    });
+    const data = await resp.json();
+    if(data.image_url){
+      document.getElementById('imgLoading').style.display = 'none';
+      document.getElementById('imgResult').src = data.image_url;
+      document.getElementById('imgResult').style.display = 'block';
+      saveAsset('image', prompt, data.image_url);
+    } else {
+      document.getElementById('imgLoading').style.display = 'none';
+      document.getElementById('imgPlaceholder').style.display = 'block';
+      document.getElementById('imgPlaceholder').innerHTML = '<div class="icon">❌</div><p>'+(data.error||'生成失败')+'</p>';
+    }
+  } catch(e){
+    document.getElementById('imgLoading').style.display = 'none';
+    document.getElementById('imgPlaceholder').style.display = 'block';
+    document.getElementById('imgPlaceholder').innerHTML = '<div class="icon">❌</div><p>AI 代理未启动</p>';
+  }
+  document.getElementById('imgBtn').disabled = false;
+}
+
+// ========== COPYWRITING ==========
+async function genCopy(){
+  const type = document.getElementById('copyType').value;
+  const brand = document.getElementById('copyBrand').value;
+  const platform = document.getElementById('copyPlatform').value;
+  const product = document.getElementById('copyProduct').value.trim();
+  const extra = document.getElementById('copyExtra').value.trim();
+
+  if(!product && !extra){ alert('请至少填写产品名称或补充要求'); return; }
+
+  const btn = document.getElementById('copyBtn');
+  const out = document.getElementById('copyOutput');
+  const retry = document.getElementById('copyRetry');
+  btn.disabled = true; btn.textContent = '创作中...';
+  out.className = 'copy-output'; out.textContent = '';
+
+  try{
+    const resp = await fetch('http://localhost:8899/', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'copywriting', type, brand, platform, product, prompt:extra })
+    });
+    const data = await resp.json();
+    out.textContent = data.text || data.error || '生成失败';
+    if(data.text) saveAsset('copy', product || '文案', data.text);
+  } catch(e){
+    out.className = 'copy-output empty'; out.textContent = 'AI 代理未启动';
+  }
+  btn.disabled = false; btn.textContent = '生成文案';
+  retry.style.display = 'inline-flex';
+}
+
+function copyText(){
+  const text = document.getElementById('copyOutput').textContent;
+  if(text && !text.includes('未启动')){
+    navigator.clipboard.writeText(text).then(()=>{
+      const btn = event.target; btn.textContent = '已复制'; setTimeout(()=>btn.textContent='复制文案',1500);
+    });
+  }
+}
+
+// ========== PAGE LOADER ==========
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    document.getElementById('pageLoader').classList.add('hide');
+  }, 2000);
+});
+
+// ========== SCROLL ANIMATIONS ==========
+const observerOptions = {
+  threshold: 0.1,
+  rootMargin: '0px 0px -50px 0px'
+};
+
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+      observer.unobserve(entry.target);
+    }
+  });
+}, observerOptions);
+
+document.addEventListener('DOMContentLoaded', () => {
+  const animatedElements = document.querySelectorAll('.fade-in, .fade-in-left, .fade-in-right, .scale-in');
+  animatedElements.forEach(el => observer.observe(el));
+});
+
+// ========== MAGNETIC BUTTONS ==========
+document.addEventListener('DOMContentLoaded', () => {
+  const magneticBtns = document.querySelectorAll('.magnetic');
+  magneticBtns.forEach(btn => {
+    btn.addEventListener('mousemove', (e) => {
+      const rect = btn.getBoundingClientRect();
+      const x = e.clientX - rect.left - rect.width / 2;
+      const y = e.clientY - rect.top - rect.height / 2;
+      btn.style.transform = `translate(${x * 0.2}px, ${y * 0.2}px)`;
+    });
+    btn.addEventListener('mouseleave', () => {
+      btn.style.transform = 'translate(0, 0)';
+    });
+  });
+});
+
+// ========== KNOWLEDGE ==========
+function toggleKnowledgeCard(card){
+  card.classList.toggle('open');
+}
+
+// ========== ARTICLE ==========
+async function genArticle(){
+  const type = document.getElementById('articleType').value;
+  const brand = document.getElementById('articleBrand').value;
+  const topic = document.getElementById('articleTopic').value.trim();
+  const audience = document.getElementById('articleAudience').value.trim();
+  const points = document.getElementById('articlePoints').value.trim();
+  const extra = document.getElementById('articleExtra').value.trim();
+
+  if(!topic){ alert('请输入文章主题'); return; }
+
+  const btn = document.getElementById('articleBtn');
+  const out = document.getElementById('articleOutput');
+  const retry = document.getElementById('articleRetry');
+  btn.disabled = true; btn.textContent = '创作中...';
+  out.className = 'article-output'; out.textContent = '';
+
+  try{
+    const resp = await fetch('http://localhost:8899/', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        action:'article',
+        type,
+        brand,
+        topic,
+        audience,
+        points,
+        prompt: extra
+      })
+    });
+    const data = await resp.json();
+    out.textContent = data.text || data.error || '生成失败';
+    if(data.text) saveAsset('article', topic, data.text);
+  } catch(e){
+    out.className = 'article-output empty'; out.textContent = 'AI 代理未启动';
+  }
+  btn.disabled = false; btn.textContent = '生成推文';
+  retry.style.display = 'inline-flex';
+}
+
+function copyArticle(){
+  const text = document.getElementById('articleOutput').textContent;
+  if(text && !text.includes('未启动')){
+    navigator.clipboard.writeText(text).then(()=>{
+      const btn = event.target; btn.textContent = '已复制'; setTimeout(()=>btn.textContent='复制全文',1500);
+    });
+  }
+}
+
+// ========== ASSETS ==========
+function saveAsset(type, title, content){
+  const asset = {
+    id: Date.now(),
+    type,
+    title,
+    content,
+    date: new Date().toLocaleDateString('zh-CN')
+  };
+  assets.unshift(asset);
+  localStorage.setItem('menlil_assets', JSON.stringify(assets));
+}
+
+function renderAssets(){
+  const grid = document.getElementById('assetsGrid');
+  const search = (document.getElementById('assetsSearchInput')?.value || '').toLowerCase();
+
+  let filtered = assets;
+  if(currentAssetTab !== 'all'){
+    filtered = filtered.filter(a => a.type === currentAssetTab);
+  }
+  if(search){
+    filtered = filtered.filter(a => a.title.toLowerCase().includes(search));
+  }
+
+  if(filtered.length === 0){
+    grid.innerHTML = '<div class="asset-empty"><div class="icon">📁</div><h3>暂无素材，去生成图片或文案吧</h3></div>';
+    return;
+  }
+
+  grid.innerHTML = filtered.map(asset => {
+    if(asset.type === 'image'){
+      return `<div class="asset-card" onclick="openLightbox('${asset.content}')">
+        <div class="asset-preview"><img src="${asset.content}" alt="${asset.title}"></div>
+        <div class="asset-info">
+          <div class="asset-title">${asset.title}</div>
+          <div class="asset-meta">图片 · ${asset.date}</div>
+        </div>
+      </div>`;
+    } else {
+      const typeLabel = asset.type === 'article' ? '推文' : '文案';
+      const escapedContent = asset.content.replace(/'/g, "\\'").replace(/\n/g, "\\n");
+      return `<div class="asset-card" onclick="openTextModal('${asset.title}', '${escapedContent}')">
+        <div class="asset-preview" style="padding:20px;font-size:14px;color:var(--gray-600);text-align:left;overflow:hidden">${asset.content.substring(0,100)}...</div>
+        <div class="asset-info">
+          <div class="asset-title">${asset.title}</div>
+          <div class="asset-meta">${typeLabel} · ${asset.date}</div>
+        </div>
+      </div>`;
+    }
+  }).join('');
+}
+
+function switchAssetsTab(tab, btn){
+  currentAssetTab = tab;
+  document.querySelectorAll('.assets-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderAssets();
+}
+
+function filterAssets(){
+  renderAssets();
+}
+
+// ========== LIGHTBOX ==========
+function openLightbox(src){
+  document.getElementById('lightboxImg').src = src;
+  document.getElementById('lightbox').classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+function closeLightbox(){
+  document.getElementById('lightbox').classList.remove('show');
+  document.body.style.overflow = '';
+}
+
+// ========== TEXT MODAL ==========
+let currentModalText = '';
+function openTextModal(title, text){
+  currentModalText = text;
+  document.getElementById('textModalTitle').textContent = title;
+  document.getElementById('textModalBody').textContent = text;
+  document.getElementById('textModal').classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+function closeTextModal(){
+  document.getElementById('textModal').classList.remove('show');
+  document.body.style.overflow = '';
+}
+function copyModalText(){
+  navigator.clipboard.writeText(currentModalText).then(()=>{
+    const btn = event.target;
+    btn.textContent = '已复制';
+    setTimeout(()=>btn.textContent='复制全文', 1500);
+  });
+}
+
+// ========== INIT ==========
+initFilters();
+render();
+</script>
+</body>
+</html>
