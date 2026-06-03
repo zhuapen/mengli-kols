@@ -1839,7 +1839,7 @@ async function aiSearch(){
   document.getElementById('aiResult').style.display = 'none';
 
   try{
-    const resp = await fetch('http://localhost:8899/', {
+    const resp = await fetch('/api', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ query, platform: currentPlatform })
     });
@@ -1930,7 +1930,7 @@ async function genImage(){
   document.getElementById('imgResult').style.display = 'none';
 
   try{
-    const resp = await fetch('http://localhost:8899/', {
+    const resp = await fetch('/api', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify(requestBody)
     });
@@ -1970,7 +1970,7 @@ async function genCopy(){
   out.className = 'copy-output'; out.textContent = '';
 
   try{
-    const resp = await fetch('http://localhost:8899/', {
+    const resp = await fetch('/api', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ action:'copywriting', type, brand, platform, product, prompt:extra })
     });
@@ -2059,7 +2059,7 @@ async function genArticle(){
   out.className = 'article-output'; out.textContent = '';
 
   try{
-    const resp = await fetch('http://localhost:8899/', {
+    const resp = await fetch('/api', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         action:'article',
