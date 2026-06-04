@@ -1,0 +1,1595 @@
+/**
+ * 萌力互动 · 权限管理系统
+ * 方案B：按功能模块单独勾选
+ * 基于 Supabase Auth 的用户认证和权限控制
+ */
+
+// Supabase 配置
+const SUPABASE_URL = 'https://fjlxlkokmcdfmwskgvsp.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZqbHhsa29rbWNkZm13c2tndnNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NTQ4OTMsImV4cCI6MjA5NjAzMDg5M30.LcFIuu1dmiU09IptN3vYKE0NkDighHnOkbepHbubfaU';
+
+// 初始化 Supabase 客户端
+let supabase = null;
+let currentUser = null;
+let userProfile = null;
+let userPermissions = [];
+let allFeatures = [];
+
+// 预设岗位列表
+const PRESET_POSITIONS = [
+    'AE（客户执行）',
+    'AM（客户经理）',
+    '策划',
+    '媒介',
+    '设计师',
+    '文案',
+    '视频剪辑',
+    '总监',
+    '主管',
+    '实习生',
+    '运营'
+];
+
+/**
+ * 初始化 Supabase
+ */
+async function initSupabase() {
+    try {
+        // 动态加载 Supabase SDK（本地文件优先，CDN 备用）
+        if (typeof window.supabase === 'undefined') {
+            try {
+                await loadScript('supabase.min.js');
+                console.log('从本地加载 Supabase SDK 成功');
+            } catch (e) {
+                console.warn('本地 SDK 加载失败，尝试 CDN...');
+                try {
+                    await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js');
+                } catch (e2) {
+                    console.error('所有 CDN 均加载失败');
+                }
+            }
+        }
+
+        if (typeof window.supabase === 'undefined') {
+            console.error('Supabase SDK 加载失败，window.supabase 未定义');
+            return false;
+        }
+
+        console.log('Supabase SDK 已加载，开始初始化客户端...');
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // 监听登录状态变化
+        supabase.auth.onAuthStateChange((event, session) => {
+            console.log('Auth state changed:', event);
+            if (event === 'SIGNED_IN' && session) {
+                handleLogin(session.user);
+            } else if (event === 'SIGNED_OUT') {
+                handleLogout();
+            }
+        });
+
+        // 检查当前登录状态
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+            await handleLogin(session.user);
+        }
+
+        // 加载所有功能配置
+        await loadAllFeatures();
+
+        console.log('Supabase 初始化完成');
+        return true;
+    } catch (error) {
+        console.error('Supabase 初始化失败:', error);
+        return false;
+    }
+}
+
+/**
+ * 动态加载脚本
+ */
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
+}
+
+/**
+ * 加载所有功能配置
+ */
+async function loadAllFeatures() {
+    try {
+        const { data, error } = await supabase
+            .from('feature_permissions')
+            .select('*')
+            .order('id');
+
+        if (error) throw error;
+        allFeatures = data || [];
+    } catch (error) {
+        console.error('加载功能配置失败:', error);
+        // 使用默认配置
+        allFeatures = [
+            { feature_key: 'find', feature_name: '找号' },
+            { feature_key: 'image_gen', feature_name: '图片生成' },
+            { feature_key: 'copywriting', feature_name: '文案撰写' },
+            { feature_key: 'article', feature_name: '推文生成' },
+            { feature_key: 'assets', feature_name: '素材库' },
+            { feature_key: 'knowledge', feature_name: '知识库' }
+        ];
+    }
+}
+
+/**
+ * 加载用户的功能权限
+ */
+async function loadUserPermissions() {
+    if (!currentUser) return;
+
+    try {
+        const { data, error } = await supabase
+            .from('user_feature_permissions')
+            .select('feature_key')
+            .eq('user_id', currentUser.id);
+
+        if (error) throw error;
+        userPermissions = data ? data.map(p => p.feature_key) : [];
+    } catch (error) {
+        console.error('加载用户权限失败:', error);
+        userPermissions = [];
+    }
+}
+
+/**
+ * 处理用户登录
+ */
+async function handleLogin(user) {
+    currentUser = user;
+    console.log('用户已登录:', user.email);
+
+    // 获取用户配置
+    await loadUserProfile();
+
+    // 加载用户权限
+    await loadUserPermissions();
+
+    // 更新 UI
+    updateAuthUI();
+
+    // 应用权限控制
+    applyPermissions();
+}
+
+/**
+ * 处理用户登出
+ */
+function handleLogout() {
+    currentUser = null;
+    userProfile = null;
+    userPermissions = [];
+    console.log('用户已登出');
+
+    // 更新 UI
+    updateAuthUI();
+
+    // 跳转到首页
+    showPage('home');
+}
+
+/**
+ * 加载用户配置
+ */
+async function loadUserProfile() {
+    if (!currentUser) return;
+
+    try {
+        const { data, error } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('id', currentUser.id)
+            .single();
+
+        if (error) throw error;
+        userProfile = data;
+        console.log('用户配置:', userProfile);
+    } catch (error) {
+        console.error('加载用户配置失败:', error);
+        // 如果没有配置，创建一个默认的
+        userProfile = {
+            id: currentUser.id,
+            email: currentUser.email,
+            display_name: currentUser.email.split('@')[0],
+            role: 'user',
+            position: '未设置',
+            is_active: true
+        };
+    }
+}
+
+/**
+ * 用户登录
+ */
+async function login(email, password) {
+    try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email: email,
+            password: password
+        });
+
+        if (error) throw error;
+        return { success: true, user: data.user };
+    } catch (error) {
+        console.error('登录失败:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * 用户登出
+ */
+async function logout() {
+    try {
+        const { error } = await supabase.auth.signOut();
+        if (error) throw error;
+        return { success: true };
+    } catch (error) {
+        console.error('登出失败:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * 管理员创建用户（仅管理员可用）
+ */
+async function createUser(email, password, displayName, position) {
+    if (!isAdmin()) {
+        return { success: false, error: '权限不足：只有管理员可以创建用户' };
+    }
+
+    try {
+        // 使用 Supabase Admin API 创建用户
+        const { data, error } = await supabase.auth.admin.createUser({
+            email: email,
+            password: password,
+            email_confirm: true,
+            user_metadata: {
+                display_name: displayName,
+                position: position
+            }
+        });
+
+        if (error) throw error;
+
+        return { success: true, user: data.user };
+    } catch (error) {
+        console.error('创建用户失败:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * 管理员更新用户信息
+ */
+async function updateUserProfile(userId, updates) {
+    if (!isAdmin()) {
+        return { success: false, error: '权限不足：只有管理员可以修改用户信息' };
+    }
+
+    try {
+        const { error } = await supabase
+            .from('user_profiles')
+            .update(updates)
+            .eq('id', userId);
+
+        if (error) throw error;
+        return { success: true };
+    } catch (error) {
+        console.error('更新用户信息失败:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * 管理员更新用户功能权限
+ */
+async function updateUserPermissions(userId, featureKeys) {
+    if (!isAdmin()) {
+        return { success: false, error: '权限不足：只有管理员可以修改权限' };
+    }
+
+    try {
+        // 先删除所有权限
+        const { error: deleteError } = await supabase
+            .from('user_feature_permissions')
+            .delete()
+            .eq('user_id', userId);
+
+        if (deleteError) throw deleteError;
+
+        // 再插入新权限
+        if (featureKeys.length > 0) {
+            const permissions = featureKeys.map(key => ({
+                user_id: userId,
+                feature_key: key
+            }));
+
+            const { error: insertError } = await supabase
+                .from('user_feature_permissions')
+                .insert(permissions);
+
+            if (insertError) throw insertError;
+        }
+
+        return { success: true };
+    } catch (error) {
+        console.error('更新用户权限失败:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * 获取所有用户（仅管理员）
+ */
+async function getAllUsers() {
+    if (!isAdmin()) {
+        return { success: false, error: '权限不足' };
+    }
+
+    try {
+        const { data, error } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return { success: true, users: data };
+    } catch (error) {
+        console.error('获取用户列表失败:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * 获取用户的功能权限（仅管理员）
+ */
+async function getUserPermissions(userId) {
+    if (!isAdmin()) {
+        return { success: false, error: '权限不足' };
+    }
+
+    try {
+        const { data, error } = await supabase
+            .from('user_feature_permissions')
+            .select('feature_key')
+            .eq('user_id', userId);
+
+        if (error) throw error;
+        return { success: true, permissions: data ? data.map(p => p.feature_key) : [] };
+    } catch (error) {
+        console.error('获取用户权限失败:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * 检查是否已登录
+ */
+function isLoggedIn() {
+    return currentUser !== null;
+}
+
+/**
+ * 检查是否是管理员
+ */
+function isAdmin() {
+    return userProfile && userProfile.role === 'admin';
+}
+
+/**
+ * 检查是否有某个功能的权限
+ */
+function hasPermission(featureKey) {
+    if (!isLoggedIn()) return false;
+    if (isAdmin()) return true;
+    return userPermissions.includes(featureKey);
+}
+
+/**
+ * 应用权限控制到页面
+ */
+function applyPermissions() {
+    // 获取所有导航链接
+    const navLinks = document.querySelectorAll('.nav-link[data-page]');
+
+    navLinks.forEach(link => {
+        const page = link.getAttribute('data-page');
+        // 首页始终允许访问
+        if (page === 'home') return;
+
+        const hasAccess = hasPermission(page);
+
+        if (!hasAccess) {
+            // 添加锁定样式
+            link.classList.add('locked');
+            link.style.opacity = '0.5';
+            link.style.cursor = 'not-allowed';
+
+            // 添加锁定图标
+            if (!link.querySelector('.lock-icon')) {
+                const lockIcon = document.createElement('span');
+                lockIcon.className = 'lock-icon';
+                lockIcon.textContent = ' 🔒';
+                lockIcon.style.fontSize = '12px';
+                link.appendChild(lockIcon);
+            }
+
+            // 修改点击事件
+            link.onclick = function(e) {
+                e.preventDefault();
+                showUpgradePrompt(page);
+            };
+        } else {
+            // 移除锁定样式
+            link.classList.remove('locked');
+            link.style.opacity = '1';
+            link.style.cursor = 'pointer';
+
+            // 移除锁定图标
+            const lockIcon = link.querySelector('.lock-icon');
+            if (lockIcon) lockIcon.remove();
+
+            // 恢复原始点击事件
+            link.onclick = function() {
+                showPage(page);
+            };
+        }
+    });
+
+    // 更新首页功能卡片
+    updateHomeFeatureCards();
+}
+
+/**
+ * 更新首页功能卡片的权限显示
+ */
+function updateHomeFeatureCards() {
+    const featureCards = document.querySelectorAll('.home-feature-card');
+
+    featureCards.forEach(card => {
+        const page = card.getAttribute('data-page');
+        if (!page) return;
+
+        const hasAccess = hasPermission(page);
+
+        if (!hasAccess) {
+            card.style.opacity = '0.6';
+            card.style.cursor = 'not-allowed';
+
+            // 添加锁定标记
+            if (!card.querySelector('.feature-locked')) {
+                const lockedBadge = document.createElement('div');
+                lockedBadge.className = 'feature-locked';
+                lockedBadge.textContent = '请联系管理员开通';
+                card.style.position = 'relative';
+                card.appendChild(lockedBadge);
+            }
+
+            card.onclick = function(e) {
+                e.preventDefault();
+                showUpgradePrompt(page);
+            };
+        }
+    });
+}
+
+/**
+ * 显示升级提示
+ */
+function showUpgradePrompt(featureKey) {
+    const feature = allFeatures.find(f => f.feature_key === featureKey);
+    const featureName = feature ? feature.feature_name : featureKey;
+
+    const modal = document.createElement('div');
+    modal.className = 'upgrade-modal';
+    modal.innerHTML = `
+        <div class="upgrade-modal-content">
+            <div class="upgrade-modal-header">
+                <h3>🔒 功能受限</h3>
+                <button class="upgrade-modal-close" onclick="this.closest('.upgrade-modal').remove()">×</button>
+            </div>
+            <div class="upgrade-modal-body">
+                <p><strong>${featureName}</strong> 功能暂未开通</p>
+                <p class="upgrade-hint">请联系管理员开通此功能</p>
+            </div>
+            <div class="upgrade-modal-footer">
+                <button class="upgrade-modal-btn" onclick="this.closest('.upgrade-modal').remove()">我知道了</button>
+            </div>
+        </div>
+    `;
+
+    // 添加样式
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        animation: fadeIn 0.3s ease;
+    `;
+
+    const style = document.createElement('style');
+    style.textContent = `
+        .upgrade-modal-content {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .upgrade-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .upgrade-modal-header h3 {
+            margin: 0;
+            font-size: 20px;
+        }
+        .upgrade-modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+        .upgrade-modal-body {
+            margin-bottom: 20px;
+            line-height: 1.8;
+        }
+        .upgrade-hint {
+            color: #666;
+            font-size: 14px;
+            margin-top: 12px;
+        }
+        .upgrade-modal-btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--accent, #F4845F);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .upgrade-modal-btn:hover {
+            background: var(--accent-light, #F7A072);
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    `;
+
+    document.head.appendChild(style);
+    document.body.appendChild(modal);
+}
+
+/**
+ * 更新认证相关的 UI
+ */
+function updateAuthUI() {
+    // 查找或创建用户信息区域
+    let userSection = document.getElementById('userSection');
+
+    if (!userSection) {
+        // 在导航栏末尾创建用户区域
+        const nav = document.querySelector('nav.nav');
+        if (!nav) return;
+
+        userSection = document.createElement('div');
+        userSection.id = 'userSection';
+        userSection.className = 'user-section';
+        nav.appendChild(userSection);
+    }
+
+    // 确保 user-section 样式正确
+    userSection.style.marginLeft = 'auto';
+
+    if (isLoggedIn && isLoggedIn()) {
+        const displayName = userProfile?.display_name || currentUser.email.split('@')[0];
+        const position = userProfile?.position || '未设置岗位';
+
+        userSection.innerHTML = `
+            <div class="user-info">
+                <div class="user-avatar">${displayName.charAt(0).toUpperCase()}</div>
+                <div class="user-details">
+                    <div class="user-name">欢迎回来，${displayName}</div>
+                    <div class="user-position">岗位：${position}</div>
+                </div>
+                ${isAdmin() ? '<button class="admin-btn" onclick="showAdminPanel()">⚙️ 管理</button>' : ''}
+                <button class="logout-btn" onclick="handleLogoutClick()">退出</button>
+            </div>
+        `;
+
+        // 添加样式
+        if (!document.getElementById('userSectionStyles')) {
+            const style = document.createElement('style');
+            style.id = 'userSectionStyles';
+            style.textContent = `
+                .user-section {
+                    margin-left: auto;
+                    padding: 0 20px;
+                }
+                .user-info {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                }
+                .user-avatar {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 50%;
+                    background: var(--accent, #F4845F);
+                    color: white;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-weight: bold;
+                    font-size: 16px;
+                }
+                .user-details {
+                    display: flex;
+                    flex-direction: column;
+                }
+                .user-name {
+                    font-weight: 600;
+                    font-size: 14px;
+                }
+                .user-position {
+                    font-size: 12px;
+                    color: #6B7280;
+                }
+                .admin-btn, .logout-btn {
+                    padding: 6px 12px;
+                    border: none;
+                    border-radius: 6px;
+                    font-size: 13px;
+                    cursor: pointer;
+                    transition: all 0.3s;
+                }
+                .admin-btn {
+                    background: #3B82F6;
+                    color: white;
+                }
+                .admin-btn:hover {
+                    background: #2563EB;
+                }
+                .logout-btn {
+                    background: #F3F4F6;
+                    color: #374151;
+                }
+                .logout-btn:hover {
+                    background: #E5E7EB;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    } else {
+        userSection.innerHTML = `
+            <div class="user-info">
+                <button class="login-btn" onclick="showLoginModal()">登录</button>
+            </div>
+        `;
+
+        // 添加登录按钮样式
+        if (!document.getElementById('loginBtnStyles')) {
+            const style = document.createElement('style');
+            style.id = 'loginBtnStyles';
+            style.textContent = `
+                .login-btn {
+                    padding: 8px 20px;
+                    background: var(--accent, #F4845F);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.3s;
+                }
+                .login-btn:hover {
+                    background: var(--accent-light, #F7A072);
+                    transform: translateY(-2px);
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+}
+
+/**
+ * 显示登录弹窗
+ */
+function showLoginModal() {
+    const modal = document.createElement('div');
+    modal.id = 'loginModal';
+    modal.className = 'login-modal';
+    modal.innerHTML = `
+        <div class="login-modal-content">
+            <div class="login-modal-header">
+                <h3>🔐 登录</h3>
+                <button class="login-modal-close" onclick="document.getElementById('loginModal').remove()">×</button>
+            </div>
+            <form id="loginForm" onsubmit="handleLoginSubmit(event)">
+                <div class="form-group">
+                    <label>邮箱</label>
+                    <input type="email" id="loginEmail" placeholder="请输入邮箱" required>
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input type="password" id="loginPassword" placeholder="请输入密码" required>
+                </div>
+                <div id="loginError" class="login-error"></div>
+                <button type="submit" class="login-submit-btn">登录</button>
+            </form>
+        </div>
+    `;
+
+    // 添加样式
+    const style = document.createElement('style');
+    style.textContent = `
+        .login-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            animation: fadeIn 0.3s ease;
+        }
+        .login-modal-content {
+            background: white;
+            border-radius: 16px;
+            padding: 32px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .login-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .login-modal-header h3 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .login-modal-close {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: #666;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #374151;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #E5E7EB;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+            box-sizing: border-box;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--accent, #F4845F);
+        }
+        .login-error {
+            color: #EF4444;
+            font-size: 14px;
+            margin-bottom: 16px;
+            min-height: 20px;
+        }
+        .login-submit-btn {
+            width: 100%;
+            padding: 14px;
+            background: var(--accent, #F4845F);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .login-submit-btn:hover {
+            background: var(--accent-light, #F7A072);
+        }
+        .login-submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+    `;
+
+    document.head.appendChild(style);
+    document.body.appendChild(modal);
+}
+
+/**
+ * 处理登录提交
+ */
+async function handleLoginSubmit(event) {
+    event.preventDefault();
+
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    const errorDiv = document.getElementById('loginError');
+    const submitBtn = event.target.querySelector('.login-submit-btn');
+
+    // 清除错误信息
+    errorDiv.textContent = '';
+    submitBtn.disabled = true;
+    submitBtn.textContent = '登录中...';
+
+    const result = await login(email, password);
+
+    if (result.success) {
+        // 登录成功，关闭弹窗
+        document.getElementById('loginModal').remove();
+    } else {
+        // 显示错误信息
+        errorDiv.textContent = result.error || '登录失败，请检查邮箱和密码';
+        submitBtn.disabled = false;
+        submitBtn.textContent = '登录';
+    }
+}
+
+/**
+ * 处理登出点击
+ */
+async function handleLogoutClick() {
+    if (confirm('确定要退出登录吗？')) {
+        await logout();
+    }
+}
+
+/**
+ * 显示管理员面板
+ */
+function showAdminPanel() {
+    if (!isAdmin()) {
+        alert('权限不足');
+        return;
+    }
+
+    // 创建管理员面板
+    const modal = document.createElement('div');
+    modal.id = 'adminModal';
+    modal.className = 'admin-modal';
+    modal.innerHTML = `
+        <div class="admin-modal-content">
+            <div class="admin-modal-header">
+                <h3>⚙️ 管理员面板</h3>
+                <button class="admin-modal-close" onclick="document.getElementById('adminModal').remove()">×</button>
+            </div>
+            <div class="admin-tabs">
+                <button class="admin-tab active" onclick="switchAdminTab('users', this)">用户管理</button>
+                <button class="admin-tab" onclick="switchAdminTab('create', this)">创建用户</button>
+            </div>
+            <div id="adminTabContent" class="admin-tab-content">
+                <div class="loading">加载中...</div>
+            </div>
+        </div>
+    `;
+
+    // 添加样式
+    const style = document.createElement('style');
+    style.textContent = `
+        .admin-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            animation: fadeIn 0.3s ease;
+        }
+        .admin-modal-content {
+            background: white;
+            border-radius: 16px;
+            padding: 0;
+            max-width: 800px;
+            width: 95%;
+            max-height: 85vh;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+        }
+        .admin-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid #E5E7EB;
+        }
+        .admin-modal-header h3 {
+            margin: 0;
+            font-size: 22px;
+        }
+        .admin-modal-close {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: #666;
+        }
+        .admin-tabs {
+            display: flex;
+            border-bottom: 1px solid #E5E7EB;
+            padding: 0 24px;
+        }
+        .admin-tab {
+            padding: 12px 20px;
+            background: none;
+            border: none;
+            font-size: 15px;
+            cursor: pointer;
+            color: #6B7280;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        .admin-tab.active {
+            color: var(--accent, #F4845F);
+            border-bottom-color: var(--accent, #F4845F);
+        }
+        .admin-tab-content {
+            padding: 24px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .user-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .user-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px;
+            background: #F9FAFB;
+            border-radius: 10px;
+            transition: all 0.3s;
+        }
+        .user-item:hover {
+            background: #F3F4F6;
+        }
+        .user-item-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .user-item-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--accent, #F4845F);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        .user-item-details {
+            display: flex;
+            flex-direction: column;
+        }
+        .user-item-name {
+            font-weight: 600;
+        }
+        .user-item-email {
+            font-size: 13px;
+            color: #6B7280;
+        }
+        .user-item-position {
+            font-size: 12px;
+            color: #3B82F6;
+            background: #EFF6FF;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-top: 4px;
+            display: inline-block;
+        }
+        .user-item-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .permissions-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .permission-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #F3F4F6;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .permission-item:hover {
+            background: #E5E7EB;
+        }
+        .permission-item.enabled {
+            background: #D1FAE5;
+            border: 1px solid #34D399;
+        }
+        .permission-item input[type="checkbox"] {
+            margin: 0;
+        }
+        .create-user-form {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .create-user-form input,
+        .create-user-form select {
+            padding: 12px 16px;
+            border: 2px solid #E5E7EB;
+            border-radius: 8px;
+            font-size: 15px;
+        }
+        .create-user-form input:focus,
+        .create-user-form select:focus {
+            outline: none;
+            border-color: var(--accent, #F4845F);
+        }
+        .create-user-btn {
+            padding: 14px;
+            background: var(--accent, #F4845F);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .create-user-btn:hover {
+            background: var(--accent-light, #F7A072);
+        }
+        .create-user-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .create-result {
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-top: 12px;
+        }
+        .create-result.success {
+            background: #D1FAE5;
+            color: #065F46;
+        }
+        .create-result.error {
+            background: #FEE2E2;
+            color: #991B1B;
+        }
+        .loading {
+            text-align: center;
+            color: #6B7280;
+            padding: 40px;
+        }
+        .save-permissions-btn {
+            padding: 8px 16px;
+            background: #10B981;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .save-permissions-btn:hover {
+            background: #059669;
+        }
+        .edit-user-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10001;
+        }
+        .edit-user-content {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+    `;
+
+    document.head.appendChild(style);
+    document.body.appendChild(modal);
+
+    // 加载用户列表
+    loadUsersList();
+}
+
+/**
+ * 切换管理员面板标签
+ */
+function switchAdminTab(tab, btn) {
+    // 更新标签样式
+    document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+
+    if (tab === 'users') {
+        loadUsersList();
+    } else if (tab === 'create') {
+        showCreateUserForm();
+    }
+}
+
+/**
+ * 加载用户列表
+ */
+async function loadUsersList() {
+    const content = document.getElementById('adminTabContent');
+    content.innerHTML = '<div class="loading">加载中...</div>';
+
+    const result = await getAllUsers();
+
+    if (!result.success) {
+        content.innerHTML = `<div class="loading">加载失败: ${result.error}</div>`;
+        return;
+    }
+
+    const users = result.users;
+
+    if (users.length === 0) {
+        content.innerHTML = '<div class="loading">暂无用户</div>';
+        return;
+    }
+
+    content.innerHTML = `
+        <div class="user-list">
+            ${users.map(user => `
+                <div class="user-item">
+                    <div class="user-item-info">
+                        <div class="user-item-avatar">${(user.display_name || user.email).charAt(0).toUpperCase()}</div>
+                        <div class="user-item-details">
+                            <div class="user-item-name">${user.display_name || '未设置'}</div>
+                            <div class="user-item-email">${user.email}</div>
+                            <div class="user-item-position">${user.position || '未设置岗位'}</div>
+                        </div>
+                    </div>
+                    <div class="user-item-actions">
+                        ${user.role === 'admin'
+                            ? '<span style="color: #3B82F6; font-weight: 600;">管理员</span>'
+                            : `<button class="save-permissions-btn" onclick="showEditUserModal('${user.id}', '${user.display_name}', '${user.position || ''}')">编辑权限</button>`
+                        }
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+/**
+ * 显示编辑用户弹窗
+ */
+async function showEditUserModal(userId, userName, currentPosition) {
+    // 获取用户当前权限
+    constPermissionsResult = await getUserPermissions(userId);
+    const currentPermissions = permissionsResult.success ? permissionsResult.permissions : [];
+
+    const modal = document.createElement('div');
+    modal.className = 'edit-user-modal';
+    modal.innerHTML = `
+        <div class="edit-user-content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 style="margin: 0;">编辑用户：${userName}</h3>
+                <button onclick="this.closest('.edit-user-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer;">×</button>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; margin-bottom: 8px; font-weight: 600;">岗位名称</label>
+                <div style="display: flex; gap: 8px;">
+                    <select id="editPosition" style="flex: 1; padding: 10px; border: 2px solid #E5E7EB; border-radius: 6px;">
+                        ${PRESET_POSITIONS.map(pos =>
+                            `<option value="${pos}" ${pos === currentPosition ? 'selected' : ''}>${pos}</option>`
+                        ).join('')}
+                        <option value="custom" ${!PRESET_POSITIONS.includes(currentPosition) ? 'selected' : ''}>自定义</option>
+                    </select>
+                    <input type="text" id="editCustomPosition" placeholder="自定义岗位"
+                        value="${!PRESET_POSITIONS.includes(currentPosition) ? currentPosition : ''}"
+                        style="flex: 1; padding: 10px; border: 2px solid #E5E7EB; border-radius: 6px; ${PRESET_POSITIONS.includes(currentPosition) ? 'display: none;' : ''}">
+                </div>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; margin-bottom: 8px; font-weight: 600;">功能权限</label>
+                <div class="permissions-grid">
+                    ${allFeatures.map(feature => `
+                        <label class="permission-item ${currentPermissions.includes(feature.feature_key) ? 'enabled' : ''}">
+                            <input type="checkbox" value="${feature.feature_key}"
+                                ${currentPermissions.includes(feature.feature_key) ? 'checked' : ''}
+                                onchange="this.parentElement.classList.toggle('enabled', this.checked)">
+                            ${feature.feature_name}
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+
+            <div id="editUserResult"></div>
+
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
+                <button onclick="saveUserEdit('${userId}')" class="save-permissions-btn" style="flex: 1; padding: 12px;">保存</button>
+                <button onclick="this.closest('.edit-user-modal').remove()" style="flex: 1; padding: 12px; background: #F3F4F6; border: none; border-radius: 6px; cursor: pointer;">取消</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // 监听岗位选择变化
+    document.getElementById('editPosition').addEventListener('change', function() {
+        const customInput = document.getElementById('editCustomPosition');
+        customInput.style.display = this.value === 'custom' ? 'block' : 'none';
+    });
+}
+
+/**
+ * 保存用户编辑
+ */
+async function saveUserEdit(userId) {
+    const positionSelect = document.getElementById('editPosition');
+    const customPosition = document.getElementById('editCustomPosition');
+    const resultDiv = document.getElementById('editUserResult');
+
+    // 获取岗位名称
+    let position = positionSelect.value;
+    if (position === 'custom') {
+        position = customPosition.value.trim();
+        if (!position) {
+            resultDiv.innerHTML = '<div class="create-result error">请输入自定义岗位名称</div>';
+            return;
+        }
+    }
+
+    // 获取选中的权限
+    const checkboxes = document.querySelectorAll('.permission-item input[type="checkbox"]:checked');
+    const permissions = Array.from(checkboxes).map(cb => cb.value);
+
+    // 保存岗位
+    const profileResult = await updateUserProfile(userId, { position });
+    if (!profileResult.success) {
+        resultDiv.innerHTML = `<div class="create-result error">保存岗位失败: ${profileResult.error}</div>`;
+        return;
+    }
+
+    // 保存权限
+    const permissionsResult = await updateUserPermissions(userId, permissions);
+    if (!permissionsResult.success) {
+        resultDiv.innerHTML = `<div class="create-result error">保存权限失败: ${permissionsResult.error}</div>`;
+        return;
+    }
+
+    resultDiv.innerHTML = '<div class="create-result success">保存成功！</div>';
+
+    // 1秒后关闭弹窗并刷新列表
+    setTimeout(() => {
+        document.querySelector('.edit-user-modal').remove();
+        loadUsersList();
+    }, 1000);
+}
+
+/**
+ * 显示创建用户表单
+ */
+function showCreateUserForm() {
+    const content = document.getElementById('adminTabContent');
+
+    content.innerHTML = `
+        <form class="create-user-form" onsubmit="handleCreateUser(event)">
+            <div>
+                <label style="display: block; margin-bottom: 8px; font-weight: 600;">邮箱</label>
+                <input type="email" id="newUserEmail" placeholder="user@example.com" required>
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 8px; font-weight: 600;">密码</label>
+                <input type="password" id="newUserPassword" placeholder="至少6位" required minlength="6">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 8px; font-weight: 600;">姓名</label>
+                <input type="text" id="newUserName" placeholder="员工姓名" required>
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 8px; font-weight: 600;">岗位</label>
+                <div style="display: flex; gap: 8px;">
+                    <select id="newUserPosition" style="flex: 1; padding: 12px; border: 2px solid #E5E7EB; border-radius: 8px;" onchange="document.getElementById('newCustomPosition').style.display = this.value === 'custom' ? 'block' : 'none'">
+                        ${PRESET_POSITIONS.map(pos => `<option value="${pos}">${pos}</option>`).join('')}
+                        <option value="custom">自定义</option>
+                    </select>
+                    <input type="text" id="newCustomPosition" placeholder="自定义岗位名称" style="flex: 1; padding: 12px; border: 2px solid #E5E7EB; border-radius: 8px; display: none;">
+                </div>
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 8px; font-weight: 600;">功能权限</label>
+                <div class="permissions-grid" id="newUserPermissions">
+                    ${allFeatures.map(feature => `
+                        <label class="permission-item">
+                            <input type="checkbox" value="${feature.feature_key}">
+                            ${feature.feature_name}
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+            <button type="submit" class="create-user-btn" id="createUserBtn">创建用户</button>
+            <div id="createResult"></div>
+        </form>
+    `;
+}
+
+/**
+ * 处理创建用户
+ */
+async function handleCreateUser(event) {
+    event.preventDefault();
+
+    const email = document.getElementById('newUserEmail').value;
+    const password = document.getElementById('newUserPassword').value;
+    const name = document.getElementById('newUserName').value;
+    const positionSelect = document.getElementById('newUserPosition');
+    const customPosition = document.getElementById('newCustomPosition');
+    const btn = document.getElementById('createUserBtn');
+    const resultDiv = document.getElementById('createResult');
+
+    // 获取岗位
+    let position = positionSelect.value;
+    if (position === 'custom') {
+        position = customPosition.value.trim();
+        if (!position) {
+            resultDiv.className = 'create-result error';
+            resultDiv.textContent = '请输入自定义岗位名称';
+            return;
+        }
+    }
+
+    // 获取选中的权限
+    const checkboxes = document.querySelectorAll('#newUserPermissions input[type="checkbox"]:checked');
+    const permissions = Array.from(checkboxes).map(cb => cb.value);
+
+    btn.disabled = true;
+    btn.textContent = '创建中...';
+    resultDiv.innerHTML = '';
+
+    const result = await createUser(email, password, name, position);
+
+    if (result.success) {
+        // 设置权限
+        if (permissions.length > 0) {
+            await updateUserPermissions(result.user.id, permissions);
+        }
+
+        resultDiv.className = 'create-result success';
+        resultDiv.innerHTML = `✅ 用户创建成功！<br>邮箱: ${email}<br>岗位: ${position}<br>已开通 ${permissions.length} 个功能`;
+
+        // 清空表单
+        document.getElementById('newUserEmail').value = '';
+        document.getElementById('newUserPassword').value = '';
+        document.getElementById('newUserName').value = '';
+        document.querySelectorAll('#newUserPermissions input[type="checkbox"]').forEach(cb => cb.checked = false);
+    } else {
+        resultDiv.className = 'create-result error';
+        resultDiv.textContent = `❌ 创建失败: ${result.error}`;
+    }
+
+    btn.disabled = false;
+    btn.textContent = '创建用户';
+}
+
+// ========== A+B 学习系统 ==========
+
+/**
+ * 保存用户偏好
+ */
+async function savePreference(prefKey, prefValue) {
+    if (!isLoggedIn() || !supabase) return;
+
+    try {
+        const { data, error } = await supabase
+            .from('user_preferences')
+            .upsert({
+                user_id: currentUser.id,
+                pref_key: prefKey,
+                pref_value: prefValue,
+                use_count: 1,
+                last_used_at: new Date().toISOString()
+            }, {
+                onConflict: 'user_id,pref_key,pref_value',
+                ignoreDuplicates: false
+            });
+
+        if (error) {
+            // 如果 upsert 失败，尝试更新 use_count
+            const { data: existing } = await supabase
+                .from('user_preferences')
+                .select('id, use_count')
+                .eq('user_id', currentUser.id)
+                .eq('pref_key', prefKey)
+                .eq('pref_value', prefValue)
+                .single();
+
+            if (existing) {
+                await supabase
+                    .from('user_preferences')
+                    .update({
+                        use_count: existing.use_count + 1,
+                        last_used_at: new Date().toISOString()
+                    })
+                    .eq('id', existing.id);
+            }
+        }
+    } catch (e) {
+        console.warn('保存偏好失败:', e);
+    }
+}
+
+/**
+ * 获取用户偏好（按使用次数排序）
+ */
+async function getUserPreferences(prefKey) {
+    if (!isLoggedIn() || !supabase) return [];
+
+    try {
+        const { data, error } = await supabase
+            .from('user_preferences')
+            .select('pref_value, use_count')
+            .eq('user_id', currentUser.id)
+            .eq('pref_key', prefKey)
+            .order('use_count', { ascending: false })
+            .limit(5);
+
+        if (error) throw error;
+        return data ? data.map(d => d.pref_value) : [];
+    } catch (e) {
+        console.warn('获取偏好失败:', e);
+        return [];
+    }
+}
+
+/**
+ * 保存生成历史 + 评分
+ */
+async function saveGenerationHistory(genType, inputParams, outputContent, rating = null) {
+    if (!isLoggedIn() || !supabase) return null;
+
+    try {
+        const { data, error } = await supabase
+            .from('generation_history')
+            .insert({
+                user_id: currentUser.id,
+                gen_type: genType,
+                input_params: inputParams,
+                output_content: outputContent,
+                rating: rating
+            })
+            .select('id')
+            .single();
+
+        if (error) throw error;
+        return data?.id;
+    } catch (e) {
+        console.warn('保存生成历史失败:', e);
+        return null;
+    }
+}
+
+/**
+ * 更新评分
+ */
+async function updateGenerationRating(historyId, rating) {
+    if (!isLoggedIn() || !supabase || !historyId) return;
+
+    try {
+        const { error } = await supabase
+            .from('generation_history')
+            .update({ rating })
+            .eq('id', historyId)
+            .eq('user_id', currentUser.id);
+
+        if (error) throw error;
+    } catch (e) {
+        console.warn('更新评分失败:', e);
+    }
+}
+
+/**
+ * 获取高分历史内容（用于注入提示词）
+ */
+async function getHighRatedExamples(genType, limit = 3) {
+    if (!isLoggedIn() || !supabase) return [];
+
+    try {
+        const { data, error } = await supabase
+            .from('generation_history')
+            .select('output_content, input_params')
+            .eq('user_id', currentUser.id)
+            .eq('gen_type', genType)
+            .gte('rating', 4)
+            .order('rating', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        console.warn('获取高分示例失败:', e);
+        return [];
+    }
+}
+
+// 页面加载完成后初始化
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log('初始化权限系统...');
+
+    // 先显示登录按钮（不依赖 Supabase）
+    updateAuthUI();
+
+    // 然后尝试初始化 Supabase
+    try {
+        const success = await initSupabase();
+        if (success) {
+            console.log('权限系统初始化完成');
+        } else {
+            console.error('权限系统初始化失败');
+        }
+    } catch (error) {
+        console.error('Supabase 初始化出错:', error);
+    }
+});
