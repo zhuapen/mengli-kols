@@ -1379,6 +1379,39 @@ tbody tr:hover{
   color: #1E40AF;
 }
 
+/* ========== ADD BRAND MODAL ========== */
+.brand-modal{
+  display:none;position:fixed;top:0;left:0;width:100%;height:100%;
+  background:rgba(0,0,0,0.5);z-index:9999;
+  align-items:center;justify-content:center
+}
+.brand-modal.show{display:flex}
+.brand-modal-content{
+  background:#fff;border-radius:16px;width:480px;max-width:90vw;
+  max-height:80vh;overflow-y:auto;padding:32px
+}
+.brand-modal-content h3{margin:0 0 20px;font-size:18px}
+.brand-modal-content label{display:block;font-size:13px;font-weight:600;color:var(--gray-500);margin-bottom:6px;margin-top:16px}
+.brand-modal-content input,.brand-modal-content textarea{
+  width:100%;padding:12px;border:2px solid var(--gray-200);border-radius:8px;
+  font-size:14px;font-family:var(--font);outline:none;box-sizing:border-box
+}
+.brand-modal-content input:focus,.brand-modal-content textarea:focus{border-color:var(--accent)}
+.brand-modal-actions{display:flex;gap:8px;margin-top:24px;justify-content:flex-end}
+.brand-modal-actions button{padding:10px 20px;border-radius:8px;font-size:14px;cursor:pointer;border:none}
+.brand-modal-cancel{background:var(--gray-100);color:var(--gray-600)}
+.brand-modal-save{background:var(--accent);color:#fff}
+
+/* ========== ASSETS SEARCH ========== */
+.assets-search{
+  display:flex;gap:8px;padding:0 24px 12px;align-items:center
+}
+.assets-search input{
+  flex:1;padding:10px 16px;border:2px solid var(--gray-200);border-radius:8px;
+  font-size:14px;font-family:var(--font);outline:none
+}
+.assets-search input:focus{border-color:var(--accent)}
+
 /* 评分筛选 */
 .rating-filter {
   display: flex;
@@ -1604,7 +1637,7 @@ tbody tr:hover{
         </div>
         <div class="gen-loading" id="imgLoading">
           <div class="spinner"></div>
-          <p style="color:var(--gray-400);font-size:13px">AI 创作中...</p>
+          <p style="color:var(--gray-400);font-size:13px">创作中...</p>
         </div>
         <img class="gen-result" id="imgResult" src="" alt="" onclick="openLightbox(this.src)">
       </div>
@@ -1754,8 +1787,11 @@ tbody tr:hover{
   <div class="knowledge-layout">
     <!-- Brand Voice Section -->
     <div class="knowledge-section">
-      <h2 class="knowledge-title">品牌调性</h2>
-      <div class="knowledge-grid">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <h2 class="knowledge-title" style="margin-bottom:0">品牌调性</h2>
+        <button onclick="openAddBrandModal()" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer">＋ 添加品牌</button>
+      </div>
+      <div class="knowledge-grid" id="brandGrid">
         <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
           <div class="knowledge-card-header">
             <span>萌力互动</span>
@@ -1994,6 +2030,11 @@ tbody tr:hover{
     <button class="assets-tab" onclick="switchAssetsTab('copy',this)">文案</button>
     <button class="assets-tab" onclick="switchAssetsTab('article',this)">写稿</button>
     <button class="assets-tab" onclick="switchAssetsTab('feedback',this)">⭐ 反馈库</button>
+  </div>
+
+  <!-- 搜索栏 -->
+  <div class="assets-search" id="assetsSearch">
+    <input type="text" id="assetsSearchInput" placeholder="🔍 搜索素材..." oninput="searchAssets(this.value)">
   </div>
 
   <!-- 评分筛选（仅素材标签页显示） -->
@@ -2488,6 +2529,7 @@ async function genCopy(){
   const out = document.getElementById('copyOutput');
   const retry = document.getElementById('copyRetry');
   btn.disabled = true; btn.textContent = '创作中...';
+  retry.disabled = true;
   out.className = 'copy-output'; out.textContent = '';
 
   try{
@@ -2525,6 +2567,7 @@ async function genCopy(){
   }
   btn.disabled = false; btn.textContent = '生成文案';
   retry.style.display = 'inline-flex';
+  retry.disabled = false;
 }
 
 function copyText(){
@@ -2584,6 +2627,96 @@ function toggleKnowledgeCard(card){
   card.classList.toggle('open');
 }
 
+// ========== CUSTOM BRANDS ==========
+function getCustomBrands(){
+  try{ return JSON.parse(localStorage.getItem('custom_brands') || '[]'); }catch(e){ return []; }
+}
+function saveCustomBrands(brands){
+  localStorage.setItem('custom_brands', JSON.stringify(brands));
+}
+function openAddBrandModal(){
+  document.getElementById('brandName').value = '';
+  document.getElementById('brandDesc').value = '';
+  document.getElementById('brandTone').value = '';
+  document.getElementById('brandPoints').value = '';
+  document.getElementById('brandModal').classList.add('show');
+}
+function closeAddBrandModal(){
+  document.getElementById('brandModal').classList.remove('show');
+}
+function saveBrand(){
+  const name = document.getElementById('brandName').value.trim();
+  if(!name){ alert('请输入品牌名称'); return; }
+  const brand = {
+    id: 'brand_' + Date.now(),
+    name: name,
+    desc: document.getElementById('brandDesc').value.trim(),
+    tone: document.getElementById('brandTone').value.trim(),
+    points: document.getElementById('brandPoints').value.trim()
+  };
+  const brands = getCustomBrands();
+  brands.push(brand);
+  saveCustomBrands(brands);
+  closeAddBrandModal();
+  renderCustomBrands();
+  refreshBrandSelects();
+}
+function deleteBrand(id){
+  if(!confirm('确定删除该品牌？')) return;
+  const brands = getCustomBrands().filter(b => b.id !== id);
+  saveCustomBrands(brands);
+  renderCustomBrands();
+  refreshBrandSelects();
+}
+function renderCustomBrands(){
+  const grid = document.getElementById('brandGrid');
+  const brands = getCustomBrands();
+  // 先移除已有的自定义品牌卡片
+  grid.querySelectorAll('.custom-brand-card').forEach(el => el.remove());
+  brands.forEach(brand => {
+    const card = document.createElement('div');
+    card.className = 'knowledge-card custom-brand-card';
+    card.onclick = function(){ toggleKnowledgeCard(this); };
+    let bodyHtml = '';
+    if(brand.desc) bodyHtml += `<div class="knowledge-item"><span class="knowledge-label">简介</span>${brand.desc}</div>`;
+    if(brand.tone) bodyHtml += `<div class="knowledge-item"><span class="knowledge-label">语言风格</span>${brand.tone}</div>`;
+    if(brand.points) bodyHtml += `<div class="knowledge-item"><span class="knowledge-label">核心卖点</span>${brand.points}</div>`;
+    bodyHtml += `<div style="margin-top:12px;text-align:right"><button onclick="event.stopPropagation();deleteBrand('${brand.id}')" style="padding:6px 12px;background:#FEE2E2;color:#EF4444;border:none;border-radius:6px;font-size:12px;cursor:pointer">删除品牌</button></div>`;
+    card.innerHTML = `
+      <div class="knowledge-card-header">
+        <span>${brand.name}</span>
+        <span class="knowledge-arrow">→</span>
+      </div>
+      <div class="knowledge-card-body">${bodyHtml}</div>
+    `;
+    grid.appendChild(card);
+  });
+}
+function refreshBrandSelects(){
+  const brands = getCustomBrands();
+  const selects = ['copyBrand', 'articleBrand'];
+  selects.forEach(selId => {
+    const sel = document.getElementById(selId);
+    if(!sel) return;
+    // 移除旧的自定义品牌选项
+    sel.querySelectorAll('.custom-brand-opt').forEach(el => el.remove());
+    // 添加新的
+    brands.forEach(brand => {
+      const opt = document.createElement('option');
+      opt.className = 'custom-brand-opt';
+      opt.value = brand.name;
+      opt.textContent = brand.name + (brand.desc ? ' - ' + brand.desc : '');
+      sel.appendChild(opt);
+    });
+  });
+}
+// 页面加载时渲染自定义品牌
+renderCustomBrands();
+refreshBrandSelects();
+
+// ========== ASSETS SEARCH ==========
+function searchAssets(){ renderAssets(); }
+
 // ========== ARTICLE ==========
 async function genArticle(){
   // 检查权限
@@ -2605,6 +2738,7 @@ async function genArticle(){
   const out = document.getElementById('articleOutput');
   const retry = document.getElementById('articleRetry');
   btn.disabled = true; btn.textContent = '创作中...';
+  retry.disabled = true;
   out.className = 'article-output'; out.textContent = '';
 
   try{
@@ -2650,6 +2784,7 @@ async function genArticle(){
   }
   btn.disabled = false; btn.textContent = '生成写稿';
   retry.style.display = 'inline-flex';
+  retry.disabled = false;
 }
 
 function copyArticle(){
@@ -2693,7 +2828,7 @@ function renderAssets(){
     filtered = filtered.filter(a => a.type === currentAssetTab);
   }
   if(search){
-    filtered = filtered.filter(a => a.title.toLowerCase().includes(search));
+    filtered = filtered.filter(a => a.title.toLowerCase().includes(search) || (a.content && a.content.toLowerCase().includes(search)));
   }
   // 评分筛选
   if(currentRatingFilter !== 'all'){
@@ -2739,16 +2874,19 @@ function switchAssetsTab(tab, btn){
   const assetsGrid = document.getElementById('assetsGrid');
   const feedbackGrid = document.getElementById('feedbackGrid');
   const ratingFilter = document.getElementById('ratingFilter');
+  const searchBar = document.getElementById('assetsSearch');
 
   if(tab === 'feedback'){
     assetsGrid.style.display = 'none';
     feedbackGrid.style.display = 'grid';
     ratingFilter.style.display = 'none';
+    searchBar.style.display = 'none';
     loadFeedbackList();
   } else {
     assetsGrid.style.display = 'grid';
     feedbackGrid.style.display = 'none';
     ratingFilter.style.display = 'flex';
+    searchBar.style.display = 'flex';
     renderAssets();
   }
 }
@@ -3206,6 +3344,25 @@ function saveFeedbackResult() {
   }
 }
 </script>
+
+<!-- 添加品牌弹窗 -->
+<div class="brand-modal" id="brandModal">
+  <div class="brand-modal-content">
+    <h3>添加新品牌</h3>
+    <label>品牌名称 *</label>
+    <input type="text" id="brandName" placeholder="如：汤臣倍健">
+    <label>品牌简介</label>
+    <input type="text" id="brandDesc" placeholder="如：保健品 - 补钙专家">
+    <label>语言风格</label>
+    <textarea id="brandTone" rows="3" placeholder="如：专业可信、温暖亲切、科学严谨..."></textarea>
+    <label>核心卖点</label>
+    <textarea id="brandPoints" rows="3" placeholder="如：30年品牌、蓝帽子认证、全球原料..."></textarea>
+    <div class="brand-modal-actions">
+      <button class="brand-modal-cancel" onclick="closeAddBrandModal()">取消</button>
+      <button class="brand-modal-save" onclick="saveBrand()">保存</button>
+    </div>
+  </div>
+</div>
 
 <!-- 图片灯箱 -->
 <div class="img-lightbox" id="imgLightbox" onclick="closeLightbox(event)">
