@@ -591,7 +591,32 @@ tbody tr:hover{
 .gen-placeholder{text-align:center;color:var(--gray-300)}
 .gen-placeholder .icon{font-size:64px;margin-bottom:16px}
 .gen-placeholder p{font-size:14px}
-.gen-result{max-width:100%;max-height:80%;display:none}
+.gen-result{max-width:100%;max-height:80%;display:none;cursor:pointer;border-radius:8px}
+.gen-result:hover{box-shadow:0 4px 20px rgba(0,0,0,0.15)}
+.gen-toolbar{display:none;gap:8px;margin-top:12px;justify-content:center}
+.gen-toolbar.show{display:flex}
+.gen-toolbar-btn{
+  padding:8px 16px;border:1px solid var(--gray-200);border-radius:8px;
+  background:#fff;font-size:13px;cursor:pointer;
+  transition:all 0.2s;display:flex;align-items:center;gap:6px
+}
+.gen-toolbar-btn:hover{background:var(--gray-50);border-color:var(--accent)}
+
+/* ========== IMAGE LIGHTBOX ========== */
+.img-lightbox{
+  display:none;position:fixed;top:0;left:0;width:100%;height:100%;
+  background:rgba(0,0,0,0.85);z-index:10000;
+  align-items:center;justify-content:center;cursor:zoom-out
+}
+.img-lightbox.show{display:flex}
+.img-lightbox img{max-width:92%;max-height:92%;object-fit:contain;border-radius:4px;cursor:default}
+.img-lightbox-close{
+  position:absolute;top:20px;right:24px;width:40px;height:40px;
+  background:rgba(255,255,255,0.15);border:none;border-radius:50%;
+  color:#fff;font-size:24px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center
+}
+.img-lightbox-close:hover{background:rgba(255,255,255,0.3)}
 .gen-loading{display:none;text-align:center}
 .gen-loading .spinner{
   width:48px;height:48px;border:3px solid var(--gray-200);
@@ -1581,7 +1606,11 @@ tbody tr:hover{
           <div class="spinner"></div>
           <p style="color:var(--gray-400);font-size:13px">AI 创作中...</p>
         </div>
-        <img class="gen-result" id="imgResult" src="" alt="">
+        <img class="gen-result" id="imgResult" src="" alt="" onclick="openLightbox(this.src)">
+      </div>
+      <div class="gen-toolbar" id="imgToolbar">
+        <button class="gen-toolbar-btn" onclick="openLightbox(document.getElementById('imgResult').src)">🔍 查看大图</button>
+        <button class="gen-toolbar-btn" onclick="downloadImage()">⬇ 下载图片</button>
       </div>
       <div id="imgRating"></div>
     </div>
@@ -2401,6 +2430,7 @@ async function genImage(){
   document.getElementById('imgPlaceholder').style.display = 'none';
   document.getElementById('imgLoading').style.display = 'block';
   document.getElementById('imgResult').style.display = 'none';
+  document.getElementById('imgToolbar').classList.remove('show');
 
   try{
     const resp = await fetch('/api', {
@@ -2412,6 +2442,7 @@ async function genImage(){
       document.getElementById('imgLoading').style.display = 'none';
       document.getElementById('imgResult').src = data.image_url;
       document.getElementById('imgResult').style.display = 'block';
+      document.getElementById('imgToolbar').classList.add('show');
       saveAsset('image', prompt, data.image_url);
 
       // 保存历史并显示评分
@@ -3173,6 +3204,35 @@ function saveFeedbackResult() {
   if (typeof loadFeedbackList === 'function') {
     loadFeedbackList();
   }
+}
+</script>
+
+<!-- 图片灯箱 -->
+<div class="img-lightbox" id="imgLightbox" onclick="closeLightbox(event)">
+  <button class="img-lightbox-close" onclick="closeLightbox(event)">✕</button>
+  <img id="lightboxImg" src="" onclick="event.stopPropagation()">
+</div>
+
+<script>
+function openLightbox(src){
+  if(!src) return;
+  document.getElementById('lightboxImg').src = src;
+  document.getElementById('imgLightbox').classList.add('show');
+}
+function closeLightbox(e){
+  if(e.target === document.getElementById('lightboxImg')) return;
+  document.getElementById('imgLightbox').classList.remove('show');
+}
+function downloadImage(){
+  const src = document.getElementById('imgResult').src;
+  if(!src) return;
+  const a = document.createElement('a');
+  a.href = src;
+  a.download = 'mengli-image-' + Date.now() + '.png';
+  a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 </script>
 
