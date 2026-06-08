@@ -1,0 +1,9 @@
+.git
+.vercel
+.vscode
+.env.local
+.env.preview.local
+*.backup
+node_modules
+__pycache__
+*.pyc

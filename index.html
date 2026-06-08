@@ -1052,6 +1052,303 @@ tbody tr:hover{
 .star-rating-msg.success {
   color: #10B981;
 }
+
+/* 反馈按钮 */
+.feedback-btn {
+  background: none;
+  border: 1px solid #E5E7EB;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: #6B7280;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-left: 8px;
+}
+.feedback-btn:hover {
+  border-color: #F4845F;
+  color: #F4845F;
+  background: #FFF7ED;
+}
+
+/* 反馈对话框 */
+.feedback-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
+  z-index: 10000;
+  justify-content: center;
+  align-items: center;
+}
+.feedback-modal.show {
+  display: flex;
+}
+.feedback-modal-content {
+  background: white;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 700px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.feedback-modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #E5E7EB;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.feedback-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #1F2937;
+}
+.feedback-modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #9CA3AF;
+  padding: 4px;
+}
+.feedback-modal-body {
+  padding: 24px;
+}
+.feedback-original {
+  background: #F9FAFB;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #374151;
+}
+.feedback-input {
+  width: 100%;
+  min-height: 100px;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 14px;
+  resize: vertical;
+  font-family: inherit;
+}
+.feedback-input:focus {
+  outline: none;
+  border-color: #F4845F;
+  box-shadow: 0 0 0 3px rgba(244,132,95,0.1);
+}
+.feedback-modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid #E5E7EB;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.feedback-cancel-btn {
+  padding: 10px 20px;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  font-size: 14px;
+}
+.feedback-submit-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #F4845F, #E74C3C);
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.feedback-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 改进结果 */
+.feedback-result {
+  display: none;
+}
+.feedback-result-content {
+  background: #F0FDF4;
+  border: 1px solid #86EFAC;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.feedback-changes {
+  margin-bottom: 16px;
+}
+.feedback-changes h4 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: #374151;
+}
+.feedback-change-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #F3F4F6;
+  font-size: 13px;
+}
+.feedback-change-item:last-child {
+  border-bottom: none;
+}
+.feedback-learnings {
+  background: #EFF6FF;
+  border: 1px solid #93C5FD;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+  color: #1E40AF;
+}
+
+/* 反馈库 */
+.feedback-grid {
+  display: grid;
+  gap: 20px;
+  padding: 24px;
+}
+.feedback-card {
+  background: white;
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.feedback-card-header {
+  padding: 16px 20px;
+  background: #F9FAFB;
+  border-bottom: 1px solid #E5E7EB;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.feedback-card-type {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #DBEAFE;
+  color: #1D4ED8;
+}
+.feedback-card-date {
+  font-size: 12px;
+  color: #9CA3AF;
+}
+.feedback-card-body {
+  padding: 20px;
+}
+.feedback-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.feedback-compare-box {
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.feedback-compare-label {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 1px solid #E5E7EB;
+}
+.feedback-compare-label.before {
+  background: #FEF2F2;
+  color: #991B1B;
+}
+.feedback-compare-label.after {
+  background: #F0FDF4;
+  color: #166534;
+}
+.feedback-compare-content {
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  max-height: 150px;
+  overflow-y: auto;
+}
+.feedback-card-feedback {
+  padding: 12px;
+  background: #FFF7ED;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.feedback-card-feedback strong {
+  color: #92400E;
+}
+.feedback-card-changes {
+  margin-bottom: 12px;
+}
+.feedback-card-changes h4 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  color: #374151;
+}
+.feedback-card-change {
+  font-size: 12px;
+  padding: 4px 0;
+  color: #6B7280;
+}
+.feedback-card-learning {
+  background: #EFF6FF;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 12px;
+  color: #1E40AF;
+}
+
+/* 评分筛选 */
+.rating-filter {
+  display: flex;
+  gap: 8px;
+  padding: 0 24px 16px;
+  flex-wrap: wrap;
+}
+.rating-filter-btn {
+  padding: 6px 12px;
+  border: 1px solid #E5E7EB;
+  border-radius: 20px;
+  background: white;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.rating-filter-btn:hover {
+  border-color: #F4845F;
+}
+.rating-filter-btn.active {
+  background: #F4845F;
+  color: white;
+  border-color: #F4845F;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .feedback-compare {
+    grid-template-columns: 1fr;
+  }
+  .feedback-modal-content {
+    width: 95%;
+    max-height: 90vh;
+  }
+}
 </style>
 </head>
 <body>
@@ -1627,12 +1924,33 @@ tbody tr:hover{
     <button class="assets-tab" onclick="switchAssetsTab('image',this)">图片</button>
     <button class="assets-tab" onclick="switchAssetsTab('copy',this)">文案</button>
     <button class="assets-tab" onclick="switchAssetsTab('article',this)">写稿</button>
+    <button class="assets-tab" onclick="switchAssetsTab('feedback',this)">⭐ 反馈库</button>
   </div>
 
+  <!-- 评分筛选（仅素材标签页显示） -->
+  <div class="rating-filter" id="ratingFilter">
+    <button class="rating-filter-btn active" onclick="filterByRating('all',this)">全部</button>
+    <button class="rating-filter-btn" onclick="filterByRating(5,this)">★★★★★</button>
+    <button class="rating-filter-btn" onclick="filterByRating(4,this)">★★★★</button>
+    <button class="rating-filter-btn" onclick="filterByRating(3,this)">★★★</button>
+    <button class="rating-filter-btn" onclick="filterByRating(2,this)">★★</button>
+    <button class="rating-filter-btn" onclick="filterByRating(1,this)">★</button>
+  </div>
+
+  <!-- 素材列表 -->
   <div class="assets-grid" id="assetsGrid">
     <div class="asset-empty">
       <div class="icon">📁</div>
       <h3>暂无素材，去生成图片或文案吧</h3>
+    </div>
+  </div>
+
+  <!-- 反馈库列表 -->
+  <div class="feedback-grid" id="feedbackGrid" style="display:none">
+    <div class="asset-empty">
+      <div class="icon">💬</div>
+      <h3>暂无反馈记录</h3>
+      <p>在生成内容后点击"反馈改进"按钮添加反馈</p>
     </div>
   </div>
 </div>
@@ -2037,12 +2355,12 @@ async function genImage(){
       // 保存历史并显示评分
       if(isLoggedIn()){
         saveGenerationHistory('image_gen', {prompt, size:imgSize}, data.image_url).then(historyId => {
-          if(historyId) createStarRating('imgRating', historyId);
+          if(historyId) createStarRating('imgRating', historyId, prompt, 'image_gen');
         });
         savePreference('img_size', imgSize);
       } else {
         // 未登录也显示评分（但不保存）
-        createStarRating('imgRating', null);
+        createStarRating('imgRating', null, prompt, 'image_gen');
       }
     } else {
       document.getElementById('imgLoading').style.display = 'none';
@@ -2100,13 +2418,13 @@ async function genCopy(){
       const inputParams = {type, brand, platform, product, prompt:extra};
       if(isLoggedIn()){
         saveGenerationHistory('copywriting', inputParams, data.text).then(historyId => {
-          if(historyId) createStarRating('copyRating', historyId);
+          if(historyId) createStarRating('copyRating', historyId, data.text, 'copywriting');
         });
         if(type) savePreference('copy_type', type);
         if(brand) savePreference('copy_brand', brand);
         if(platform) savePreference('copy_platform', platform);
       } else {
-        createStarRating('copyRating', null);
+        createStarRating('copyRating', null, data.text, 'copywriting');
       }
     }
   } catch(e){
@@ -2226,12 +2544,12 @@ async function genArticle(){
       const inputParams = {type, brand, topic, audience, points, prompt:extra};
       if(isLoggedIn()){
         saveGenerationHistory('article', inputParams, data.text).then(historyId => {
-          if(historyId) createStarRating('articleRating', historyId);
+          if(historyId) createStarRating('articleRating', historyId, data.text, 'article');
         });
         if(type) savePreference('article_type', type);
         if(brand) savePreference('article_brand', brand);
       } else {
-        createStarRating('articleRating', null);
+        createStarRating('articleRating', null, data.text, 'article');
       }
     }
   } catch(e){
@@ -2251,16 +2569,26 @@ function copyArticle(){
 }
 
 // ========== ASSETS ==========
-function saveAsset(type, title, content){
+function saveAsset(type, title, content, rating){
   const asset = {
     id: Date.now(),
     type,
     title,
     content,
+    rating: rating || null,
     date: new Date().toLocaleDateString('zh-CN')
   };
   assets.unshift(asset);
   localStorage.setItem('menlil_assets', JSON.stringify(assets));
+}
+
+// 更新素材评分
+function updateAssetRating(content, rating){
+  const asset = assets.find(a => a.content === content);
+  if(asset){
+    asset.rating = rating;
+    localStorage.setItem('menlil_assets', JSON.stringify(assets));
+  }
 }
 
 function renderAssets(){
@@ -2274,6 +2602,10 @@ function renderAssets(){
   if(search){
     filtered = filtered.filter(a => a.title.toLowerCase().includes(search));
   }
+  // 评分筛选
+  if(currentRatingFilter !== 'all'){
+    filtered = filtered.filter(a => a.rating && a.rating >= currentRatingFilter && a.rating < currentRatingFilter + 1);
+  }
 
   if(filtered.length === 0){
     grid.innerHTML = '<div class="asset-empty"><div class="icon">📁</div><h3>暂无素材，去生成图片或文案吧</h3></div>';
@@ -2281,12 +2613,14 @@ function renderAssets(){
   }
 
   grid.innerHTML = filtered.map(asset => {
+    const ratingHtml = asset.rating ? `<div style="font-size:11px;color:#F59E0B;margin-top:4px">${'★'.repeat(asset.rating)}${'☆'.repeat(5-asset.rating)}</div>` : '';
     if(asset.type === 'image'){
       return `<div class="asset-card" onclick="openLightbox('${asset.content}')">
         <div class="asset-preview"><img src="${asset.content}" alt="${asset.title}"></div>
         <div class="asset-info">
           <div class="asset-title">${asset.title}</div>
           <div class="asset-meta">图片 · ${asset.date}</div>
+          ${ratingHtml}
         </div>
       </div>`;
     } else {
@@ -2297,6 +2631,7 @@ function renderAssets(){
         <div class="asset-info">
           <div class="asset-title">${asset.title}</div>
           <div class="asset-meta">${typeLabel} · ${asset.date}</div>
+          ${ratingHtml}
         </div>
       </div>`;
     }
@@ -2307,11 +2642,103 @@ function switchAssetsTab(tab, btn){
   currentAssetTab = tab;
   document.querySelectorAll('.assets-tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  renderAssets();
+
+  const assetsGrid = document.getElementById('assetsGrid');
+  const feedbackGrid = document.getElementById('feedbackGrid');
+  const ratingFilter = document.getElementById('ratingFilter');
+
+  if(tab === 'feedback'){
+    assetsGrid.style.display = 'none';
+    feedbackGrid.style.display = 'grid';
+    ratingFilter.style.display = 'none';
+    loadFeedbackList();
+  } else {
+    assetsGrid.style.display = 'grid';
+    feedbackGrid.style.display = 'none';
+    ratingFilter.style.display = 'flex';
+    renderAssets();
+  }
 }
 
 function filterAssets(){
   renderAssets();
+}
+
+// 评分筛选
+let currentRatingFilter = 'all';
+
+function filterByRating(rating, btn){
+  currentRatingFilter = rating;
+  document.querySelectorAll('.rating-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderAssets();
+}
+
+// 加载反馈列表
+async function loadFeedbackList(){
+  const grid = document.getElementById('feedbackGrid');
+
+  if(!isLoggedIn()){
+    grid.innerHTML = '<div class="asset-empty"><div class="icon">🔒</div><h3>请先登录</h3><p>登录后可查看反馈记录</p></div>';
+    return;
+  }
+
+  grid.innerHTML = '<div class="asset-empty"><div class="icon">⏳</div><h3>加载中...</h3></div>';
+
+  try {
+    const feedbackList = await getFeedbackList();
+    renderFeedbackList(feedbackList);
+  } catch(e) {
+    grid.innerHTML = '<div class="asset-empty"><div class="icon">❌</div><h3>加载失败</h3></div>';
+  }
+}
+
+// 渲染反馈列表
+function renderFeedbackList(list){
+  const grid = document.getElementById('feedbackGrid');
+
+  if(!list || list.length === 0){
+    grid.innerHTML = '<div class="asset-empty"><div class="icon">💬</div><h3>暂无反馈记录</h3><p>在生成内容后点击"反馈改进"按钮添加反馈</p></div>';
+    return;
+  }
+
+  const typeLabels = { copywriting: '文案', article: '写稿', image_gen: '图片' };
+
+  grid.innerHTML = list.map(item => {
+    const date = new Date(item.created_at).toLocaleDateString('zh-CN');
+    const typeLabel = typeLabels[item.gen_type] || item.gen_type;
+    const changes = item.changes_summary || [];
+    const changesHtml = changes.map(c => `<div class="feedback-card-change">• ${c}</div>`).join('');
+
+    return `
+      <div class="feedback-card">
+        <div class="feedback-card-header">
+          <div>
+            <span class="feedback-card-type">${typeLabel}</span>
+            ${item.rating ? `<span style="margin-left:8px;font-size:12px;color:#9CA3AF">原评分：${'★'.repeat(item.rating)}</span>` : ''}
+          </div>
+          <span class="feedback-card-date">${date}</span>
+        </div>
+        <div class="feedback-card-body">
+          <div class="feedback-compare">
+            <div class="feedback-compare-box">
+              <div class="feedback-compare-label before">❌ 反馈前</div>
+              <div class="feedback-compare-content">${item.original_content}</div>
+            </div>
+            <div class="feedback-compare-box">
+              <div class="feedback-compare-label after">✅ 反馈后</div>
+              <div class="feedback-compare-content">${item.improved_content || '无'}</div>
+            </div>
+          </div>
+          <div class="feedback-card-feedback">
+            <strong>💬 用户反馈：</strong>${item.feedback_text}
+          </div>
+          ${changesHtml ? `<div class="feedback-card-changes"><h4>📝 修改说明</h4>${changesHtml}</div>` : ''}
+          ${item.learnings ? `<div class="feedback-card-learning"><strong>🧠 学习记录：</strong>${item.learnings}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 // ========== LIGHTBOX ==========
@@ -2423,12 +2850,16 @@ if (typeof originalUpdateAuthUI === 'function') {
 
 // ========== STAR RATING SYSTEM ==========
 const ratingHistoryIds = {}; // 存储每个生成的历史ID
+const ratingContents = {}; // 存储每个生成的内容
+const ratingTypes = {}; // 存储每个生成的类型
 
-function createStarRating(containerId, historyId) {
+function createStarRating(containerId, historyId, content, genType) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
   ratingHistoryIds[containerId] = historyId;
+  ratingContents[containerId] = content || '';
+  ratingTypes[containerId] = genType || 'copywriting';
 
   container.innerHTML = `
     <div class="star-rating">
@@ -2440,6 +2871,7 @@ function createStarRating(containerId, historyId) {
         <span class="star" data-value="4" onclick="rateGeneration('${containerId}', 4)">★</span>
         <span class="star" data-value="5" onclick="rateGeneration('${containerId}', 5)">★</span>
       </div>
+      <button class="feedback-btn" onclick="openFeedbackFromRating('${containerId}')">💬 反馈改进</button>
       <span class="star-rating-msg" id="${containerId}_msg">点击星星评分</span>
     </div>
   `;
@@ -2459,8 +2891,24 @@ function createStarRating(containerId, historyId) {
   });
 }
 
+// 从评分组件打开反馈对话框
+function openFeedbackFromRating(containerId) {
+  const historyId = ratingHistoryIds[containerId];
+  const content = ratingContents[containerId];
+  const genType = ratingTypes[containerId];
+  const rating = document.querySelectorAll(`#${containerId}_stars .star.active`).length || null;
+
+  if (!content) {
+    alert('没有可反馈的内容');
+    return;
+  }
+
+  openFeedbackModal(historyId, genType, content, rating);
+}
+
 async function rateGeneration(containerId, rating) {
   const historyId = ratingHistoryIds[containerId];
+  const content = ratingContents[containerId];
 
   const stars = document.querySelectorAll(`#${containerId}_stars .star`);
   stars.forEach(s => {
@@ -2475,6 +2923,11 @@ async function rateGeneration(containerId, rating) {
   // 保存评分到数据库（如果已登录且有 historyId）
   if(historyId && isLoggedIn()){
     await updateGenerationRating(historyId, rating);
+  }
+
+  // 更新素材库中的评分
+  if(content){
+    updateAssetRating(content, rating);
   }
 
   // 3秒后隐藏提示
@@ -2498,6 +2951,167 @@ render();
       us.innerHTML = '<button onclick="showLoginModal()" style="padding:8px 24px;background:#F4845F;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-left:auto;">登录</button>';
     }
   }, 2000);
+</script>
+
+<!-- 反馈对话框 -->
+<div class="feedback-modal" id="feedbackModal">
+  <div class="feedback-modal-content">
+    <div class="feedback-modal-header">
+      <h3>💬 反馈改进</h3>
+      <button class="feedback-modal-close" onclick="closeFeedbackModal()">&times;</button>
+    </div>
+
+    <!-- 反馈输入 -->
+    <div class="feedback-modal-body" id="feedbackInputSection">
+      <label style="font-size:14px;color:#374151;font-weight:600;display:block;margin-bottom:8px">原始内容</label>
+      <div class="feedback-original" id="feedbackOriginal"></div>
+
+      <label style="font-size:14px;color:#374151;font-weight:600;display:block;margin-bottom:8px;margin-top:16px">请描述不满意的地方</label>
+      <textarea class="feedback-input" id="feedbackText" placeholder="例如：语气太生硬、卖点不够突出、开头不够吸引人..."></textarea>
+    </div>
+
+    <!-- 改进结果 -->
+    <div class="feedback-result" id="feedbackResultSection">
+      <label style="font-size:14px;color:#374151;font-weight:600;display:block;margin-bottom:8px">改进后内容</label>
+      <div class="feedback-result-content" id="feedbackImproved"></div>
+
+      <div class="feedback-changes" id="feedbackChanges">
+        <h4>📝 修改说明</h4>
+        <div id="feedbackChangesList"></div>
+      </div>
+
+      <div class="feedback-learnings" id="feedbackLearnings"></div>
+    </div>
+
+    <div class="feedback-modal-footer">
+      <button class="feedback-cancel-btn" onclick="closeFeedbackModal()">关闭</button>
+      <button class="feedback-submit-btn" id="feedbackSubmitBtn" onclick="submitFeedback()">🚀 开始改进</button>
+      <button class="feedback-submit-btn" id="feedbackSaveBtn" onclick="saveFeedbackResult()" style="display:none;background:linear-gradient(135deg,#10B981,#059669)">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// 反馈相关变量
+let feedbackData = {
+  history_id: null,
+  gen_type: '',
+  original_content: '',
+  rating: null
+};
+
+// 打开反馈对话框
+function openFeedbackModal(historyId, genType, originalContent, rating) {
+  feedbackData = { history_id: historyId, gen_type: genType, original_content: originalContent, rating: rating };
+
+  document.getElementById('feedbackOriginal').textContent = originalContent;
+  document.getElementById('feedbackText').value = '';
+  document.getElementById('feedbackImproved').textContent = '';
+  document.getElementById('feedbackChangesList').innerHTML = '';
+  document.getElementById('feedbackLearnings').textContent = '';
+
+  document.getElementById('feedbackInputSection').style.display = 'block';
+  document.getElementById('feedbackResultSection').style.display = 'none';
+  document.getElementById('feedbackSubmitBtn').style.display = 'inline-block';
+  document.getElementById('feedbackSubmitBtn').disabled = false;
+  document.getElementById('feedbackSubmitBtn').textContent = '🚀 开始改进';
+  document.getElementById('feedbackSaveBtn').style.display = 'none';
+
+  document.getElementById('feedbackModal').classList.add('show');
+}
+
+// 关闭反馈对话框
+function closeFeedbackModal() {
+  document.getElementById('feedbackModal').classList.remove('show');
+}
+
+// 提交反馈
+async function submitFeedback() {
+  const feedbackText = document.getElementById('feedbackText').value.trim();
+  if (!feedbackText) {
+    alert('请描述不满意的地方');
+    return;
+  }
+
+  const btn = document.getElementById('feedbackSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = '改进中...';
+
+  try {
+    const resp = await fetch('/api', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'feedback',
+        original_content: feedbackData.original_content,
+        feedback_text: feedbackText,
+        gen_type: feedbackData.gen_type
+      })
+    });
+
+    const data = await resp.json();
+
+    if (data.error) {
+      alert('改进失败：' + data.error);
+      btn.disabled = false;
+      btn.textContent = '🚀 开始改进';
+      return;
+    }
+
+    // 显示结果
+    document.getElementById('feedbackInputSection').style.display = 'none';
+    document.getElementById('feedbackResultSection').style.display = 'block';
+    document.getElementById('feedbackImproved').textContent = data.improved_content || '';
+
+    // 显示修改说明
+    const changesList = document.getElementById('feedbackChangesList');
+    changesList.innerHTML = '';
+    if (data.changes_summary && data.changes_summary.length > 0) {
+      data.changes_summary.forEach(change => {
+        const div = document.createElement('div');
+        div.className = 'feedback-change-item';
+        div.innerHTML = '<span>•</span><span>' + change + '</span>';
+        changesList.appendChild(div);
+      });
+    }
+
+    // 显示学习记录
+    const learningsDiv = document.getElementById('feedbackLearnings');
+    if (data.learnings) {
+      learningsDiv.innerHTML = '<strong>🧠 学习记录：</strong>' + data.learnings;
+      learningsDiv.style.display = 'block';
+    } else {
+      learningsDiv.style.display = 'none';
+    }
+
+    // 保存到数据库
+    const feedbackId = await saveFeedback({
+      ...feedbackData,
+      feedback_text: feedbackText,
+      improved_content: data.improved_content,
+      changes_summary: data.changes_summary,
+      learnings: data.learnings
+    });
+
+    btn.style.display = 'none';
+    document.getElementById('feedbackSaveBtn').style.display = 'inline-block';
+
+  } catch (e) {
+    alert('改进失败：' + e.message);
+    btn.disabled = false;
+    btn.textContent = '🚀 开始改进';
+  }
+}
+
+// 保存反馈结果
+function saveFeedbackResult() {
+  alert('已保存到反馈库！');
+  closeFeedbackModal();
+  // 如果在反馈库页面，刷新列表
+  if (typeof loadFeedbackList === 'function') {
+    loadFeedbackList();
+  }
+}
 </script>
 
 </body>

@@ -188,6 +188,53 @@ def chat(body):
     return {"text": text}
 
 
+FEEDBACK_PROMPT = """你是内容优化专家。用户对生成的内容不满意，请根据反馈进行改进。
+
+要求：
+1. 根据用户反馈改进内容，保持原有风格和意图
+2. 用简洁的中文列出修改了哪些地方
+3. 总结学习到了什么（用户偏好）
+
+返回 JSON 格式：
+{
+  "improved_content": "改进后的完整内容",
+  "changes_summary": ["修改点1", "修改点2", "修改点3"],
+  "learnings": "学习总结：用户偏好..."
+}
+
+只返回 JSON，不要其他内容。"""
+
+
+def feedback(body):
+    """处理用户反馈，改进内容"""
+    original = body.get("original_content", "")
+    feedback_text = body.get("feedback_text", "")
+    gen_type = body.get("gen_type", "copywriting")
+
+    if not original:
+        return {"error": "缺少原始内容"}
+    if not feedback_text:
+        return {"error": "请描述不满意的地方"}
+
+    prompt = f"原始内容（类型：{gen_type}）：\n{original}\n\n用户反馈：\n{feedback_text}"
+
+    try:
+        content = call_mimo(FEEDBACK_PROMPT, prompt, temperature=0.7)
+        # 去掉 markdown 代码块
+        content = re.sub(r'^```(?:json)?\s*\n?', '', content)
+        content = re.sub(r'\n?```$', '', content)
+        result = json.loads(content)
+        return result
+    except json.JSONDecodeError:
+        return {
+            "improved_content": content,
+            "changes_summary": ["内容已优化"],
+            "learnings": "根据用户反馈进行了改进"
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -204,6 +251,8 @@ class handler(BaseHTTPRequestHandler):
             result = article(body)
         elif action == "chat":
             result = chat(body)
+        elif action == "feedback":
+            result = feedback(body)
         else:
             result = {"error": f"未知 action: {action}"}
 

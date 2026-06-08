@@ -1574,6 +1574,64 @@ async function getHighRatedExamples(genType, limit = 3) {
     }
 }
 
+/**
+ * 保存反馈记录
+ */
+async function saveFeedback(feedbackData) {
+    if (!isLoggedIn() || !supabase) return null;
+
+    try {
+        const { data, error } = await supabase
+            .from('feedback')
+            .insert({
+                user_id: currentUser.id,
+                history_id: feedbackData.history_id || null,
+                gen_type: feedbackData.gen_type,
+                original_content: feedbackData.original_content,
+                feedback_text: feedbackData.feedback_text,
+                improved_content: feedbackData.improved_content,
+                changes_summary: feedbackData.changes_summary,
+                learnings: feedbackData.learnings,
+                rating: feedbackData.rating
+            })
+            .select('id')
+            .single();
+
+        if (error) throw error;
+        return data?.id;
+    } catch (e) {
+        console.warn('保存反馈失败:', e);
+        return null;
+    }
+}
+
+/**
+ * 获取反馈列表
+ */
+async function getFeedbackList(genType = null, limit = 50) {
+    if (!isLoggedIn() || !supabase) return [];
+
+    try {
+        let query = supabase
+            .from('feedback')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+        if (genType) {
+            query = query.eq('gen_type', genType);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        console.warn('获取反馈列表失败:', e);
+        return [];
+    }
+}
+
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('初始化权限系统...');
