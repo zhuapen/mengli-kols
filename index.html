@@ -1928,7 +1928,7 @@ async function aiSearch(){
   try{
     const resp = await fetch('/api', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ query, platform: currentPlatform })
+      body: JSON.stringify({ action:'kol_search', query, platform: currentPlatform })
     });
     const data = await resp.json();
 
