@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler
 
 # === API 配置 ===
 MIMO_KEY = os.environ.get("XIAOMI_API_KEY", "")
-MIMO_URL = "https://api.xiaomimimo.com/v1/chat/completions"
+MIMO_URL = "https://token-plan-cn.xiaomimimo.com/anthropic/v1/messages"
 IMG_KEY = os.environ.get("OPENAI_API_KEY", "")
 IMG_URL = os.environ.get("OPENAI_BASE_URL", "https://ai.t8star.org/v1") + "/images/generations"
 
@@ -77,23 +77,27 @@ ARTICLE_PROMPT = """你是专业的公众号文章创作者，擅长撰写高质
 
 
 def call_mimo(system_prompt, user_prompt, temperature=0):
-    """调用小米 MiMo API"""
+    """调用小米 MiMo API (Anthropic 格式)"""
     try:
         req = Request(MIMO_URL, data=json.dumps({
             "model": "mimo-v2.5-pro",
+            "system": system_prompt,
             "messages": [
-                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
             "temperature": temperature,
             "max_tokens": 4000
         }).encode(), headers={
-            "Authorization": f"Bearer {MIMO_KEY}",
+            "x-api-key": MIMO_KEY,
+            "anthropic-version": "2023-06-01",
             "Content-Type": "application/json"
         })
         resp = urlopen(req, timeout=180)
         data = json.loads(resp.read())
-        return data["choices"][0]["message"]["content"].strip()
+        # Anthropic 格式：content 是数组，提取 text 类型的内容
+        content_blocks = data.get("content", [])
+        text_parts = [b["text"] for b in content_blocks if b.get("type") == "text"]
+        return "\n".join(text_parts).strip()
     except Exception as e:
         return f"ERROR: {e}"
 
