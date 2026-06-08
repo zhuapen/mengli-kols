@@ -180,6 +180,84 @@ def image_gen(body):
         return {"error": str(e)}
 
 
+def image_edit(body):
+    """图生图：传入参考图 + 修改要求，生成新图"""
+    prompt = body.get("prompt", "")
+    images = body.get("images", [])  # base64 数组，最多3张
+    size = body.get("size", "1024x1024")
+    if not images:
+        return {"error": "请上传参考图片"}
+    if not prompt:
+        return {"error": "请输入修改要求"}
+
+    # 去掉 data:image/xxx;base64, 前缀，只保留纯 base64
+    clean_images = []
+    for img in images:
+        if "," in img:
+            img = img.split(",", 1)[1]
+        clean_images.append(img)
+
+    # 方式A：尝试 /images/edits 端点
+    edits_url = IMG_URL.replace("/images/generations", "/images/edits")
+    try:
+        import base64, io, mimetypes
+        # 构造 multipart/form-data 请求
+        boundary = "----FormBoundary" + str(hash(prompt))[:16]
+        parts = []
+
+        # 第一张图作为 image
+        img_data = base64.b64decode(clean_images[0])
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="image"; filename="ref.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + img_data)
+
+        # 如果有多张图，作为额外的 reference images
+        for i, img_b64 in enumerate(clean_images[1:], 1):
+            img_data = base64.b64decode(img_b64)
+            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="image{i}"; filename="ref{i}.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + img_data)
+
+        # prompt 字段
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n{prompt}'.encode())
+        # model 字段
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\ngpt-image-2-all'.encode())
+        # size 字段
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="size"\r\n\r\n{size}'.encode())
+        # n 字段
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="n"\r\n\r\n1'.encode())
+
+        body_bytes = b"\r\n".join(parts) + f"\r\n--{boundary}--\r\n".encode()
+        req = Request(edits_url, data=body_bytes, headers={
+            "Authorization": f"Bearer {IMG_KEY}",
+            "Content-Type": f"multipart/form-data; boundary={boundary}"
+        })
+        resp = urlopen(req, timeout=120)
+        data = json.loads(resp.read())
+        image_url = data["data"][0]["url"] if data.get("data") else data.get("url", "")
+        return {"image_url": image_url, "method": "edits"}
+    except Exception:
+        pass
+
+    # 方式B：回退到 /images/generations，在 prompt 中描述参考图
+    try:
+        enhanced_prompt = f"基于以下参考图片进行修改：{prompt}"
+        req = Request(IMG_URL, data=json.dumps({
+            "model": "gpt-image-2-all",
+            "prompt": enhanced_prompt,
+            "n": 1,
+            "size": size,
+            "quality": "medium",
+            "image": clean_images[0],
+            "images": clean_images if len(clean_images) > 1 else None
+        }).encode(), headers={
+            "Authorization": f"Bearer {IMG_KEY}",
+            "Content-Type": "application/json"
+        })
+        resp = urlopen(req, timeout=120)
+        data = json.loads(resp.read())
+        image_url = data["data"][0]["url"] if data.get("data") else data.get("url", "")
+        return {"image_url": image_url, "method": "generations"}
+    except Exception as e:
+        return {"error": f"图生图失败：{e}"}
+
+
 def chat(body):
     query = body.get("query", "")
     if not query:
@@ -247,6 +325,8 @@ class handler(BaseHTTPRequestHandler):
             result = copywriting(body)
         elif action == "image_gen":
             result = image_gen(body)
+        elif action == "image_edit":
+            result = image_edit(body)
         elif action == "article":
             result = article(body)
         elif action == "chat":
