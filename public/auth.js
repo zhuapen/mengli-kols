@@ -162,6 +162,9 @@ async function handleLogin(user) {
 
     // 应用权限控制
     applyPermissions();
+
+    // 登录后自动迁移 localStorage 数据到 Supabase
+    migrateLocalStorageToSupabase();
 }
 
 /**
@@ -1629,6 +1632,234 @@ async function getFeedbackList(genType = null, limit = 50) {
     } catch (e) {
         console.warn('获取反馈列表失败:', e);
         return [];
+    }
+}
+
+/**
+ * 获取生成历史列表
+ */
+async function getGenerationHistoryList(genType = null, limit = 50) {
+    if (!isLoggedIn() || !supabase) return [];
+
+    try {
+        let query = supabase
+            .from('generation_history')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+        if (genType && genType !== 'all') {
+            query = query.eq('gen_type', genType);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        console.warn('获取生成历史失败:', e);
+        return [];
+    }
+}
+
+// ========== USER ASSETS (素材库 Supabase) ==========
+
+async function saveUserAsset(asset) {
+    if (!isLoggedIn() || !supabase) return null;
+    try {
+        const { data, error } = await supabase
+            .from('user_assets')
+            .insert({
+                user_id: currentUser.id,
+                id: asset.id,
+                type: asset.type,
+                title: asset.title,
+                content: asset.content,
+                rating: asset.rating || null
+            })
+            .select('id')
+            .single();
+        if (error) throw error;
+        return data?.id;
+    } catch (e) {
+        console.warn('保存素材失败:', e);
+        return null;
+    }
+}
+
+async function getUserAssets() {
+    if (!isLoggedIn() || !supabase) return [];
+    try {
+        const { data, error } = await supabase
+            .from('user_assets')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        console.warn('获取素材失败:', e);
+        return [];
+    }
+}
+
+async function updateUserAssetRating(id, rating) {
+    if (!isLoggedIn() || !supabase) return;
+    try {
+        await supabase.from('user_assets').update({ rating }).eq('id', id).eq('user_id', currentUser.id);
+    } catch (e) {
+        console.warn('更新素材评分失败:', e);
+    }
+}
+
+async function deleteUserAssets(ids) {
+    if (!isLoggedIn() || !supabase || !ids.length) return;
+    try {
+        await supabase.from('user_assets').delete().in('id', ids).eq('user_id', currentUser.id);
+    } catch (e) {
+        console.warn('删除素材失败:', e);
+    }
+}
+
+// ========== USER BRANDS (自定义品牌 Supabase) ==========
+
+async function saveUserBrand(brand) {
+    if (!isLoggedIn() || !supabase) return;
+    try {
+        await supabase.from('user_brands').upsert({
+            id: brand.id,
+            user_id: currentUser.id,
+            name: brand.name,
+            description: brand.desc || '',
+            tone: brand.tone || '',
+            selling_points: brand.points || ''
+        }, { onConflict: 'id' });
+    } catch (e) {
+        console.warn('保存品牌失败:', e);
+    }
+}
+
+async function getUserBrands() {
+    if (!isLoggedIn() || !supabase) return [];
+    try {
+        const { data, error } = await supabase
+            .from('user_brands')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        return (data || []).map(b => ({
+            id: b.id,
+            name: b.name,
+            desc: b.description,
+            tone: b.tone,
+            points: b.selling_points
+        }));
+    } catch (e) {
+        console.warn('获取品牌失败:', e);
+        return [];
+    }
+}
+
+async function deleteUserBrand(id) {
+    if (!isLoggedIn() || !supabase) return;
+    try {
+        await supabase.from('user_brands').delete().eq('id', id).eq('user_id', currentUser.id);
+    } catch (e) {
+        console.warn('删除品牌失败:', e);
+    }
+}
+
+// ========== USER TEMPLATES (提示词模板 Supabase) ==========
+
+async function saveUserTemplate(tpl) {
+    if (!isLoggedIn() || !supabase) return;
+    try {
+        await supabase.from('user_templates').upsert({
+            id: tpl.id,
+            user_id: currentUser.id,
+            name: tpl.name,
+            prompt: tpl.prompt,
+            size: tpl.size || '1024x1024'
+        }, { onConflict: 'id' });
+    } catch (e) {
+        console.warn('保存模板失败:', e);
+    }
+}
+
+async function getUserTemplates() {
+    if (!isLoggedIn() || !supabase) return [];
+    try {
+        const { data, error } = await supabase
+            .from('user_templates')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        return (data || []).map(t => ({
+            id: t.id,
+            name: t.name,
+            prompt: t.prompt,
+            size: t.size
+        }));
+    } catch (e) {
+        console.warn('获取模板失败:', e);
+        return [];
+    }
+}
+
+async function deleteUserTemplate(id) {
+    if (!isLoggedIn() || !supabase) return;
+    try {
+        await supabase.from('user_templates').delete().eq('id', id).eq('user_id', currentUser.id);
+    } catch (e) {
+        console.warn('删除模板失败:', e);
+    }
+}
+
+// ========== LOCALSTORAGE → SUPABASE 一次性迁移 ==========
+
+async function migrateLocalStorageToSupabase() {
+    if (!isLoggedIn() || !supabase) return;
+
+    try {
+        // 1. 迁移素材
+        const localAssets = JSON.parse(localStorage.getItem('menlil_assets') || '[]');
+        if (localAssets.length > 0) {
+            const existing = await getUserAssets();
+            const existingIds = new Set(existing.map(a => String(a.id)));
+            const toMigrate = localAssets.filter(a => !existingIds.has(String(a.id)));
+            for (const asset of toMigrate) {
+                await saveUserAsset(asset);
+            }
+            console.log(`迁移了 ${toMigrate.length} 个素材到 Supabase`);
+        }
+
+        // 2. 迁移品牌
+        const localBrands = JSON.parse(localStorage.getItem('custom_brands') || '[]');
+        if (localBrands.length > 0) {
+            const existing = await getUserBrands();
+            const existingIds = new Set(existing.map(b => b.id));
+            const toMigrate = localBrands.filter(b => !existingIds.has(b.id));
+            for (const brand of toMigrate) {
+                await saveUserBrand(brand);
+            }
+            console.log(`迁移了 ${toMigrate.length} 个品牌到 Supabase`);
+        }
+
+        // 3. 迁移模板
+        const localTemplates = JSON.parse(localStorage.getItem('prompt_templates') || '[]');
+        if (localTemplates.length > 0) {
+            const existing = await getUserTemplates();
+            const existingIds = new Set(existing.map(t => t.id));
+            const toMigrate = localTemplates.filter(t => !existingIds.has(t.id));
+            for (const tpl of toMigrate) {
+                await saveUserTemplate(tpl);
+            }
+            console.log(`迁移了 ${toMigrate.length} 个模板到 Supabase`);
+        }
+    } catch (e) {
+        console.warn('localStorage 迁移失败:', e);
     }
 }
 

@@ -73,7 +73,10 @@ function showPage(page){
     render();
   }
   if(page === 'assets'){
-    renderAssets();
+    loadAssets().then(() => renderAssets());
+  }
+  if(page === 'history'){
+    renderHistory();
   }
 }
 
@@ -332,21 +335,40 @@ function switchImgMode(mode, btn){
 function handleImgUpload(event){
   const files = Array.from(event.target.files);
   if(!files.length) return;
+  processImgFiles(files);
+  event.target.value = '';
+}
+
+// 通用图片文件处理（点击上传 & 拖拽上传共用）
+function processImgFiles(files){
+  const imageFiles = files.filter(f => f.type.startsWith('image/'));
+  if(!imageFiles.length) return;
   const remaining = 3 - img2imgFiles.length;
-  if(remaining <= 0){ alert('最多上传3张图片'); event.target.value=''; return; }
-  const toAdd = files.slice(0, remaining);
+  if(remaining <= 0){ alert('最多上传3张图片'); return; }
+  const toAdd = imageFiles.slice(0, remaining);
   let loaded = 0;
   toAdd.forEach(file => {
     const reader = new FileReader();
     reader.onload = function(e){
       img2imgFiles.push(e.target.result);
       loaded++;
-      if(loaded === toAdd.length){
-        renderImg2imgGrid();
-        event.target.value = '';
-      }
+      if(loaded === toAdd.length) renderImg2imgGrid();
     };
     reader.readAsDataURL(file);
+  });
+}
+
+// 拖拽上传
+function initDragDrop(){
+  const zone = document.getElementById('imgUpload');
+  if(!zone) return;
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', e => { e.preventDefault(); zone.classList.remove('drag-over'); });
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const files = Array.from(e.dataTransfer.files);
+    processImgFiles(files);
   });
 }
 
@@ -564,6 +586,21 @@ function getCustomBrands(){
 function saveCustomBrands(brands){
   localStorage.setItem('custom_brands', JSON.stringify(brands));
 }
+
+// 从 Supabase 加载品牌并缓存到 localStorage
+async function loadCustomBrandsFromRemote(){
+  if(typeof getUserBrands === 'function' && isLoggedIn()){
+    try {
+      const remote = await getUserBrands();
+      if(remote.length > 0){
+        saveCustomBrands(remote);
+        return remote;
+      }
+    } catch(e){ console.warn('从 Supabase 加载品牌失败:', e); }
+  }
+  return getCustomBrands();
+}
+
 function openAddBrandModal(){
   document.getElementById('brandName').value = '';
   document.getElementById('brandDesc').value = '';
@@ -587,6 +624,10 @@ function saveBrand(){
   const brands = getCustomBrands();
   brands.push(brand);
   saveCustomBrands(brands);
+  // 登录时同步到 Supabase
+  if(typeof saveUserBrand === 'function' && isLoggedIn()){
+    saveUserBrand(brand);
+  }
   closeAddBrandModal();
   renderCustomBrands();
   refreshBrandSelects();
@@ -595,6 +636,10 @@ function deleteBrand(id){
   if(!confirm('确定删除该品牌？')) return;
   const brands = getCustomBrands().filter(b => b.id !== id);
   saveCustomBrands(brands);
+  // 登录时同步删除 Supabase
+  if(typeof deleteUserBrand === 'function' && isLoggedIn()){
+    deleteUserBrand(id);
+  }
   renderCustomBrands();
   refreshBrandSelects();
 }
@@ -738,6 +783,10 @@ function saveAsset(type, title, content, rating){
   };
   assets.unshift(asset);
   localStorage.setItem('menlil_assets', JSON.stringify(assets));
+  // 登录时同步到 Supabase
+  if(typeof saveUserAsset === 'function' && isLoggedIn()){
+    saveUserAsset(asset);
+  }
 }
 
 // 更新素材评分
@@ -746,7 +795,33 @@ function updateAssetRating(content, rating){
   if(asset){
     asset.rating = rating;
     localStorage.setItem('menlil_assets', JSON.stringify(assets));
+    // 登录时同步到 Supabase
+    if(typeof updateUserAssetRating === 'function' && isLoggedIn()){
+      updateUserAssetRating(asset.id, rating);
+    }
   }
+}
+
+// 加载素材（Supabase 或 localStorage）
+async function loadAssets(){
+  if(typeof getUserAssets === 'function' && isLoggedIn()){
+    try {
+      const remote = await getUserAssets();
+      if(remote.length > 0){
+        assets = remote.map(a => ({
+          id: a.id,
+          type: a.type,
+          title: a.title,
+          content: a.content,
+          rating: a.rating,
+          date: new Date(a.created_at).toLocaleDateString('zh-CN')
+        }));
+        return;
+      }
+    } catch(e){ console.warn('从 Supabase 加载素材失败，使用本地:', e); }
+  }
+  // 降级到 localStorage
+  assets = JSON.parse(localStorage.getItem('menlil_assets') || '[]');
 }
 
 function renderAssets(){
@@ -772,8 +847,11 @@ function renderAssets(){
 
   grid.innerHTML = filtered.map(asset => {
     const ratingHtml = asset.rating ? `<div style="font-size:11px;color:#F59E0B;margin-top:4px">${'★'.repeat(asset.rating)}${'☆'.repeat(5-asset.rating)}</div>` : '';
+    const selected = selectedAssets.has(asset.id);
+    const checkboxHtml = batchMode ? `<div class="batch-checkbox ${selected ? 'checked' : ''}" onclick="event.stopPropagation();toggleAssetSelect(${asset.id})">${selected ? '✓' : ''}</div>` : '';
     if(asset.type === 'image'){
-      return `<div class="asset-card" onclick="openLightbox('${asset.content}')">
+      return `<div class="asset-card ${selected ? 'selected' : ''}" data-id="${asset.id}" onclick="${batchMode ? `toggleAssetSelect(${asset.id})` : `openLightbox('${asset.content}')`}">
+        ${checkboxHtml}
         <div class="asset-preview"><img src="${asset.content}" alt="${asset.title}"></div>
         <div class="asset-info">
           <div class="asset-title">${asset.title}</div>
@@ -784,7 +862,8 @@ function renderAssets(){
     } else {
       const typeLabel = asset.type === 'article' ? '写稿' : '文案';
       const escapedContent = asset.content.replace(/'/g, "\\'").replace(/\n/g, "\\n");
-      return `<div class="asset-card" onclick="openTextModal('${asset.title}', '${escapedContent}')">
+      return `<div class="asset-card ${selected ? 'selected' : ''}" data-id="${asset.id}" onclick="${batchMode ? `toggleAssetSelect(${asset.id})` : `openTextModal('${asset.title}', '${escapedContent}')`}">
+        ${checkboxHtml}
         <div class="asset-preview" style="padding:20px;font-size:14px;color:var(--gray-600);text-align:left;overflow:hidden">${asset.content.substring(0,100)}...</div>
         <div class="asset-info">
           <div class="asset-title">${asset.title}</div>
@@ -1121,6 +1200,7 @@ async function rateGeneration(containerId, rating) {
 // ========== INIT ==========
 initFilters();
 render();
+initDragDrop();
 
 
   // 如果 auth.js 加载失败，确保登录按钮可见
@@ -1351,3 +1431,402 @@ function toggleCompare(){
     }
   });
 })();
+
+
+// ========== PROMPT TEMPLATES ==========
+const BUILTIN_TEMPLATES = [
+  { id:'builtin_1', name:'产品展示图', prompt:'产品名 产品描述，白色背景，专业产品摄影，柔和光线，高清细节', size:'1024x1024' },
+  { id:'builtin_2', name:'生活场景图', prompt:'温馨的生活场景，自然光线，真实感，高质量摄影', size:'1024x1024' },
+  { id:'builtin_3', name:'营销海报', prompt:'品牌营销海报，主题文字区域，吸引眼球的配色，专业设计感', size:'1024x1792' },
+  { id:'builtin_4', name:'社交媒体竖版', prompt:'适合小红书的竖版图片，清新风格，吸引眼球，高品质', size:'1024x1792' },
+  { id:'builtin_5', name:'横版Banner', prompt:'网站横幅广告，简洁大气，品牌色调，有号召力', size:'1792x1024' },
+];
+
+function getCustomTemplates(){
+  try{ return JSON.parse(localStorage.getItem('prompt_templates') || '[]'); }catch(e){ return []; }
+}
+function saveCustomTemplates(tpls){
+  localStorage.setItem('prompt_templates', JSON.stringify(tpls));
+}
+
+// 从 Supabase 加载模板并缓存到 localStorage
+async function loadCustomTemplatesFromRemote(){
+  if(typeof getUserTemplates === 'function' && isLoggedIn()){
+    try {
+      const remote = await getUserTemplates();
+      if(remote.length > 0){
+        saveCustomTemplates(remote);
+        return remote;
+      }
+    } catch(e){ console.warn('从 Supabase 加载模板失败:', e); }
+  }
+  return getCustomTemplates();
+}
+
+function toggleTemplatePanel(){
+  const panel = document.getElementById('templatePanel');
+  if(!panel) return;
+  panel.classList.toggle('show');
+  if(panel.classList.contains('show')) renderTemplatePanel();
+}
+
+function renderTemplatePanel(){
+  const panel = document.getElementById('templatePanel');
+  const customs = getCustomTemplates();
+  let html = '<div class="tpl-section"><div class="tpl-section-title">内置模板</div>';
+  BUILTIN_TEMPLATES.forEach(t => {
+    html += `<div class="tpl-item" onclick="applyTemplate('${t.prompt}','${t.size}')">
+      <div class="tpl-item-name">${t.name}</div>
+      <div class="tpl-item-preview">${t.prompt.substring(0,40)}...</div>
+    </div>`;
+  });
+  html += '</div>';
+  if(customs.length){
+    html += '<div class="tpl-section"><div class="tpl-section-title">我的模板</div>';
+    customs.forEach(t => {
+      html += `<div class="tpl-item" onclick="applyTemplate('${t.prompt.replace(/'/g,"\\'")}','${t.size}')">
+        <div class="tpl-item-name">${t.name} <span class="tpl-delete" onclick="event.stopPropagation();deleteTemplate('${t.id}')">✕</span></div>
+        <div class="tpl-item-preview">${t.prompt.substring(0,40)}...</div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+  html += '<div class="tpl-save-btn" onclick="saveCurrentAsTemplate()">💾 保存当前为模板</div>';
+  panel.innerHTML = html;
+}
+
+function applyTemplate(prompt, size){
+  document.getElementById('imgPrompt').value = prompt;
+  setImgSize(size, document.querySelector(`.gen-size-btn[onclick*="${size}"]`) || document.querySelector('.gen-size-btn'));
+  document.getElementById('templatePanel').classList.remove('show');
+}
+
+function saveCurrentAsTemplate(){
+  const prompt = document.getElementById('imgPrompt').value.trim();
+  if(!prompt){ alert('请先输入图片描述'); return; }
+  const name = prompt.substring(0, 20) || '我的模板';
+  const tpl = { id:'tpl_'+Date.now(), name, prompt, size:imgSize };
+  const customs = getCustomTemplates();
+  customs.push(tpl);
+  saveCustomTemplates(customs);
+  // 登录时同步到 Supabase
+  if(typeof saveUserTemplate === 'function' && isLoggedIn()){
+    saveUserTemplate(tpl);
+  }
+  renderTemplatePanel();
+}
+
+function deleteTemplate(id){
+  const customs = getCustomTemplates().filter(t => t.id !== id);
+  saveCustomTemplates(customs);
+  // 登录时同步删除 Supabase
+  if(typeof deleteUserTemplate === 'function' && isLoggedIn()){
+    deleteUserTemplate(id);
+  }
+  renderTemplatePanel();
+}
+
+
+// ========== BATCH ASSET OPERATIONS ==========
+let batchMode = false;
+let selectedAssets = new Set();
+
+function toggleBatchMode(){
+  batchMode = !batchMode;
+  selectedAssets.clear();
+  const btn = document.getElementById('batchToggleBtn');
+  const toolbar = document.getElementById('batchToolbar');
+  if(btn) btn.textContent = batchMode ? '取消批量' : '批量管理';
+  if(toolbar) toolbar.style.display = batchMode ? 'flex' : 'none';
+  renderAssets();
+}
+
+function toggleAssetSelect(id){
+  if(selectedAssets.has(id)) selectedAssets.delete(id);
+  else selectedAssets.add(id);
+  updateBatchCount();
+  // 更新卡片样式
+  const card = document.querySelector(`.asset-card[data-id="${id}"]`);
+  if(card) card.classList.toggle('selected', selectedAssets.has(id));
+}
+
+function selectAllAssets(){
+  const filtered = getFilteredAssets();
+  if(selectedAssets.size === filtered.length){
+    selectedAssets.clear();
+  } else {
+    filtered.forEach(a => selectedAssets.add(a.id));
+  }
+  updateBatchCount();
+  renderAssets();
+}
+
+function getFilteredAssets(){
+  const search = (document.getElementById('assetsSearchInput')?.value || '').toLowerCase();
+  let filtered = assets;
+  if(currentAssetTab !== 'all') filtered = filtered.filter(a => a.type === currentAssetTab);
+  if(search) filtered = filtered.filter(a => a.title.toLowerCase().includes(search) || (a.content && a.content.toLowerCase().includes(search)));
+  if(currentRatingFilter !== 'all') filtered = filtered.filter(a => a.rating && a.rating >= currentRatingFilter && a.rating < currentRatingFilter + 1);
+  return filtered;
+}
+
+function updateBatchCount(){
+  const count = document.getElementById('batchCount');
+  if(count) count.textContent = selectedAssets.size;
+}
+
+function deleteSelectedAssets(){
+  if(!selectedAssets.size){ alert('请先选择素材'); return; }
+  if(!confirm(`确定删除选中的 ${selectedAssets.size} 个素材？`)) return;
+  const ids = [...selectedAssets];
+  assets = assets.filter(a => !selectedAssets.has(a.id));
+  localStorage.setItem('menlil_assets', JSON.stringify(assets));
+  // 登录时同步删除 Supabase
+  if(typeof deleteUserAssets === 'function' && isLoggedIn()){
+    deleteUserAssets(ids);
+  }
+  selectedAssets.clear();
+  updateBatchCount();
+  renderAssets();
+}
+
+
+// ========== GENERATION HISTORY ==========
+async function renderHistory(){
+  const container = document.getElementById('historyList');
+  if(!container) return;
+
+  if(!isLoggedIn()){
+    container.innerHTML = '<div class="asset-empty"><div class="icon">🔒</div><h3>请先登录</h3><p>登录后可查看生成历史</p></div>';
+    return;
+  }
+
+  container.innerHTML = '<div class="asset-empty"><div class="icon">⏳</div><h3>加载中...</h3></div>';
+
+  try {
+    const historyList = await getGenerationHistoryList();
+    if(!historyList || !historyList.length){
+      container.innerHTML = '<div class="asset-empty"><div class="icon">📭</div><h3>暂无生成历史</h3><p>去生成图片或文案吧</p></div>';
+      return;
+    }
+
+    const typeLabels = { image_gen:'图片', copywriting:'文案', article:'写稿' };
+    container.innerHTML = historyList.map(item => {
+      const date = new Date(item.created_at).toLocaleString('zh-CN');
+      const typeLabel = typeLabels[item.gen_type] || item.gen_type;
+      const ratingHtml = item.rating ? `<span class="history-rating">${'★'.repeat(item.rating)}${'☆'.repeat(5-item.rating)}</span>` : '';
+      const inputPreview = item.input_params ? JSON.parse(typeof item.input_params === 'string' ? item.input_params : JSON.stringify(item.input_params)) : {};
+      const inputSummary = inputPreview.prompt || inputPreview.product || inputPreview.topic || '-';
+
+      if(item.gen_type === 'image_gen'){
+        return `<div class="history-card">
+          <div class="history-preview"><img src="${item.output_content}" alt="" onclick="openLightbox(this.src)"></div>
+          <div class="history-info">
+            <div class="history-meta"><span class="history-type">${typeLabel}</span>${ratingHtml}<span class="history-date">${date}</span></div>
+            <div class="history-input">${inputSummary}</div>
+            <div class="history-actions">
+              <button onclick="openLightbox('${item.output_content}')">查看大图</button>
+              <button onclick="reuseHistoryInput('${item.gen_type}', ${JSON.stringify(inputPreview).replace(/'/g,"\\'").replace(/"/g,'&quot;')})">使用此输入</button>
+            </div>
+          </div>
+        </div>`;
+      } else {
+        const escapedContent = (item.output_content||'').replace(/'/g,"\\'").replace(/\n/g,"\\n").substring(0,200);
+        return `<div class="history-card">
+          <div class="history-text-preview">${(item.output_content||'').substring(0,120)}...</div>
+          <div class="history-info">
+            <div class="history-meta"><span class="history-type">${typeLabel}</span>${ratingHtml}<span class="history-date">${date}</span></div>
+            <div class="history-input">输入：${inputSummary}</div>
+            <div class="history-actions">
+              <button onclick="openTextModal('${typeLabel}','${escapedContent}')">查看完整</button>
+              <button onclick="reuseHistoryInput('${item.gen_type}', ${JSON.stringify(inputPreview).replace(/'/g,"\\'").replace(/"/g,'&quot;')})">使用此输入</button>
+            </div>
+          </div>
+        </div>`;
+      }
+    }).join('');
+  } catch(e) {
+    container.innerHTML = '<div class="asset-empty"><div class="icon">❌</div><h3>加载失败</h3><p>'+e.message+'</p></div>';
+  }
+}
+
+function reuseHistoryInput(genType, params){
+  if(genType === 'image_gen'){
+    showPage('image');
+    if(params.prompt) document.getElementById('imgPrompt').value = params.prompt;
+    if(params.size){
+      imgSize = params.size;
+      document.querySelectorAll('.gen-size-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent.includes(params.size === '1024x1024' ? '1:1' : params.size === '1792x1024' ? '16:9' : '9:16'));
+      });
+    }
+  } else if(genType === 'copywriting'){
+    showPage('copy');
+    if(params.type) document.getElementById('copyType').value = params.type;
+    if(params.brand) document.getElementById('copyBrand').value = params.brand;
+    if(params.platform) document.getElementById('copyPlatform').value = params.platform;
+    if(params.product) document.getElementById('copyProduct').value = params.product;
+    if(params.prompt) document.getElementById('copyExtra').value = params.prompt;
+  } else if(genType === 'article'){
+    showPage('article');
+    if(params.type) document.getElementById('articleType').value = params.type;
+    if(params.brand) document.getElementById('articleBrand').value = params.brand;
+    if(params.topic) document.getElementById('articleTopic').value = params.topic;
+    if(params.audience) document.getElementById('articleAudience').value = params.audience;
+    if(params.points) document.getElementById('articlePoints').value = params.points;
+    if(params.prompt) document.getElementById('articleExtra').value = params.prompt;
+  }
+}
+
+function filterHistory(btn, genType){
+  document.querySelectorAll('.history-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderHistoryFiltered(genType);
+}
+
+async function renderHistoryFiltered(genType){
+  const container = document.getElementById('historyList');
+  if(!container || !isLoggedIn()) return;
+  container.innerHTML = '<div class="asset-empty"><div class="icon">⏳</div><h3>加载中...</h3></div>';
+  try {
+    const historyList = await getGenerationHistoryList(genType);
+    // 复用 renderHistory 的渲染逻辑
+    if(!historyList || !historyList.length){
+      container.innerHTML = '<div class="asset-empty"><div class="icon">📭</div><h3>暂无记录</h3></div>';
+      return;
+    }
+    // 触发完整渲染
+    renderHistory();
+  } catch(e){
+    container.innerHTML = '<div class="asset-empty"><div class="icon">❌</div><h3>加载失败</h3></div>';
+  }
+}
+
+
+// ========== STREAMING API ==========
+async function fetchStream(url, body, onChunk, onDone, onError){
+  try {
+    const resp = await fetch(url, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if(!resp.ok) throw new Error('HTTP ' + resp.status);
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while(true){
+      const {done, value} = await reader.read();
+      if(done) break;
+      buffer += decoder.decode(value, {stream:true});
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // 保留未完成的行
+      for(const line of lines){
+        if(line.startsWith('data: ')){
+          const data = line.slice(6).trim();
+          if(data === '[DONE]'){ onDone(); return; }
+          try {
+            const parsed = JSON.parse(data);
+            if(parsed.text) onChunk(parsed.text);
+          } catch(e){}
+        }
+      }
+    }
+    onDone();
+  } catch(e){
+    onError(e);
+  }
+}
+
+// 流式文案生成
+async function genCopyStream(){
+  if(!hasPermission('copywriting')){ showUpgradePrompt('copywriting'); return; }
+  const type = document.getElementById('copyType').value;
+  const brand = document.getElementById('copyBrand').value;
+  const platform = document.getElementById('copyPlatform').value;
+  const product = document.getElementById('copyProduct').value.trim();
+  const extra = document.getElementById('copyExtra').value.trim();
+  if(!product && !extra){ alert('请至少填写产品名称或补充要求'); return; }
+
+  const btn = document.getElementById('copyBtn');
+  const out = document.getElementById('copyOutput');
+  const retry = document.getElementById('copyRetry');
+  btn.disabled = true; btn.textContent = '创作中...';
+  retry.disabled = true;
+  out.className = 'copy-output'; out.textContent = '';
+
+  let examples = [];
+  if(isLoggedIn()){
+    try { const highRated = await getHighRatedExamples('copywriting'); examples = highRated.map(h => h.output_content).filter(Boolean); } catch(e){}
+  }
+
+  let fullText = '';
+  fetchStream('/api', {
+    action:'stream_copywriting', type, brand, platform, product, prompt:extra, examples
+  },
+  (chunk) => { fullText += chunk; out.textContent = fullText; },
+  () => {
+    fullText = fullText.replace(/\*+/g, '');
+    out.textContent = fullText;
+    if(fullText) saveAsset('copy', product || '文案', fullText);
+    const inputParams = {type, brand, platform, product, prompt:extra};
+    if(isLoggedIn()){
+      saveGenerationHistory('copywriting', inputParams, fullText).then(historyId => {
+        if(historyId) createStarRating('copyRating', historyId, fullText, 'copywriting');
+      });
+    } else {
+      createStarRating('copyRating', null, fullText, 'copywriting');
+    }
+    btn.disabled = false; btn.textContent = '生成文案';
+    retry.style.display = 'inline-flex'; retry.disabled = false;
+  },
+  (e) => {
+    // 流式失败，回退到普通模式
+    console.warn('Stream failed, falling back:', e);
+    genCopy();
+  });
+}
+
+// 流式写稿生成
+async function genArticleStream(){
+  if(!hasPermission('article')){ showUpgradePrompt('article'); return; }
+  const type = document.getElementById('articleType').value;
+  const brand = document.getElementById('articleBrand').value;
+  const topic = document.getElementById('articleTopic').value.trim();
+  const audience = document.getElementById('articleAudience').value.trim();
+  const points = document.getElementById('articlePoints').value.trim();
+  const extra = document.getElementById('articleExtra').value.trim();
+  if(!topic){ alert('请填写文章主题'); return; }
+
+  const btn = document.getElementById('articleBtn');
+  const out = document.getElementById('articleOutput');
+  const retry = document.getElementById('articleRetry');
+  btn.disabled = true; btn.textContent = '创作中...';
+  retry.disabled = true;
+  out.className = 'article-output'; out.textContent = '';
+
+  let fullText = '';
+  fetchStream('/api', {
+    action:'stream_article', type, brand, topic, audience, points, prompt:extra
+  },
+  (chunk) => { fullText += chunk; out.textContent = fullText; },
+  () => {
+    fullText = fullText.replace(/\*+/g, '');
+    out.textContent = fullText;
+    if(fullText) saveAsset('article', topic || '写稿', fullText);
+    const inputParams = {type, brand, topic, audience, points, prompt:extra};
+    if(isLoggedIn()){
+      saveGenerationHistory('article', inputParams, fullText).then(historyId => {
+        if(historyId) createStarRating('articleRating', historyId, fullText, 'article');
+      });
+    } else {
+      createStarRating('articleRating', null, fullText, 'article');
+    }
+    btn.disabled = false; btn.textContent = '生成写稿';
+    retry.style.display = 'inline-flex'; retry.disabled = false;
+  },
+  (e) => {
+    console.warn('Stream failed, falling back:', e);
+    genArticle();
+  });
+}

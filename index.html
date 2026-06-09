@@ -36,6 +36,7 @@
       <a href="#" class="nav-link" data-page="article" onclick="showPage('article')">公众号写稿</a>
       <a href="#" class="nav-link" data-page="knowledge" onclick="showPage('knowledge')">品牌知识库</a>
       <a href="#" class="nav-link" data-page="assets" onclick="showPage('assets')">素材库</a>
+      <a href="#" class="nav-link" data-page="history" onclick="showPage('history')">历史记录</a>
     </div>
   </div>
   <!-- 用户登录区域 -->
@@ -161,8 +162,9 @@
       </div>
 
       <div id="text2imgSection">
-        <div class="gen-label" style="margin-top:24px">图片描述</div>
+        <div class="gen-label" style="margin-top:24px">图片描述 <button class="tpl-toggle-btn" onclick="toggleTemplatePanel()">📝 模板</button></div>
         <textarea class="gen-textarea" id="imgPrompt" placeholder="描述你想要的图片，如：可爱的卡通小象，橙色主题，简约风格..."></textarea>
+        <div class="template-panel" id="templatePanel"></div>
       </div>
 
       <div id="img2imgSection" style="display:none">
@@ -269,13 +271,13 @@
       <div class="gen-label" style="margin-top:24px">补充要求</div>
       <textarea class="gen-textarea" id="copyExtra" placeholder="如：突出性价比、强调温和不刺激、200字左右..."></textarea>
 
-      <button class="gen-btn" id="copyBtn" onclick="genCopy()">生成文案</button>
+      <button class="gen-btn" id="copyBtn" onclick="genCopyStream()">生成文案</button>
     </div>
     <div class="copy-right">
       <div class="gen-label">生成结果</div>
       <div class="copy-output empty" id="copyOutput">点击「生成文案」开始创作</div>
       <div class="copy-actions">
-        <button class="gen-btn" id="copyRetry" onclick="genCopy()" style="display:none">重新生成</button>
+        <button class="gen-btn" id="copyRetry" onclick="genCopyStream()" style="display:none">重新生成</button>
         <button class="gen-btn secondary" onclick="copyText()">复制文案</button>
       </div>
       <div id="copyRating"></div>
@@ -330,13 +332,13 @@
       <div class="gen-label" style="margin-top:24px">补充要求</div>
       <textarea class="gen-textarea" id="articleExtra" placeholder="如：语气轻松活泼、需要插入表情包、字数1500字左右..."></textarea>
 
-      <button class="gen-btn" id="articleBtn" onclick="genArticle()">生成写稿</button>
+      <button class="gen-btn" id="articleBtn" onclick="genArticleStream()">生成写稿</button>
     </div>
     <div class="article-right">
       <div class="gen-label">生成结果</div>
       <div class="article-output empty" id="articleOutput">点击「生成写稿」开始创作</div>
       <div class="article-actions">
-        <button class="gen-btn" id="articleRetry" onclick="genArticle()" style="display:none">重新生成</button>
+        <button class="gen-btn" id="articleRetry" onclick="genArticleStream()" style="display:none">重新生成</button>
         <button class="gen-btn secondary" onclick="copyArticle()">复制全文</button>
       </div>
       <div id="articleRating"></div>
@@ -589,6 +591,7 @@
         <h1 class="page-title">素材库</h1>
         <p class="page-desc">管理你的图片和文案素材</p>
       </div>
+      <button id="batchToggleBtn" onclick="toggleBatchMode()" style="padding:8px 16px;background:var(--gray-100);border:1px solid var(--gray-200);border-radius:8px;font-size:13px;cursor:pointer">批量管理</button>
     </div>
   </div>
 
@@ -615,6 +618,13 @@
     <button class="rating-filter-btn" onclick="filterByRating(1,this)">★</button>
   </div>
 
+  <!-- 批量操作工具栏 -->
+  <div class="batch-toolbar" id="batchToolbar" style="display:none">
+    <button onclick="selectAllAssets()">全选/取消</button>
+    <span id="batchCount">0</span> 项已选
+    <button class="batch-delete-btn" onclick="deleteSelectedAssets()">🗑 删除选中</button>
+  </div>
+
   <!-- 素材列表 -->
   <div class="assets-grid" id="assetsGrid">
     <div class="asset-empty">
@@ -630,6 +640,27 @@
       <h3>暂无反馈记录</h3>
       <p>在生成内容后点击"反馈改进"按钮添加反馈</p>
     </div>
+  </div>
+</div>
+
+<!-- ========== HISTORY PAGE ========== -->
+<div class="page" id="pageHistory">
+  <div class="assets-header">
+    <div class="assets-header-inner">
+      <div>
+        <h1 class="page-title">生成历史</h1>
+        <p class="page-desc">查看所有图片、文案、写稿的生成记录</p>
+      </div>
+    </div>
+  </div>
+  <div class="history-tabs">
+    <button class="history-tab active" onclick="filterHistory(this,'all')">全部</button>
+    <button class="history-tab" onclick="filterHistory(this,'image_gen')">图片</button>
+    <button class="history-tab" onclick="filterHistory(this,'copywriting')">文案</button>
+    <button class="history-tab" onclick="filterHistory(this,'article')">写稿</button>
+  </div>
+  <div class="history-list" id="historyList">
+    <div class="asset-empty"><div class="icon">🔒</div><h3>请先登录</h3><p>登录后可查看生成历史</p></div>
   </div>
 </div>
 

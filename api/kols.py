@@ -4,6 +4,51 @@ import json, os, re
 from urllib.request import Request, urlopen
 from http.server import BaseHTTPRequestHandler
 
+
+def call_mimo_stream(system_prompt, user_prompt, temperature=0.8):
+    """调用小米 MiMo API (Anthropic 格式) — 流式版本，yield 每个文本片段"""
+    try:
+        req = Request(MIMO_URL, data=json.dumps({
+            "model": "mimo-v2.5-pro",
+            "system": system_prompt,
+            "messages": [
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": temperature,
+            "max_tokens": 4000,
+            "stream": True
+        }).encode(), headers={
+            "x-api-key": MIMO_KEY,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json"
+        })
+        resp = urlopen(req, timeout=180)
+        buffer = ""
+        while True:
+            chunk = resp.read(1024)
+            if not chunk:
+                break
+            buffer += chunk.decode("utf-8")
+            while "\n" in buffer:
+                line, buffer = buffer.split("\n", 1)
+                line = line.strip()
+                if not line or not line.startswith("data: "):
+                    continue
+                data_str = line[6:]
+                if data_str == "[DONE]":
+                    return
+                try:
+                    event = json.loads(data_str)
+                    if event.get("type") == "content_block_delta":
+                        delta = event.get("delta", {})
+                        text = delta.get("text", "")
+                        if text:
+                            yield text
+                except json.JSONDecodeError:
+                    continue
+    except Exception as e:
+        yield f"ERROR: {e}"
+
 # === API 配置 ===
 MIMO_KEY = os.environ.get("XIAOMI_API_KEY", "")
 MIMO_URL = "https://token-plan-cn.xiaomimimo.com/anthropic/v1/messages"
@@ -266,6 +311,47 @@ def chat(body):
     return {"text": text}
 
 
+def stream_copywriting(body):
+    """流式文案生成 — 返回生成器，yield SSE 格式数据"""
+    copy_type = body.get("type", "通用文案")
+    brand = body.get("brand", "")
+    platform = body.get("platform", "小红书")
+    prompt = body.get("prompt", "")
+    product = body.get("product", "")
+    full_prompt = f"请写一篇「{copy_type}」类型的{platform}文案"
+    if brand:
+        full_prompt += f"\n品牌：{brand}"
+    if product:
+        full_prompt += f"\n产品/主题：{product}"
+    if prompt:
+        full_prompt += f"\n补充要求：{prompt}"
+    full_prompt += "\n\n请严格按照对应的文案类型模板来写，保持品牌调性。"
+    for chunk in call_mimo_stream(COPYWRITING_PROMPT, full_prompt, temperature=0.8):
+        yield chunk
+
+
+def stream_article(body):
+    """流式写稿生成 — 返回生成器，yield SSE 格式数据"""
+    topic = body.get("topic", "")
+    article_type = body.get("type", "种草推荐")
+    brand = body.get("brand", "")
+    audience = body.get("audience", "")
+    points = body.get("points", "")
+    prompt = body.get("prompt", "")
+    full_prompt = f"请写一篇关于「{topic}」的公众号推文"
+    full_prompt += f"\n文章类型：{article_type}"
+    if brand:
+        full_prompt += f"\n品牌：{brand}"
+    if audience:
+        full_prompt += f"\n目标人群：{audience}"
+    if points:
+        full_prompt += f"\n核心要点：{points}"
+    if prompt:
+        full_prompt += f"\n补充要求：{prompt}"
+    for chunk in call_mimo_stream(ARTICLE_PROMPT, full_prompt, temperature=0.8):
+        yield chunk
+
+
 FEEDBACK_PROMPT = """你是内容优化专家。用户对生成的内容不满意，请根据反馈进行改进。
 
 要求：
@@ -319,6 +405,23 @@ class handler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(length)) if length else {}
         action = body.get("action", "chat")
 
+        # 流式 action — 逐块写入 SSE 格式
+        if action in ("stream_copywriting", "stream_article"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            gen_fn = stream_copywriting if action == "stream_copywriting" else stream_article
+            for chunk in gen_fn(body):
+                sse_data = json.dumps({"text": chunk}, ensure_ascii=False)
+                self.wfile.write(f"data: {sse_data}\n\n".encode())
+                self.wfile.flush()
+            self.wfile.write(b"data: [DONE]\n\n")
+            self.wfile.flush()
+            return
+
+        # 普通 action — JSON 响应
         if action == "kol_search":
             result = kol_search(body)
         elif action == "copywriting":
