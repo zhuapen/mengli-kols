@@ -24,11 +24,26 @@ def call_mimo_stream(system_prompt, user_prompt, temperature=0.8):
         })
         resp = urlopen(req, timeout=180)
         buffer = ""
+        leftover = b""  # 缓存不完整的 UTF-8 字节
         while True:
             chunk = resp.read(1024)
             if not chunk:
                 break
-            buffer += chunk.decode("utf-8")
+            raw = leftover + chunk
+            # 尝试解码，末尾可能有不完整的多字节字符
+            try:
+                text = raw.decode("utf-8")
+                leftover = b""
+            except UnicodeDecodeError:
+                # 找到最后一个完整的 UTF-8 字符边界
+                cut = len(raw)
+                while cut > 0 and (raw[cut-1] & 0xC0) == 0x80:
+                    cut -= 1
+                if cut > 0 and raw[cut-1] & 0x80:
+                    cut -= 1
+                text = raw[:cut].decode("utf-8")
+                leftover = raw[cut:]
+            buffer += text
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
                 line = line.strip()
