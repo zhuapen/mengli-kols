@@ -1474,6 +1474,27 @@ tbody tr:hover{
   }
 }
 
+/* ========== PAGINATION ========== */
+.pager {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px 24px 24px;
+}
+.pager-btn {
+  min-width: 36px;
+  height: 36px;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  background: white;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--gray-600);
+  transition: all 0.15s;
+}
+.pager-btn:hover { border-color: var(--accent); color: var(--accent); }
+.pager-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
 /* ========== COPY SUCCESS ========== */
 .copy-success {
   background: #10B981 !important;

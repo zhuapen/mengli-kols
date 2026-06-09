@@ -72,8 +72,52 @@ let activeTag = null;
 let cart = JSON.parse(localStorage.getItem('kols_cart') || '[]');
 let assets = JSON.parse(localStorage.getItem('menlil_assets') || '[]');
 let currentAssetTab = 'all';
+let assetsPage = 1;
+const ASSETS_PER_PAGE = 20;
 
 function getData(){ return currentPlatform==='xhs' ? XHS_DATA : DOUYIN_DATA; }
+
+// ========== RECENT RESULT CACHE (sessionStorage) ==========
+function saveRecentResult(type, data){
+  try { sessionStorage.setItem('gen_' + type, JSON.stringify(data)); } catch(e){}
+}
+
+function restoreRecentResults(){
+  // 恢复图片
+  try {
+    const img = JSON.parse(sessionStorage.getItem('gen_image') || 'null');
+    if(img && img.url && isValidImageUrl(img.url)){
+      const el = document.getElementById('imgResult');
+      const ph = document.getElementById('imgPlaceholder');
+      const tb = document.getElementById('imgToolbar');
+      el.onerror = () => { sessionStorage.removeItem('gen_image'); el.style.display = 'none'; ph.style.display = 'block'; };
+      el.src = img.url;
+      el.style.display = 'block';
+      ph.style.display = 'none';
+      if(tb) tb.classList.add('show');
+    }
+  } catch(e){}
+  // 恢复文案
+  try {
+    const copy = JSON.parse(sessionStorage.getItem('gen_copy') || 'null');
+    if(copy && copy.text){
+      const out = document.getElementById('copyOutput');
+      out.textContent = copy.text;
+      out.className = 'copy-output';
+      document.getElementById('copyRetry').style.display = 'inline-flex';
+    }
+  } catch(e){}
+  // 恢复写稿
+  try {
+    const article = JSON.parse(sessionStorage.getItem('gen_article') || 'null');
+    if(article && article.text){
+      const out = document.getElementById('articleOutput');
+      out.textContent = article.text;
+      out.className = 'article-output';
+      document.getElementById('articleRetry').style.display = 'inline-flex';
+    }
+  } catch(e){}
+}
 
 // ========== PAGE NAVIGATION ==========
 function showPage(page){
@@ -479,6 +523,7 @@ async function genImage(){
       document.getElementById('imgResult').style.display = 'block';
       document.getElementById('imgToolbar').classList.add('show');
       saveAsset('image', prompt, data.image_url);
+      saveRecentResult('image', {url: data.image_url, prompt});
 
       // 图生图模式：显示对比滑块
       if(imgMode === 'img2img' && img2imgFiles.length > 0){
@@ -553,6 +598,7 @@ async function genCopy(){
     out.textContent = data.text || data.error || '生成失败';
     if(data.text) {
       saveAsset('copy', product || '文案', data.text);
+      saveRecentResult('copy', {text: data.text});
 
       // 保存历史并显示评分
       const inputParams = {type, brand, platform, product, prompt:extra};
@@ -816,6 +862,7 @@ async function genArticle(){
     out.textContent = data.text || data.error || '生成失败';
     if(data.text) {
       saveAsset('article', topic, data.text);
+      saveRecentResult('article', {text: data.text});
 
       // 保存历史并显示评分
       const inputParams = {type, brand, topic, audience, points, prompt:extra};
@@ -930,60 +977,89 @@ function bindAssetsGridEvents(){
 
 function renderAssets(){
   const grid = document.getElementById('assetsGrid');
-  const search = (document.getElementById('assetsSearchInput')?.value || '').toLowerCase();
+  try {
+    const search = (document.getElementById('assetsSearchInput')?.value || '').toLowerCase();
 
-  let filtered = assets;
-  if(currentAssetTab !== 'all'){
-    filtered = filtered.filter(a => a.type === currentAssetTab);
-  }
-  if(search){
-    filtered = filtered.filter(a => a.title.toLowerCase().includes(search) || (a.content && a.content.toLowerCase().includes(search)));
-  }
-  // 评分筛选
-  if(currentRatingFilter !== 'all'){
-    filtered = filtered.filter(a => a.rating && a.rating >= currentRatingFilter && a.rating < currentRatingFilter + 1);
-  }
-
-  if(filtered.length === 0){
-    grid.innerHTML = '<div class="asset-empty"><div class="icon">📁</div><h3>暂无素材，去生成图片或文案吧</h3></div>';
-    return;
-  }
-
-  grid.innerHTML = filtered.map(asset => {
-    const ratingHtml = asset.rating ? `<div style="font-size:11px;color:#F59E0B;margin-top:4px">${'★'.repeat(asset.rating)}${'☆'.repeat(5-asset.rating)}</div>` : '';
-    const selected = selectedAssets.has(asset.id);
-    const checkboxHtml = batchMode ? `<div class="batch-checkbox ${selected ? 'checked' : ''}">${selected ? '✓' : ''}</div>` : '';
-    const safeTitle = escapeHtml(asset.title);
-    if(asset.type === 'image'){
-      const safeSrc = isValidImageUrl(asset.content) ? asset.content : '';
-      return `<div class="asset-card ${selected ? 'selected' : ''}" data-id="${asset.id}">
-        ${checkboxHtml}
-        <div class="asset-preview"><img src="${safeSrc}" alt="${safeTitle}"></div>
-        <div class="asset-info">
-          <div class="asset-title">${safeTitle}</div>
-          <div class="asset-meta">图片 · ${escapeHtml(asset.date)}</div>
-          ${ratingHtml}
-        </div>
-      </div>`;
-    } else {
-      const typeLabel = asset.type === 'article' ? '写稿' : '文案';
-      return `<div class="asset-card ${selected ? 'selected' : ''}" data-id="${asset.id}">
-        ${checkboxHtml}
-        <div class="asset-preview" style="padding:20px;font-size:14px;color:var(--gray-600);text-align:left;overflow:hidden">${escapeHtml(asset.content.substring(0,100))}...</div>
-        <div class="asset-info">
-          <div class="asset-title">${safeTitle}</div>
-          <div class="asset-meta">${typeLabel} · ${escapeHtml(asset.date)}</div>
-          ${ratingHtml}
-        </div>
-      </div>`;
+    let filtered = assets;
+    if(currentAssetTab !== 'all'){
+      filtered = filtered.filter(a => a.type === currentAssetTab);
     }
-  }).join('');
+    if(search){
+      filtered = filtered.filter(a => a.title.toLowerCase().includes(search) || (a.content && a.content.toLowerCase().includes(search)));
+    }
+    // 评分筛选
+    if(currentRatingFilter !== 'all'){
+      filtered = filtered.filter(a => a.rating && a.rating >= currentRatingFilter && a.rating < currentRatingFilter + 1);
+    }
 
-  bindAssetsGridEvents();
+    if(filtered.length === 0){
+      grid.innerHTML = '<div class="asset-empty"><div class="icon">📁</div><h3>暂无素材，去生成图片或文案吧</h3></div>';
+      const pager = document.getElementById('assetsPager');
+      if(pager) pager.innerHTML = '';
+      return;
+    }
+
+    // 分页
+    const totalPages = Math.ceil(filtered.length / ASSETS_PER_PAGE);
+    if(assetsPage > totalPages) assetsPage = totalPages;
+    const paged = filtered.slice((assetsPage - 1) * ASSETS_PER_PAGE, assetsPage * ASSETS_PER_PAGE);
+
+    grid.innerHTML = paged.map(asset => {
+      const ratingHtml = asset.rating ? `<div style="font-size:11px;color:#F59E0B;margin-top:4px">${'★'.repeat(asset.rating)}${'☆'.repeat(5-asset.rating)}</div>` : '';
+      const selected = selectedAssets.has(asset.id);
+      const checkboxHtml = batchMode ? `<div class="batch-checkbox ${selected ? 'checked' : ''}">${selected ? '✓' : ''}</div>` : '';
+      const safeTitle = escapeHtml(asset.title);
+      if(asset.type === 'image'){
+        const safeSrc = isValidImageUrl(asset.content) ? asset.content : '';
+        return `<div class="asset-card ${selected ? 'selected' : ''}" data-id="${asset.id}">
+          ${checkboxHtml}
+          <div class="asset-preview"><img src="${safeSrc}" alt="${safeTitle}"></div>
+          <div class="asset-info">
+            <div class="asset-title">${safeTitle}</div>
+            <div class="asset-meta">图片 · ${escapeHtml(asset.date)}</div>
+            ${ratingHtml}
+          </div>
+        </div>`;
+      } else {
+        const typeLabel = asset.type === 'article' ? '写稿' : '文案';
+        return `<div class="asset-card ${selected ? 'selected' : ''}" data-id="${asset.id}">
+          ${checkboxHtml}
+          <div class="asset-preview" style="padding:20px;font-size:14px;color:var(--gray-600);text-align:left;overflow:hidden">${escapeHtml(asset.content.substring(0,100))}...</div>
+          <div class="asset-info">
+            <div class="asset-title">${safeTitle}</div>
+            <div class="asset-meta">${typeLabel} · ${escapeHtml(asset.date)}</div>
+            ${ratingHtml}
+          </div>
+        </div>`;
+      }
+    }).join('');
+
+    // 渲染分页按钮
+    const pager = document.getElementById('assetsPager');
+    if(pager){
+      if(totalPages <= 1){
+        pager.innerHTML = '';
+      } else {
+        let pagerHtml = '';
+        if(assetsPage > 1) pagerHtml += `<button class="pager-btn" onclick="assetsPage=${assetsPage-1};renderAssets()">‹</button>`;
+        for(let i = 1; i <= totalPages; i++){
+          pagerHtml += `<button class="pager-btn ${i===assetsPage?'active':''}" onclick="assetsPage=${i};renderAssets()">${i}</button>`;
+        }
+        if(assetsPage < totalPages) pagerHtml += `<button class="pager-btn" onclick="assetsPage=${assetsPage+1};renderAssets()">›</button>`;
+        pager.innerHTML = pagerHtml;
+      }
+    }
+
+    bindAssetsGridEvents();
+  } catch(e){
+    console.error('renderAssets error:', e);
+    grid.innerHTML = '<div class="asset-empty"><div class="icon">❌</div><h3>渲染出错，请刷新页面</h3></div>';
+  }
 }
 
 function switchAssetsTab(tab, btn){
   currentAssetTab = tab;
+  assetsPage = 1;
   document.querySelectorAll('.assets-tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
 
@@ -1008,6 +1084,7 @@ function switchAssetsTab(tab, btn){
 }
 
 function filterAssets(){
+  assetsPage = 1;
   renderAssets();
 }
 
@@ -1016,6 +1093,7 @@ let currentRatingFilter = 'all';
 
 function filterByRating(rating, btn){
   currentRatingFilter = rating;
+  assetsPage = 1;
   document.querySelectorAll('.rating-filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderAssets();
@@ -1043,6 +1121,7 @@ async function loadFeedbackList(){
 // 渲染反馈列表
 function renderFeedbackList(list){
   const grid = document.getElementById('feedbackGrid');
+  try {
 
   if(!list || list.length === 0){
     grid.innerHTML = '<div class="asset-empty"><div class="icon">💬</div><h3>暂无反馈记录</h3><p>在生成内容后点击"反馈改进"按钮添加反馈</p></div>';
@@ -1115,6 +1194,11 @@ function renderFeedbackList(list){
       </div>
     `;
   }).join('');
+
+  } catch(e){
+    console.error('renderFeedbackList error:', e);
+    grid.innerHTML = '<div class="asset-empty"><div class="icon">❌</div><h3>渲染出错，请刷新页面</h3></div>';
+  }
 }
 
 // ========== LIGHTBOX (use imgLightbox) ==========
@@ -1304,6 +1388,7 @@ async function rateGeneration(containerId, rating) {
 initFilters();
 render();
 initDragDrop();
+restoreRecentResults();
 
 
   // 如果 auth.js 加载失败，确保登录按钮可见
@@ -1935,7 +2020,7 @@ async function genCopyStream(){
     completed = true;
     text = text.replace(/\*+/g, '');
     out.textContent = text;
-    if(text) saveAsset('copy', product || '文案', text);
+    if(text){ saveAsset('copy', product || '文案', text); saveRecentResult('copy', {text}); }
     const inputParams = {type, brand, platform, product, prompt:extra};
     if(isLoggedIn()){
       saveGenerationHistory('copywriting', inputParams, text).then(historyId => {
@@ -1990,7 +2075,7 @@ async function genArticleStream(){
     completed = true;
     text = text.replace(/\*+/g, '');
     out.textContent = text;
-    if(text) saveAsset('article', topic || '写稿', text);
+    if(text){ saveAsset('article', topic || '写稿', text); saveRecentResult('article', {text}); }
     const inputParams = {type, brand, topic, audience, points, prompt:extra};
     if(isLoggedIn()){
       saveGenerationHistory('article', inputParams, text).then(historyId => {
