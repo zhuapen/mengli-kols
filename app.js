@@ -1887,29 +1887,39 @@ async function genCopyStream(){
   }
 
   let fullText = '';
+  let completed = false;
+
+  function finalizeCopy(text){
+    if(completed) return;
+    completed = true;
+    text = text.replace(/\*+/g, '');
+    out.textContent = text;
+    if(text) saveAsset('copy', product || '文案', text);
+    const inputParams = {type, brand, platform, product, prompt:extra};
+    if(isLoggedIn()){
+      saveGenerationHistory('copywriting', inputParams, text).then(historyId => {
+        if(historyId) createStarRating('copyRating', historyId, text, 'copywriting');
+      });
+    } else {
+      createStarRating('copyRating', null, text, 'copywriting');
+    }
+    btn.disabled = false; btn.textContent = '生成文案';
+    retry.style.display = 'inline-flex'; retry.disabled = false;
+  }
+
   fetchStream('/api', {
     action:'stream_copywriting', type, brand, platform, product, prompt:extra, examples
   },
   (chunk) => { fullText += chunk; out.textContent = fullText; },
-  () => {
-    fullText = fullText.replace(/\*+/g, '');
-    out.textContent = fullText;
-    if(fullText) saveAsset('copy', product || '文案', fullText);
-    const inputParams = {type, brand, platform, product, prompt:extra};
-    if(isLoggedIn()){
-      saveGenerationHistory('copywriting', inputParams, fullText).then(historyId => {
-        if(historyId) createStarRating('copyRating', historyId, fullText, 'copywriting');
-      });
-    } else {
-      createStarRating('copyRating', null, fullText, 'copywriting');
-    }
-    btn.disabled = false; btn.textContent = '生成文案';
-    retry.style.display = 'inline-flex'; retry.disabled = false;
-  },
+  () => { finalizeCopy(fullText); },
   (e) => {
-    // 流式失败，回退到普通模式
-    console.warn('Stream failed, falling back:', e);
-    genCopy();
+    console.warn('Stream failed:', e);
+    if(fullText.trim().length >= 30){
+      showToast('⚠️ 流式中断，已保留已生成内容');
+      finalizeCopy(fullText);
+    } else {
+      genCopy();
+    }
   });
 }
 
@@ -1932,27 +1942,38 @@ async function genArticleStream(){
   out.className = 'article-output'; out.textContent = '';
 
   let fullText = '';
+  let completed = false;
+
+  function finalizeArticle(text){
+    if(completed) return;
+    completed = true;
+    text = text.replace(/\*+/g, '');
+    out.textContent = text;
+    if(text) saveAsset('article', topic || '写稿', text);
+    const inputParams = {type, brand, topic, audience, points, prompt:extra};
+    if(isLoggedIn()){
+      saveGenerationHistory('article', inputParams, text).then(historyId => {
+        if(historyId) createStarRating('articleRating', historyId, text, 'article');
+      });
+    } else {
+      createStarRating('articleRating', null, text, 'article');
+    }
+    btn.disabled = false; btn.textContent = '生成写稿';
+    retry.style.display = 'inline-flex'; retry.disabled = false;
+  }
+
   fetchStream('/api', {
     action:'stream_article', type, brand, topic, audience, points, prompt:extra
   },
   (chunk) => { fullText += chunk; out.textContent = fullText; },
-  () => {
-    fullText = fullText.replace(/\*+/g, '');
-    out.textContent = fullText;
-    if(fullText) saveAsset('article', topic || '写稿', fullText);
-    const inputParams = {type, brand, topic, audience, points, prompt:extra};
-    if(isLoggedIn()){
-      saveGenerationHistory('article', inputParams, fullText).then(historyId => {
-        if(historyId) createStarRating('articleRating', historyId, fullText, 'article');
-      });
-    } else {
-      createStarRating('articleRating', null, fullText, 'article');
-    }
-    btn.disabled = false; btn.textContent = '生成写稿';
-    retry.style.display = 'inline-flex'; retry.disabled = false;
-  },
+  () => { finalizeArticle(fullText); },
   (e) => {
-    console.warn('Stream failed, falling back:', e);
-    genArticle();
+    console.warn('Stream failed:', e);
+    if(fullText.trim().length >= 30){
+      showToast('⚠️ 流式中断，已保留已生成内容');
+      finalizeArticle(fullText);
+    } else {
+      genArticle();
+    }
   });
 }
