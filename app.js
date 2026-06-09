@@ -407,6 +407,34 @@ function removeImg2img(index){
   renderImg2imgGrid();
 }
 
+// 图片生成计时器（防重复创建）
+let _imgTimer = null;
+let _imgWaitSec = 0;
+function startImgTimer(){
+  stopImgTimer();
+  _imgWaitSec = 0;
+  const tipEl = document.querySelector('#imgLoading .gen-loading-tip');
+  const secEl = document.querySelector('#imgLoading .gen-loading-sec');
+  _imgTimer = setInterval(() => {
+    _imgWaitSec++;
+    if(secEl) secEl.textContent = `已等待 ${_imgWaitSec} 秒`;
+    if(tipEl){
+      if(_imgWaitSec >= 55) tipEl.textContent = '生成时间较长，如本次失败可尝试简化提示词或稍后重试';
+      else if(_imgWaitSec >= 45) tipEl.textContent = '服务繁忙，请耐心等待...';
+      else if(_imgWaitSec >= 30) tipEl.textContent = '当前任务较复杂，生成时间可能较长...';
+      else if(_imgWaitSec >= 10) tipEl.textContent = '正在生成，请稍候...';
+    }
+  }, 1000);
+}
+function stopImgTimer(){
+  if(_imgTimer){ clearInterval(_imgTimer); _imgTimer = null; }
+  _imgWaitSec = 0;
+  const tipEl = document.querySelector('#imgLoading .gen-loading-tip');
+  const secEl = document.querySelector('#imgLoading .gen-loading-sec');
+  if(tipEl) tipEl.textContent = '';
+  if(secEl) secEl.textContent = '';
+}
+
 async function genImage(){
   // 检查权限
   if (!hasPermission('image_gen')) {
@@ -436,6 +464,8 @@ async function genImage(){
   document.getElementById('imgCompare').classList.remove('show');
   document.getElementById('btnCompare').style.display = 'none';
   compareActive = false;
+
+  startImgTimer();
 
   try{
     const resp = await fetch('/api', {
@@ -478,6 +508,8 @@ async function genImage(){
     document.getElementById('imgLoading').style.display = 'none';
     document.getElementById('imgPlaceholder').style.display = 'block';
     document.getElementById('imgPlaceholder').innerHTML = '<div class="icon">❌</div><p>'+getApiErrorMessage(e)+'</p>';
+  } finally {
+    stopImgTimer();
   }
   document.getElementById('imgBtn').disabled = false;
 }
