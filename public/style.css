@@ -593,6 +593,41 @@ tbody tr:hover{
 }
 .gen-toolbar-btn:hover{background:var(--gray-50);border-color:var(--accent)}
 
+/* ========== IMAGE COMPARE SLIDER ========== */
+.img-compare{
+  display:none;position:relative;width:100%;
+  overflow:hidden;border-radius:8px;cursor:ew-resize;
+  user-select:none;-webkit-user-select:none
+}
+.img-compare.show{display:block}
+.img-compare img.after{
+  display:block;width:100%;height:auto;pointer-events:none
+}
+.img-compare-overlay{
+  position:absolute;top:0;left:0;bottom:0;
+  overflow:hidden;width:50%;
+  border-right:3px solid rgba(255,255,255,0.8)
+}
+.img-compare-overlay img.before{
+  display:block;height:100%;pointer-events:none;
+  position:absolute;top:0;left:0
+}
+.img-compare-handle{
+  position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  width:44px;height:44px;background:rgba(255,255,255,0.95);
+  border-radius:50%;box-shadow:0 2px 10px rgba(0,0,0,0.3);
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;color:#333;pointer-events:none;z-index:2
+}
+.img-compare-label{
+  position:absolute;top:12px;padding:4px 10px;
+  background:rgba(0,0,0,0.6);color:#fff;
+  font-size:11px;border-radius:4px;pointer-events:none;z-index:1
+}
+.img-compare-label.left{left:12px}
+.img-compare-label.right{right:12px}
+
 /* ========== IMAGE LIGHTBOX ========== */
 .img-lightbox{
   display:none;position:fixed;top:0;left:0;width:100%;height:100%;

@@ -1,4 +1,22 @@
 
+// ========== ERROR HELPER ==========
+function getApiErrorMessage(e, data){
+  if(e){
+    if(e.name === 'TypeError' && e.message.includes('fetch')) return '网络连接失败，请检查网络';
+    if(e.name === 'AbortError' || e.message.includes('timeout')) return '请求超时，服务器响应太慢';
+    return '请求失败：' + (e.message || '未知错误');
+  }
+  if(data && data.error){
+    const err = data.error;
+    if(err.includes('API key') || err.includes('Unauthorized') || err.includes('401')) return 'API Key 未配置或已过期';
+    if(err.includes('quota') || err.includes('429') || err.includes('rate')) return 'API 调用额度已用完，请稍后再试';
+    if(err.includes('timeout') || err.includes('timed out')) return 'AI 生成超时，请缩短内容后重试';
+    if(err.includes('content_policy') || err.includes('safety')) return '内容触发安全限制，请修改描述后重试';
+    return err;
+  }
+  return '生成失败，请稍后重试';
+}
+
 // ========== DATA ==========
 const XHS_DATA = [
   {name:"小羊咩咩",id:"xiaoyangmeme",followers:8.5,tags:["母婴","好物分享"],persona:"新手宝妈",engagement:3.2,price_img:2000,price_video:3500,contact:"微信: xiaoyang888",avatar:"🐑"},
@@ -286,7 +304,7 @@ async function aiSearch(){
   } catch(e){
     const result = document.getElementById('aiResult');
     result.style.display = 'block';
-    result.textContent = 'AI 代理未启动，请先运行 kols-proxy.sh';
+    result.textContent = '搜索失败：' + getApiErrorMessage(e);
   }
 
   btn.disabled = false; btn.textContent = 'AI 搜索';
@@ -372,6 +390,9 @@ async function genImage(){
   document.getElementById('imgLoading').style.display = 'block';
   document.getElementById('imgResult').style.display = 'none';
   document.getElementById('imgToolbar').classList.remove('show');
+  document.getElementById('imgCompare').classList.remove('show');
+  document.getElementById('btnCompare').style.display = 'none';
+  compareActive = false;
 
   try{
     const resp = await fetch('/api', {
@@ -386,6 +407,15 @@ async function genImage(){
       document.getElementById('imgToolbar').classList.add('show');
       saveAsset('image', prompt, data.image_url);
 
+      // 图生图模式：显示对比滑块
+      if(imgMode === 'img2img' && img2imgFiles.length > 0){
+        showCompare(img2imgFiles[0], data.image_url);
+      } else {
+        document.getElementById('imgCompare').classList.remove('show');
+        document.getElementById('btnCompare').style.display = 'none';
+        compareActive = false;
+      }
+
       // 保存历史并显示评分
       if(isLoggedIn()){
         saveGenerationHistory('image_gen', {prompt, size:imgSize}, data.image_url).then(historyId => {
@@ -399,12 +429,12 @@ async function genImage(){
     } else {
       document.getElementById('imgLoading').style.display = 'none';
       document.getElementById('imgPlaceholder').style.display = 'block';
-      document.getElementById('imgPlaceholder').innerHTML = '<div class="icon">❌</div><p>'+(data.error||'生成失败')+'</p>';
+      document.getElementById('imgPlaceholder').innerHTML = '<div class="icon">❌</div><p>'+getApiErrorMessage(null, data)+'</p>';
     }
   } catch(e){
     document.getElementById('imgLoading').style.display = 'none';
     document.getElementById('imgPlaceholder').style.display = 'block';
-    document.getElementById('imgPlaceholder').innerHTML = '<div class="icon">❌</div><p>AI 代理未启动</p>';
+    document.getElementById('imgPlaceholder').innerHTML = '<div class="icon">❌</div><p>'+getApiErrorMessage(e)+'</p>';
   }
   document.getElementById('imgBtn').disabled = false;
 }
@@ -463,7 +493,7 @@ async function genCopy(){
       }
     }
   } catch(e){
-    out.className = 'copy-output empty'; out.textContent = 'AI 代理未启动';
+    out.className = 'copy-output empty'; out.textContent = getApiErrorMessage(e);
   }
   btn.disabled = false; btn.textContent = '生成文案';
   retry.style.display = 'inline-flex';
@@ -680,7 +710,7 @@ async function genArticle(){
       }
     }
   } catch(e){
-    out.className = 'article-output empty'; out.textContent = 'AI 代理未启动';
+    out.className = 'article-output empty'; out.textContent = getApiErrorMessage(e);
   }
   btn.disabled = false; btn.textContent = '生成写稿';
   retry.style.display = 'inline-flex';
@@ -1244,3 +1274,80 @@ function downloadImage(){
   a.click();
   document.body.removeChild(a);
 }
+
+// ========== IMAGE COMPARE SLIDER ==========
+let compareActive = false;
+let compareOriginalSrc = '';
+
+function showCompare(originalSrc, generatedSrc){
+  compareOriginalSrc = originalSrc;
+  const container = document.getElementById('imgCompare');
+  const before = document.getElementById('imgCompareBefore');
+  const after = document.getElementById('imgCompareAfter');
+  const overlay = document.getElementById('imgCompareOverlay');
+  const handle = document.getElementById('imgCompareHandle');
+
+  before.src = originalSrc;
+  after.src = generatedSrc;
+  overlay.style.width = '50%';
+  handle.style.left = '50%';
+
+  // 等 after 图加载完后，同步 before 图宽度
+  after.onload = function(){
+    before.style.width = container.offsetWidth + 'px';
+  };
+  // 如果已经缓存
+  if(after.complete) before.style.width = container.offsetWidth + 'px';
+
+  document.getElementById('imgResult').style.display = 'none';
+  container.classList.add('show');
+  document.getElementById('btnCompare').style.display = '';
+  compareActive = true;
+}
+
+function toggleCompare(){
+  const container = document.getElementById('imgCompare');
+  const result = document.getElementById('imgResult');
+  if(compareActive){
+    container.classList.remove('show');
+    result.style.display = 'block';
+    compareActive = false;
+    document.getElementById('btnCompare').textContent = '🔄 对比原图';
+  } else {
+    container.classList.add('show');
+    result.style.display = 'none';
+    compareActive = true;
+    document.getElementById('btnCompare').textContent = '🖼 查看生成图';
+  }
+}
+
+// 对比滑块拖拽
+(function(){
+  const container = document.getElementById('imgCompare');
+  if(!container) return;
+  let dragging = false;
+
+  function updatePos(x){
+    const rect = container.getBoundingClientRect();
+    let pct = ((x - rect.left) / rect.width) * 100;
+    pct = Math.max(5, Math.min(95, pct));
+    document.getElementById('imgCompareOverlay').style.width = pct + '%';
+    document.getElementById('imgCompareHandle').style.left = pct + '%';
+  }
+
+  container.addEventListener('mousedown', function(e){ dragging = true; updatePos(e.clientX); e.preventDefault(); });
+  document.addEventListener('mousemove', function(e){ if(dragging) updatePos(e.clientX); });
+  document.addEventListener('mouseup', function(){ dragging = false; });
+
+  container.addEventListener('touchstart', function(e){ dragging = true; updatePos(e.touches[0].clientX); e.preventDefault(); }, {passive:false});
+  document.addEventListener('touchmove', function(e){ if(dragging) updatePos(e.touches[0].clientX); });
+  document.addEventListener('touchend', function(){ dragging = false; });
+
+  // 窗口缩放时同步 before 图宽度
+  window.addEventListener('resize', function(){
+    if(compareActive){
+      const before = document.getElementById('imgCompareBefore');
+      before.style.width = container.offsetWidth + 'px';
+    }
+  });
+})();

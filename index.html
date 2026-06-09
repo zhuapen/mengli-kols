@@ -200,8 +200,19 @@
           <p style="color:var(--gray-400);font-size:13px">创作中...</p>
         </div>
         <img class="gen-result" id="imgResult" src="" alt="" onclick="openLightbox(this.src)">
+        <!-- 图生图对比滑块 -->
+        <div class="img-compare" id="imgCompare">
+          <img class="after" id="imgCompareAfter" src="" alt="">
+          <div class="img-compare-overlay" id="imgCompareOverlay">
+            <img class="before" id="imgCompareBefore" src="" alt="">
+          </div>
+          <div class="img-compare-handle" id="imgCompareHandle">⇔</div>
+          <span class="img-compare-label left">原图</span>
+          <span class="img-compare-label right">生成</span>
+        </div>
       </div>
       <div class="gen-toolbar" id="imgToolbar">
+        <button class="gen-toolbar-btn" id="btnCompare" style="display:none" onclick="toggleCompare()">🔄 对比原图</button>
         <button class="gen-toolbar-btn" onclick="openLightbox(document.getElementById('imgResult').src)">🔍 查看大图</button>
         <button class="gen-toolbar-btn" onclick="downloadImage()">⬇ 下载图片</button>
       </div>
