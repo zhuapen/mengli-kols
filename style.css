@@ -1752,3 +1752,114 @@ tbody tr:hover{
   .history-preview, .history-text-preview { width: 100%; height: 140px; }
   .history-text-preview { -webkit-line-clamp: 3; }
 }
+
+/* ========== MASK EDITOR ========== */
+.mask-editor{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,0.7);z-index:10001;
+  align-items:center;justify-content:center;
+}
+.mask-editor.show{display:flex}
+.mask-editor-content{
+  background:#fff;border-radius:12px;
+  max-width:90vw;max-height:92vh;
+  display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,0.3);
+  animation:fadeIn 0.2s ease;
+}
+.mask-editor-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;border-bottom:1px solid #eee;flex-shrink:0;
+}
+.mask-editor-header h3{margin:0;font-size:16px;font-weight:700}
+.mask-editor-close{
+  width:32px;height:32px;border:none;background:#f5f5f5;
+  border-radius:50%;font-size:18px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background 0.2s;
+}
+.mask-editor-close:hover{background:#e5e5e5}
+.mask-editor-canvas-wrap{
+  flex:1;overflow:auto;display:flex;
+  align-items:center;justify-content:center;
+  padding:16px;background:#f0f0f0;min-height:300px;
+}
+.mask-editor-canvas-wrap canvas{
+  max-width:100%;max-height:60vh;
+  cursor:crosshair;border:1px solid #ddd;
+  touch-action:none;
+}
+.mask-editor-toolbar{
+  display:flex;align-items:center;gap:16px;
+  padding:12px 20px;border-top:1px solid #eee;
+  flex-wrap:wrap;flex-shrink:0;
+}
+.mask-tools{display:flex;gap:6px}
+.mask-tool-btn{
+  padding:8px 14px;border:2px solid #e5e5e5;border-radius:8px;
+  background:#fff;font-size:13px;cursor:pointer;
+  transition:all 0.2s;font-family:var(--font);
+}
+.mask-tool-btn.active{
+  border-color:var(--accent);background:#FFF5F2;color:var(--accent);
+}
+.mask-tool-btn:hover{border-color:#ccc}
+.mask-size-control{
+  display:flex;align-items:center;gap:8px;font-size:13px;color:#666;
+}
+.mask-size-control input[type=range]{
+  width:100px;accent-color:var(--accent);
+}
+.mask-actions{display:flex;gap:6px;margin-left:auto}
+.mask-action-btn{
+  padding:8px 14px;border:1px solid #e5e5e5;border-radius:8px;
+  background:#fff;font-size:13px;cursor:pointer;
+  transition:all 0.2s;font-family:var(--font);
+}
+.mask-action-btn:hover{background:#f5f5f5;border-color:#ccc}
+.mask-coverage{
+  padding:8px 20px;font-size:12px;color:#888;
+  text-align:center;flex-shrink:0;
+}
+.mask-coverage.warning{color:#F59E0B;font-weight:600}
+.mask-editor-footer{
+  display:flex;justify-content:flex-end;gap:10px;
+  padding:12px 20px;border-top:1px solid #eee;flex-shrink:0;
+}
+.mask-footer-btn{
+  padding:10px 24px;border-radius:8px;font-size:14px;
+  font-weight:600;cursor:pointer;border:none;
+  transition:all 0.2s;font-family:var(--font);
+}
+.mask-footer-btn.cancel{background:#f5f5f5;color:#666}
+.mask-footer-btn.cancel:hover{background:#e5e5e5}
+.mask-footer-btn.confirm{background:var(--accent);color:#fff}
+.mask-footer-btn.confirm:hover{background:#e06840}
+
+/* Mask entry bar in img2img section */
+.mask-entry{
+  display:flex;align-items:center;gap:12px;
+  margin-top:12px;padding:10px 14px;
+  background:#FFF5F2;border:1px solid #FDE8E0;border-radius:8px;
+}
+.mask-entry-btn{
+  padding:6px 14px;border:1.5px solid var(--accent);
+  border-radius:6px;background:#fff;color:var(--accent);
+  font-size:13px;font-weight:600;cursor:pointer;
+  transition:all 0.2s;font-family:var(--font);
+  white-space:nowrap;
+}
+.mask-entry-btn:hover{background:var(--accent);color:#fff}
+.mask-entry-hint{font-size:12px;color:#999}
+.mask-entry-hint.active{color:var(--accent);font-weight:600}
+
+@media (max-width: 768px) {
+  .mask-editor-content{max-width:98vw;max-height:96vh;border-radius:8px}
+  .mask-editor-canvas-wrap{padding:8px;min-height:200px}
+  .mask-editor-canvas-wrap canvas{max-height:50vh}
+  .mask-editor-toolbar{gap:10px;padding:10px 14px}
+  .mask-size-control input[type=range]{width:70px}
+  .mask-actions{margin-left:0}
+  .mask-editor-footer{padding:10px 14px}
+  .mask-footer-btn{padding:8px 18px;font-size:13px}
+}

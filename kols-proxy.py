@@ -224,30 +224,59 @@ class Handler(BaseHTTPRequestHandler):
             return {"error": str(e)}
 
     def _image_edit(self, body):
+        """图生图：支持传入 mask 进行局部重绘（Inpainting）"""
         prompt = body.get("prompt", "")
+        images = body.get("images", [])
         image_base64 = body.get("image", "")
+        mask = body.get("mask", "")
         size = body.get("size", "1024x1024")
 
         if not prompt:
             return {"error": "请提供修改要求"}
-        if not image_base64:
+
+        # 兼容 images 数组和单 image 字段
+        if not images and image_base64:
+            images = [image_base64]
+        if not images:
             return {"error": "请提供参考图片"}
 
-        try:
-            # Remove data:image/xxx;base64, prefix if present
-            if "," in image_base64:
-                image_base64 = image_base64.split(",")[1]
+        # 清理 base64 前缀
+        clean_images = []
+        for img in images:
+            clean_images.append(img.split(",", 1)[1] if "," in img else img)
 
+        clean_mask = ""
+        if mask:
+            clean_mask = mask.split(",", 1)[1] if "," in mask else mask
+
+        try:
+            import base64
             img_url = os.environ.get("OPENAI_BASE_URL", "https://ai.t8star.org/v1") + "/images/edits"
-            req = Request(img_url, data=json.dumps({
-                "model": "gpt-image-2-all",
-                "prompt": prompt,
-                "image": image_base64,
-                "n": 1,
-                "size": size
-            }).encode(), headers={
+
+            # 构造 multipart/form-data
+            boundary = "----FormBoundary" + str(hash(prompt))[:16]
+            parts = []
+
+            img_data = base64.b64decode(clean_images[0])
+            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="image"; filename="ref.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + img_data)
+
+            for i, img_b64 in enumerate(clean_images[1:], 1):
+                img_data = base64.b64decode(img_b64)
+                parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="image{i}"; filename="ref{i}.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + img_data)
+
+            if clean_mask:
+                mask_data = base64.b64decode(clean_mask)
+                parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="mask"; filename="mask.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + mask_data)
+
+            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n{prompt}'.encode())
+            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\ngpt-image-2-all'.encode())
+            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="size"\r\n\r\n{size}'.encode())
+            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="n"\r\n\r\n1'.encode())
+
+            body_bytes = b"\r\n".join(parts) + f"\r\n--{boundary}--\r\n".encode()
+            req = Request(img_url, data=body_bytes, headers={
                 "Authorization": f"Bearer {IMG_KEY}",
-                "Content-Type": "application/json"
+                "Content-Type": f"multipart/form-data; boundary={boundary}"
             })
             resp = urlopen(req, timeout=120)
             data = json.loads(resp.read())

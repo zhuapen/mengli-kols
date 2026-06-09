@@ -178,6 +178,11 @@
           <div class="gen-upload-hint">支持 JPG、PNG，可多选</div>
         </div>
 
+        <div class="mask-entry" id="maskEntry" style="display:none">
+          <button class="mask-entry-btn" onclick="openMaskEditor()">🎨 局部重绘：涂抹修改区域</button>
+          <span class="mask-entry-hint" id="maskStatus">未设置遮罩</span>
+        </div>
+
         <div class="gen-label" style="margin-top:24px">修改要求</div>
         <textarea class="gen-textarea" id="img2imgPrompt" placeholder="描述你想要的修改，如：把背景改成蓝色、添加一个帽子、改成卡通风格..."></textarea>
       </div>
@@ -748,6 +753,39 @@
     <div class="brand-modal-actions">
       <button class="brand-modal-cancel" onclick="closeAddBrandModal()">取消</button>
       <button class="brand-modal-save" onclick="saveBrand()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Mask Editor Modal -->
+<div class="mask-editor" id="maskEditor">
+  <div class="mask-editor-content">
+    <div class="mask-editor-header">
+      <h3>🎨 局部重绘 — 涂抹修改区域</h3>
+      <button class="mask-editor-close" onclick="closeMaskEditor()">✕</button>
+    </div>
+    <div class="mask-editor-canvas-wrap" id="maskCanvasWrap">
+      <canvas id="maskCanvas"></canvas>
+    </div>
+    <div class="mask-editor-toolbar">
+      <div class="mask-tools">
+        <button class="mask-tool-btn active" data-tool="brush" onclick="setMaskTool('brush')">🖌 画笔</button>
+        <button class="mask-tool-btn" data-tool="eraser" onclick="setMaskTool('eraser')">🧹 橡皮擦</button>
+      </div>
+      <div class="mask-size-control">
+        <label>大小</label>
+        <input type="range" id="maskBrushSize" min="5" max="80" value="30" oninput="maskBrushSize=+this.value;document.getElementById('maskBrushLabel').textContent=this.value">
+        <span id="maskBrushLabel">30</span>
+      </div>
+      <div class="mask-actions">
+        <button class="mask-action-btn" onclick="undoMask()">↩ 撤销</button>
+        <button class="mask-action-btn" onclick="clearMask()">🗑 清空</button>
+      </div>
+    </div>
+    <div class="mask-coverage" id="maskCoverage">遮罩覆盖率：0%</div>
+    <div class="mask-editor-footer">
+      <button class="mask-footer-btn cancel" onclick="closeMaskEditor()">取消</button>
+      <button class="mask-footer-btn confirm" onclick="confirmMask()">✓ 确认遮罩</button>
     </div>
   </div>
 </div>

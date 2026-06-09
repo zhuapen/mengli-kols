@@ -241,9 +241,10 @@ def image_gen(body):
 
 
 def image_edit(body):
-    """图生图：传入参考图 + 修改要求，生成新图"""
+    """图生图：传入参考图 + 修改要求，生成新图。支持传入 mask 进行局部重绘（Inpainting）"""
     prompt = body.get("prompt", "")
     images = body.get("images", [])  # base64 数组，最多3张
+    mask = body.get("mask", "")       # base64 遮罩图片（可选，白色=重绘，黑色=保持）
     size = body.get("size", "1024x1024")
     if not images:
         return {"error": "请上传参考图片"}
@@ -256,6 +257,11 @@ def image_edit(body):
         if "," in img:
             img = img.split(",", 1)[1]
         clean_images.append(img)
+
+    # 清理 mask 的 base64 前缀
+    clean_mask = ""
+    if mask:
+        clean_mask = mask.split(",", 1)[1] if "," in mask else mask
 
     # 方式A：尝试 /images/edits 端点
     edits_url = IMG_URL.replace("/images/generations", "/images/edits")
@@ -273,6 +279,11 @@ def image_edit(body):
         for i, img_b64 in enumerate(clean_images[1:], 1):
             img_data = base64.b64decode(img_b64)
             parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="image{i}"; filename="ref{i}.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + img_data)
+
+        # mask 字段（局部重绘：白色=重绘区域，黑色=保持区域）
+        if clean_mask:
+            mask_data = base64.b64decode(clean_mask)
+            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="mask"; filename="mask.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + mask_data)
 
         # prompt 字段
         parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n{prompt}'.encode())
@@ -292,10 +303,12 @@ def image_edit(body):
         data = json.loads(resp.read())
         image_url = data["data"][0]["url"] if data.get("data") else data.get("url", "")
         return {"image_url": image_url, "method": "edits"}
-    except Exception:
-        pass
+    except Exception as e:
+        # 传了 mask 时不做回退——回退端点不支持 mask，静默忽略遮罩会导致整图重绘
+        if clean_mask:
+            return {"error": f"局部重绘失败：{e}"}
 
-    # 方式B：回退到 /images/generations，在 prompt 中描述参考图
+    # 方式B：回退到 /images/generations，在 prompt 中描述参考图（仅无 mask 时）
     try:
         enhanced_prompt = f"基于以下参考图片进行修改：{prompt}"
         req = Request(IMG_URL, data=json.dumps({

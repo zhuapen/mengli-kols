@@ -383,6 +383,16 @@ let imgSize = '1024x1024';
 let imgMode = 'text2img';
 let img2imgFiles = []; // base64 数组，最多3张
 
+// Mask editor state
+let maskEditorOpen = false;
+let maskCanvas, maskCtx;
+let maskDrawing = false;
+let maskTool = 'brush';       // 'brush' | 'eraser'
+let maskBrushSize = 30;
+let maskHistory = [];          // 撤销栈（ImageData 快照）
+let maskImageData = null;      // 当前遮罩的 ImageData（与原图同尺寸）
+let maskOriginalImg = null;    // 当前编辑的原图 Image 对象
+
 function setImgSize(size, btn){
   imgSize = size;
   document.querySelectorAll('.gen-size-btn').forEach(b=>b.classList.remove('active'));
@@ -444,11 +454,215 @@ function renderImg2imgGrid(){
     `<div class="img2img-thumb"><img src="${b64}"><button class="remove-btn" onclick="removeImg2img(${i})">×</button></div>`
   ).join('');
   upload.style.display = img2imgFiles.length >= 3 ? 'none' : '';
+
+  // 有参考图时显示局部重绘入口
+  const maskEntry = document.getElementById('maskEntry');
+  if (maskEntry) {
+    maskEntry.style.display = img2imgFiles.length > 0 ? 'flex' : 'none';
+    if (img2imgFiles.length === 0) {
+      maskImageData = null;
+      window._maskBase64 = null;
+      document.getElementById('maskStatus').textContent = '未设置遮罩';
+      document.getElementById('maskStatus').className = 'mask-entry-hint';
+    }
+  }
 }
 
 function removeImg2img(index){
   img2imgFiles.splice(index, 1);
   renderImg2imgGrid();
+}
+
+// ========== MASK EDITOR ==========
+function openMaskEditor(){
+  if(!img2imgFiles.length){ alert('请先上传参考图片'); return; }
+  maskCanvas = document.getElementById('maskCanvas');
+  maskCtx = maskCanvas.getContext('2d');
+
+  const img = new Image();
+  img.onload = function(){
+    // Canvas 尺寸 = 原图尺寸（API 要求 mask 与原图一致）
+    maskCanvas.width = img.naturalWidth;
+    maskCanvas.height = img.naturalHeight;
+    maskOriginalImg = img;
+
+    // 绘制原图到底层
+    maskCtx.drawImage(img, 0, 0);
+
+    // 如果已有遮罩数据，叠加显示
+    if(maskImageData){
+      maskCtx.putImageData(maskImageData, 0, 0);
+    }
+
+    // 初始化历史栈
+    maskHistory = [];
+    saveMaskSnapshot();
+
+    maskEditorOpen = true;
+    document.getElementById('maskEditor').classList.add('show');
+    updateMaskCoverage();
+  };
+  img.src = img2imgFiles[0];
+}
+
+function closeMaskEditor(){
+  maskEditorOpen = false;
+  maskDrawing = false;
+  document.getElementById('maskEditor').classList.remove('show');
+}
+
+function initMaskCanvasEvents(){
+  const canvas = document.getElementById('maskCanvas');
+  // Pointer Events — 兼容 PC/手机/平板
+  canvas.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    maskDrawing = true;
+    canvas.setPointerCapture(e.pointerId);
+    drawMaskStroke(e);
+  });
+  canvas.addEventListener('pointermove', e => {
+    if(maskDrawing) drawMaskStroke(e);
+  });
+  canvas.addEventListener('pointerup', e => {
+    if(maskDrawing){
+      maskDrawing = false;
+      saveMaskSnapshot();
+      updateMaskCoverage();
+    }
+  });
+  canvas.addEventListener('pointerleave', () => {
+    if(maskDrawing){
+      maskDrawing = false;
+      saveMaskSnapshot();
+      updateMaskCoverage();
+    }
+  });
+}
+
+function drawMaskStroke(e){
+  const rect = maskCanvas.getBoundingClientRect();
+  const scaleX = maskCanvas.width / rect.width;
+  const scaleY = maskCanvas.height / rect.height;
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
+  const radius = maskBrushSize * scaleX / 2;
+
+  maskCtx.save();
+  if(maskTool === 'eraser'){
+    // 橡皮擦：恢复原图像素
+    maskCtx.beginPath();
+    maskCtx.arc(x, y, radius, 0, Math.PI * 2);
+    maskCtx.clip();
+    maskCtx.clearRect(x - radius, y - radius, radius * 2, radius * 2);
+    maskCtx.drawImage(maskOriginalImg, 0, 0);
+  } else {
+    // 画笔：绘制半透明红色（显示层）
+    maskCtx.fillStyle = 'rgba(255, 0, 0, 0.4)';
+    maskCtx.beginPath();
+    maskCtx.arc(x, y, radius, 0, Math.PI * 2);
+    maskCtx.fill();
+  }
+  maskCtx.restore();
+}
+
+function setMaskTool(tool){
+  maskTool = tool;
+  document.querySelectorAll('.mask-tool-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tool === tool);
+  });
+  maskCanvas.style.cursor = tool === 'eraser' ? 'cell' : 'crosshair';
+}
+
+function saveMaskSnapshot(){
+  const data = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+  maskHistory.push(data);
+  if(maskHistory.length > 30) maskHistory.shift();
+}
+
+function undoMask(){
+  if(maskHistory.length <= 1) return;
+  maskHistory.pop();
+  const prev = maskHistory[maskHistory.length - 1];
+  maskCtx.putImageData(prev, 0, 0);
+  updateMaskCoverage();
+}
+
+function clearMask(){
+  maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+  maskCtx.drawImage(maskOriginalImg, 0, 0);
+  maskHistory = [];
+  saveMaskSnapshot();
+  updateMaskCoverage();
+}
+
+function getMaskCoveragePercent(){
+  const imageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+  const pixels = imageData.data;
+  let redPixels = 0;
+  const total = pixels.length / 4;
+  for(let i = 0; i < pixels.length; i += 4){
+    if(pixels[i] > 200 && pixels[i+1] < 60 && pixels[i+2] < 60 && pixels[i+3] > 80){
+      redPixels++;
+    }
+  }
+  return Math.round(redPixels / total * 100);
+}
+
+function updateMaskCoverage(){
+  const pct = getMaskCoveragePercent();
+  const el = document.getElementById('maskCoverage');
+  if(pct > 70){
+    el.textContent = `遮罩覆盖率：${pct}% — 当前修改区域较大，建议直接使用图生图模式获得更好的生成效果`;
+    el.className = 'mask-coverage warning';
+  } else {
+    el.textContent = `遮罩覆盖率：${pct}%`;
+    el.className = 'mask-coverage';
+  }
+}
+
+function confirmMask(){
+  const coverage = getMaskCoveragePercent();
+  if(coverage > 70){
+    if(!confirm('当前遮罩覆盖率超过 70%，建议直接使用图生图模式。是否继续？')) return;
+  }
+  if(coverage < 1){
+    alert('请至少涂抹一小块区域作为修改范围');
+    return;
+  }
+
+  // 导出：白色=重绘区域，黑色=保持区域
+  const exportCanvas = document.createElement('canvas');
+  exportCanvas.width = maskCanvas.width;
+  exportCanvas.height = maskCanvas.height;
+  const exportCtx = exportCanvas.getContext('2d');
+
+  // 黑色底（保持区域）
+  exportCtx.fillStyle = '#000';
+  exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+  // 从显示 canvas 提取红色区域，转为白色
+  const displayData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+  const exportData = exportCtx.getImageData(0, 0, exportCanvas.width, exportCanvas.height);
+  for(let i = 0; i < displayData.data.length; i += 4){
+    if(displayData.data[i] > 200 && displayData.data[i+1] < 60 && displayData.data[i+2] < 60 && displayData.data[i+3] > 80){
+      exportData.data[i] = 255;
+      exportData.data[i+1] = 255;
+      exportData.data[i+2] = 255;
+      exportData.data[i+3] = 255;
+    }
+  }
+  exportCtx.putImageData(exportData, 0, 0);
+
+  // 保存 mask base64
+  maskImageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+  window._maskBase64 = exportCanvas.toDataURL('image/png');
+
+  // 更新状态提示
+  const status = document.getElementById('maskStatus');
+  status.textContent = `已设置遮罩 · 覆盖率 ${coverage}%`;
+  status.className = 'mask-entry-hint active';
+
+  closeMaskEditor();
 }
 
 // 图片生成计时器（防重复创建）
@@ -498,6 +712,9 @@ async function genImage(){
     if(!img2imgFiles.length){ alert('请上传参考图片'); return; }
     if(!prompt){ alert('请输入修改要求'); return; }
     requestBody = { action:'image_edit', prompt, images:img2imgFiles, size:imgSize };
+    if (window._maskBase64) {
+      requestBody.mask = window._maskBase64;
+    }
   }
 
   document.getElementById('imgBtn').disabled = true;
@@ -1388,6 +1605,7 @@ async function rateGeneration(containerId, rating) {
 initFilters();
 render();
 initDragDrop();
+initMaskCanvasEvents();
 restoreRecentResults();
 
 
