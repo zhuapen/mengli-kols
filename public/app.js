@@ -1,4 +1,25 @@
 
+// ========== SECURITY HELPERS ==========
+function escapeHtml(str){
+  if(!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function isValidImageUrl(url){
+  if(!url) return false;
+  if(url.startsWith('data:')){
+    return /^data:image\/(png|jpeg|jpg|gif|webp);base64,/i.test(url);
+  }
+  try {
+    const u = new URL(url, location.href);
+    return ['http:','https:','blob:'].includes(u.protocol);
+  } catch(e) {
+    return false;
+  }
+}
+
 // ========== ERROR HELPER ==========
 function getApiErrorMessage(e, data){
   if(e){
@@ -824,6 +845,37 @@ async function loadAssets(){
   assets = JSON.parse(localStorage.getItem('menlil_assets') || '[]');
 }
 
+// 素材卡片点击事件委托（只绑定一次）
+let _assetsGridBound = false;
+function bindAssetsGridEvents(){
+  if(_assetsGridBound) return;
+  const grid = document.getElementById('assetsGrid');
+  if(!grid) return;
+  grid.addEventListener('click', (e) => {
+    // 复选框点击
+    const checkbox = e.target.closest('.batch-checkbox');
+    if(checkbox){
+      const card = checkbox.closest('.asset-card');
+      if(card) toggleAssetSelect(Number(card.dataset.id));
+      return;
+    }
+    // 卡片点击
+    const card = e.target.closest('.asset-card');
+    if(!card) return;
+    const id = Number(card.dataset.id);
+    const asset = assets.find(a => a.id === id);
+    if(!asset) return;
+    if(batchMode){
+      toggleAssetSelect(id);
+    } else if(asset.type === 'image'){
+      openLightbox(asset.content);
+    } else {
+      openTextModal(asset.title, asset.content);
+    }
+  });
+  _assetsGridBound = true;
+}
+
 function renderAssets(){
   const grid = document.getElementById('assetsGrid');
   const search = (document.getElementById('assetsSearchInput')?.value || '').toLowerCase();
@@ -848,31 +900,34 @@ function renderAssets(){
   grid.innerHTML = filtered.map(asset => {
     const ratingHtml = asset.rating ? `<div style="font-size:11px;color:#F59E0B;margin-top:4px">${'★'.repeat(asset.rating)}${'☆'.repeat(5-asset.rating)}</div>` : '';
     const selected = selectedAssets.has(asset.id);
-    const checkboxHtml = batchMode ? `<div class="batch-checkbox ${selected ? 'checked' : ''}" onclick="event.stopPropagation();toggleAssetSelect(${asset.id})">${selected ? '✓' : ''}</div>` : '';
+    const checkboxHtml = batchMode ? `<div class="batch-checkbox ${selected ? 'checked' : ''}">${selected ? '✓' : ''}</div>` : '';
+    const safeTitle = escapeHtml(asset.title);
     if(asset.type === 'image'){
-      return `<div class="asset-card ${selected ? 'selected' : ''}" data-id="${asset.id}" onclick="${batchMode ? `toggleAssetSelect(${asset.id})` : `openLightbox('${asset.content}')`}">
+      const safeSrc = isValidImageUrl(asset.content) ? asset.content : '';
+      return `<div class="asset-card ${selected ? 'selected' : ''}" data-id="${asset.id}">
         ${checkboxHtml}
-        <div class="asset-preview"><img src="${asset.content}" alt="${asset.title}"></div>
+        <div class="asset-preview"><img src="${safeSrc}" alt="${safeTitle}"></div>
         <div class="asset-info">
-          <div class="asset-title">${asset.title}</div>
-          <div class="asset-meta">图片 · ${asset.date}</div>
+          <div class="asset-title">${safeTitle}</div>
+          <div class="asset-meta">图片 · ${escapeHtml(asset.date)}</div>
           ${ratingHtml}
         </div>
       </div>`;
     } else {
       const typeLabel = asset.type === 'article' ? '写稿' : '文案';
-      const escapedContent = asset.content.replace(/'/g, "\\'").replace(/\n/g, "\\n");
-      return `<div class="asset-card ${selected ? 'selected' : ''}" data-id="${asset.id}" onclick="${batchMode ? `toggleAssetSelect(${asset.id})` : `openTextModal('${asset.title}', '${escapedContent}')`}">
+      return `<div class="asset-card ${selected ? 'selected' : ''}" data-id="${asset.id}">
         ${checkboxHtml}
-        <div class="asset-preview" style="padding:20px;font-size:14px;color:var(--gray-600);text-align:left;overflow:hidden">${asset.content.substring(0,100)}...</div>
+        <div class="asset-preview" style="padding:20px;font-size:14px;color:var(--gray-600);text-align:left;overflow:hidden">${escapeHtml(asset.content.substring(0,100))}...</div>
         <div class="asset-info">
-          <div class="asset-title">${asset.title}</div>
-          <div class="asset-meta">${typeLabel} · ${asset.date}</div>
+          <div class="asset-title">${safeTitle}</div>
+          <div class="asset-meta">${typeLabel} · ${escapeHtml(asset.date)}</div>
           ${ratingHtml}
         </div>
       </div>`;
     }
   }).join('');
+
+  bindAssetsGridEvents();
 }
 
 function switchAssetsTab(tab, btn){
@@ -975,9 +1030,9 @@ function renderFeedbackList(list){
 
   grid.innerHTML = overviewHtml + list.map(item => {
     const date = new Date(item.created_at).toLocaleDateString('zh-CN');
-    const typeLabel = typeLabels[item.gen_type] || item.gen_type;
+    const typeLabel = typeLabels[item.gen_type] || escapeHtml(item.gen_type);
     const changes = item.changes_summary || [];
-    const changesHtml = changes.map(c => `<div class="feedback-card-change">• ${c}</div>`).join('');
+    const changesHtml = changes.map(c => `<div class="feedback-card-change">• ${escapeHtml(c)}</div>`).join('');
 
     return `
       <div class="feedback-card">
@@ -986,24 +1041,24 @@ function renderFeedbackList(list){
             <span class="feedback-card-type">${typeLabel}</span>
             ${item.rating ? `<span style="margin-left:8px;font-size:12px;color:#9CA3AF">原评分：${'★'.repeat(item.rating)}</span>` : ''}
           </div>
-          <span class="feedback-card-date">${date}</span>
+          <span class="feedback-card-date">${escapeHtml(date)}</span>
         </div>
         <div class="feedback-card-body">
           <div class="feedback-compare">
             <div class="feedback-compare-box">
               <div class="feedback-compare-label before">❌ 反馈前</div>
-              <div class="feedback-compare-content">${item.original_content}</div>
+              <div class="feedback-compare-content">${escapeHtml(item.original_content)}</div>
             </div>
             <div class="feedback-compare-box">
               <div class="feedback-compare-label after">✅ 反馈后</div>
-              <div class="feedback-compare-content">${item.improved_content || '无'}</div>
+              <div class="feedback-compare-content">${escapeHtml(item.improved_content) || '无'}</div>
             </div>
           </div>
           <div class="feedback-card-feedback">
-            <strong>💬 用户反馈：</strong>${item.feedback_text}
+            <strong>💬 用户反馈：</strong>${escapeHtml(item.feedback_text)}
           </div>
           ${changesHtml ? `<div class="feedback-card-changes"><h4>📝 修改说明</h4>${changesHtml}</div>` : ''}
-          ${item.learnings ? `<div class="feedback-card-learning"><strong>🧠 学习记录：</strong>${item.learnings}</div>` : ''}
+          ${item.learnings ? `<div class="feedback-card-learning"><strong>🧠 学习记录：</strong>${escapeHtml(item.learnings)}</div>` : ''}
         </div>
       </div>
     `;
@@ -1335,7 +1390,7 @@ function saveFeedbackResult() {
 
 
 function openLightbox(src){
-  if(!src) return;
+  if(!src || !isValidImageUrl(src)) return;
   document.getElementById('lightboxImg').src = src;
   document.getElementById('imgLightbox').classList.add('show');
 }
@@ -1470,29 +1525,58 @@ function toggleTemplatePanel(){
   if(panel.classList.contains('show')) renderTemplatePanel();
 }
 
+// 模板面板事件委托（只绑定一次）
+let _tplPanelBound = false;
+function bindTemplatePanelEvents(){
+  if(_tplPanelBound) return;
+  const panel = document.getElementById('templatePanel');
+  if(!panel) return;
+  panel.addEventListener('click', (e) => {
+    // 删除按钮
+    const del = e.target.closest('.tpl-delete');
+    if(del){
+      e.stopPropagation();
+      deleteTemplate(del.dataset.id);
+      return;
+    }
+    // 保存按钮
+    if(e.target.closest('.tpl-save-btn')){
+      saveCurrentAsTemplate();
+      return;
+    }
+    // 模板项点击
+    const item = e.target.closest('.tpl-item');
+    if(item){
+      applyTemplate(item.dataset.prompt, item.dataset.size);
+    }
+  });
+  _tplPanelBound = true;
+}
+
 function renderTemplatePanel(){
   const panel = document.getElementById('templatePanel');
   const customs = getCustomTemplates();
   let html = '<div class="tpl-section"><div class="tpl-section-title">内置模板</div>';
   BUILTIN_TEMPLATES.forEach(t => {
-    html += `<div class="tpl-item" onclick="applyTemplate('${t.prompt}','${t.size}')">
-      <div class="tpl-item-name">${t.name}</div>
-      <div class="tpl-item-preview">${t.prompt.substring(0,40)}...</div>
+    html += `<div class="tpl-item" data-prompt="${escapeHtml(t.prompt)}" data-size="${t.size}">
+      <div class="tpl-item-name">${escapeHtml(t.name)}</div>
+      <div class="tpl-item-preview">${escapeHtml(t.prompt.substring(0,40))}...</div>
     </div>`;
   });
   html += '</div>';
   if(customs.length){
     html += '<div class="tpl-section"><div class="tpl-section-title">我的模板</div>';
     customs.forEach(t => {
-      html += `<div class="tpl-item" onclick="applyTemplate('${t.prompt.replace(/'/g,"\\'")}','${t.size}')">
-        <div class="tpl-item-name">${t.name} <span class="tpl-delete" onclick="event.stopPropagation();deleteTemplate('${t.id}')">✕</span></div>
-        <div class="tpl-item-preview">${t.prompt.substring(0,40)}...</div>
+      html += `<div class="tpl-item" data-prompt="${escapeHtml(t.prompt)}" data-size="${t.size}">
+        <div class="tpl-item-name">${escapeHtml(t.name)} <span class="tpl-delete" data-id="${t.id}">✕</span></div>
+        <div class="tpl-item-preview">${escapeHtml(t.prompt.substring(0,40))}...</div>
       </div>`;
     });
     html += '</div>';
   }
-  html += '<div class="tpl-save-btn" onclick="saveCurrentAsTemplate()">💾 保存当前为模板</div>';
+  html += '<div class="tpl-save-btn">💾 保存当前为模板</div>';
   panel.innerHTML = html;
+  bindTemplatePanelEvents();
 }
 
 function applyTemplate(prompt, size){
@@ -1592,6 +1676,39 @@ function deleteSelectedAssets(){
 
 
 // ========== GENERATION HISTORY ==========
+// 历史数据缓存（供事件委托使用）
+let _historyData = [];
+let _historyGridBound = false;
+function bindHistoryGridEvents(){
+  if(_historyGridBound) return;
+  const container = document.getElementById('historyList');
+  if(!container) return;
+  container.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if(!btn) return;
+    const card = btn.closest('.history-card');
+    if(!card) return;
+    const idx = Number(card.dataset.idx);
+    const item = _historyData[idx];
+    if(!item) return;
+    const inputPreview = item.input_params ? JSON.parse(typeof item.input_params === 'string' ? item.input_params : JSON.stringify(item.input_params)) : {};
+    if(btn.dataset.action === 'view'){
+      if(item.gen_type === 'image_gen') openLightbox(item.output_content);
+      else openTextModal(typeLabels[item.gen_type] || item.gen_type, item.output_content || '');
+    } else if(btn.dataset.action === 'reuse'){
+      reuseHistoryInput(item.gen_type, inputPreview);
+    }
+  });
+  // 图片点击也打开灯箱
+  container.addEventListener('click', (e) => {
+    const img = e.target.closest('.history-preview img');
+    if(img && img.src) openLightbox(img.src);
+  });
+  _historyGridBound = true;
+}
+
+const typeLabels = { image_gen:'图片', copywriting:'文案', article:'写稿' };
+
 async function renderHistory(){
   const container = document.getElementById('historyList');
   if(!container) return;
@@ -1605,48 +1722,50 @@ async function renderHistory(){
 
   try {
     const historyList = await getGenerationHistoryList();
-    if(!historyList || !historyList.length){
+    _historyData = historyList || [];
+    if(!_historyData.length){
       container.innerHTML = '<div class="asset-empty"><div class="icon">📭</div><h3>暂无生成历史</h3><p>去生成图片或文案吧</p></div>';
       return;
     }
 
-    const typeLabels = { image_gen:'图片', copywriting:'文案', article:'写稿' };
-    container.innerHTML = historyList.map(item => {
+    container.innerHTML = _historyData.map((item, idx) => {
       const date = new Date(item.created_at).toLocaleString('zh-CN');
-      const typeLabel = typeLabels[item.gen_type] || item.gen_type;
+      const typeLabel = typeLabels[item.gen_type] || escapeHtml(item.gen_type);
       const ratingHtml = item.rating ? `<span class="history-rating">${'★'.repeat(item.rating)}${'☆'.repeat(5-item.rating)}</span>` : '';
       const inputPreview = item.input_params ? JSON.parse(typeof item.input_params === 'string' ? item.input_params : JSON.stringify(item.input_params)) : {};
-      const inputSummary = inputPreview.prompt || inputPreview.product || inputPreview.topic || '-';
+      const inputSummary = escapeHtml(inputPreview.prompt || inputPreview.product || inputPreview.topic || '-');
 
       if(item.gen_type === 'image_gen'){
-        return `<div class="history-card">
-          <div class="history-preview"><img src="${item.output_content}" alt="" onclick="openLightbox(this.src)"></div>
+        const safeSrc = isValidImageUrl(item.output_content) ? item.output_content : '';
+        return `<div class="history-card" data-idx="${idx}">
+          <div class="history-preview"><img src="${safeSrc}" alt=""></div>
           <div class="history-info">
-            <div class="history-meta"><span class="history-type">${typeLabel}</span>${ratingHtml}<span class="history-date">${date}</span></div>
+            <div class="history-meta"><span class="history-type">${typeLabel}</span>${ratingHtml}<span class="history-date">${escapeHtml(date)}</span></div>
             <div class="history-input">${inputSummary}</div>
             <div class="history-actions">
-              <button onclick="openLightbox('${item.output_content}')">查看大图</button>
-              <button onclick="reuseHistoryInput('${item.gen_type}', ${JSON.stringify(inputPreview).replace(/'/g,"\\'").replace(/"/g,'&quot;')})">使用此输入</button>
+              <button data-action="view">查看大图</button>
+              <button data-action="reuse">使用此输入</button>
             </div>
           </div>
         </div>`;
       } else {
-        const escapedContent = (item.output_content||'').replace(/'/g,"\\'").replace(/\n/g,"\\n").substring(0,200);
-        return `<div class="history-card">
-          <div class="history-text-preview">${(item.output_content||'').substring(0,120)}...</div>
+        return `<div class="history-card" data-idx="${idx}">
+          <div class="history-text-preview">${escapeHtml((item.output_content||'').substring(0,120))}...</div>
           <div class="history-info">
-            <div class="history-meta"><span class="history-type">${typeLabel}</span>${ratingHtml}<span class="history-date">${date}</span></div>
+            <div class="history-meta"><span class="history-type">${typeLabel}</span>${ratingHtml}<span class="history-date">${escapeHtml(date)}</span></div>
             <div class="history-input">输入：${inputSummary}</div>
             <div class="history-actions">
-              <button onclick="openTextModal('${typeLabel}','${escapedContent}')">查看完整</button>
-              <button onclick="reuseHistoryInput('${item.gen_type}', ${JSON.stringify(inputPreview).replace(/'/g,"\\'").replace(/"/g,'&quot;')})">使用此输入</button>
+              <button data-action="view">查看完整</button>
+              <button data-action="reuse">使用此输入</button>
             </div>
           </div>
         </div>`;
       }
     }).join('');
+
+    bindHistoryGridEvents();
   } catch(e) {
-    container.innerHTML = '<div class="asset-empty"><div class="icon">❌</div><h3>加载失败</h3><p>'+e.message+'</p></div>';
+    container.innerHTML = '<div class="asset-empty"><div class="icon">❌</div><h3>加载失败</h3></div>';
   }
 }
 
