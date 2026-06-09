@@ -1474,6 +1474,13 @@ tbody tr:hover{
   }
 }
 
+/* ========== COPY SUCCESS ========== */
+.copy-success {
+  background: #10B981 !important;
+  border-color: #10B981 !important;
+  color: white !important;
+}
+
 /* ========== DRAG & DROP ========== */
 .gen-upload.drag-over {
   border-color: var(--accent) !important;

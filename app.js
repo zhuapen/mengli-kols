@@ -575,12 +575,27 @@ async function genCopy(){
   retry.disabled = false;
 }
 
+// 统一复制封装
+async function copyToClipboard(text, btn, originalLabel){
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('✅ 已复制到剪贴板');
+    if(btn){
+      btn.textContent = '✓ 已复制';
+      btn.classList.add('copy-success');
+      setTimeout(()=>{ btn.textContent = originalLabel; btn.classList.remove('copy-success'); }, 1500);
+    }
+    return true;
+  } catch(err){
+    showToast('❌ 复制失败，请手动选择复制');
+    return false;
+  }
+}
+
 function copyText(){
   const text = document.getElementById('copyOutput').textContent;
   if(text && !text.includes('未启动')){
-    navigator.clipboard.writeText(text).then(()=>{
-      const btn = event.target; btn.textContent = '已复制'; setTimeout(()=>btn.textContent='复制文案',1500);
-    });
+    copyToClipboard(text, event.target, '复制文案');
   }
 }
 
@@ -825,9 +840,7 @@ async function genArticle(){
 function copyArticle(){
   const text = document.getElementById('articleOutput').textContent;
   if(text && !text.includes('未启动')){
-    navigator.clipboard.writeText(text).then(()=>{
-      const btn = event.target; btn.textContent = '已复制'; setTimeout(()=>btn.textContent='复制全文',1500);
-    });
+    copyToClipboard(text, event.target, '复制全文');
   }
 }
 
@@ -1121,11 +1134,7 @@ function closeTextModal(){
   document.body.style.overflow = '';
 }
 function copyModalText(){
-  navigator.clipboard.writeText(currentModalText).then(()=>{
-    const btn = event.target;
-    btn.textContent = '已复制';
-    setTimeout(()=>btn.textContent='复制全文', 1500);
-  });
+  copyToClipboard(currentModalText, event.target, '复制全文');
 }
 
 // ========== AUTO-FILL PREFERENCES ==========
