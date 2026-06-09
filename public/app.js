@@ -553,11 +553,18 @@ function copyText(){
 }
 
 // ========== PAGE LOADER ==========
-window.addEventListener('load', () => {
-  setTimeout(() => {
-    document.getElementById('pageLoader').classList.add('hide');
-  }, 2000);
-});
+const _loaderStartTime = Date.now();
+let _loaderHidden = false;
+function hideLoader(){
+  if(_loaderHidden) return;
+  _loaderHidden = true;
+  const loader = document.getElementById('pageLoader');
+  if(!loader) return;
+  const elapsed = Date.now() - _loaderStartTime;
+  const remaining = Math.max(0, 1000 - elapsed);
+  setTimeout(() => loader.classList.add('hide'), remaining);
+}
+document.addEventListener('DOMContentLoaded', hideLoader);
 
 // ========== SCROLL ANIMATIONS ==========
 const observerOptions = {
