@@ -392,6 +392,7 @@ let maskBrushSize = 30;
 let maskHistory = [];          // 撤销栈（ImageData 快照）
 let maskImageData = null;      // 当前遮罩的 ImageData（与原图同尺寸）
 let maskOriginalImg = null;    // 当前编辑的原图 Image 对象
+let maskLastX = null, maskLastY = null; // 笔触插值用
 
 function setImgSize(size, btn){
   imgSize = size;
@@ -473,28 +474,37 @@ function removeImg2img(index){
   renderImg2imgGrid();
 }
 
-// ========== MASK EDITOR ==========
+// ========== MASK EDITOR (双层 Canvas 架构) ==========
+// 底层 maskBaseCanvas: 原图（只读，永远不变）
+// 顶层 maskCanvas:     遮罩层（透明底 + 红色笔触，橡皮擦直接 clearRect）
+
 function openMaskEditor(){
   if(!img2imgFiles.length){ alert('请先上传参考图片'); return; }
+  const baseCanvas = document.getElementById('maskBaseCanvas');
+  const baseCtx = baseCanvas.getContext('2d');
   maskCanvas = document.getElementById('maskCanvas');
   maskCtx = maskCanvas.getContext('2d');
 
   const img = new Image();
   img.onload = function(){
-    // Canvas 尺寸 = 原图尺寸（API 要求 mask 与原图一致）
+    // 两层 canvas 尺寸均 = 原图尺寸（API 要求 mask 与原图一致）
+    baseCanvas.width = img.naturalWidth;
+    baseCanvas.height = img.naturalHeight;
     maskCanvas.width = img.naturalWidth;
     maskCanvas.height = img.naturalHeight;
     maskOriginalImg = img;
 
-    // 绘制原图到底层
-    maskCtx.drawImage(img, 0, 0);
+    // 底层绘制原图
+    baseCtx.drawImage(img, 0, 0);
 
-    // 如果已有遮罩数据，叠加显示
+    // 如果已有遮罩数据，恢复到遮罩层
     if(maskImageData){
       maskCtx.putImageData(maskImageData, 0, 0);
     }
 
-    // 初始化历史栈
+    // 同步两层 canvas 的显示尺寸（CSS 缩放）
+    syncMaskCanvasDisplaySize();
+
     maskHistory = [];
     saveMaskSnapshot();
 
@@ -503,6 +513,15 @@ function openMaskEditor(){
     updateMaskCoverage();
   };
   img.src = img2imgFiles[0];
+}
+
+function syncMaskCanvasDisplaySize(){
+  // 让底层 canvas 和顶层 canvas 保持相同的 CSS 尺寸
+  const baseCanvas = document.getElementById('maskBaseCanvas');
+  const displayH = maskCanvas.style.height || getComputedStyle(maskCanvas).height;
+  const displayW = maskCanvas.style.width || getComputedStyle(maskCanvas).width;
+  baseCanvas.style.width = displayW;
+  baseCanvas.style.height = displayH;
 }
 
 function closeMaskEditor(){
@@ -518,6 +537,8 @@ function initMaskCanvasEvents(){
     e.preventDefault();
     maskDrawing = true;
     canvas.setPointerCapture(e.pointerId);
+    maskLastX = null;
+    maskLastY = null;
     drawMaskStroke(e);
   });
   canvas.addEventListener('pointermove', e => {
@@ -539,6 +560,8 @@ function initMaskCanvasEvents(){
   });
 }
 
+// 上一次笔触位置（用于间距插值，声明在全局变量区）
+
 function drawMaskStroke(e){
   const rect = maskCanvas.getBoundingClientRect();
   const scaleX = maskCanvas.width / rect.width;
@@ -547,22 +570,55 @@ function drawMaskStroke(e){
   const y = (e.clientY - rect.top) * scaleY;
   const radius = maskBrushSize * scaleX / 2;
 
-  maskCtx.save();
   if(maskTool === 'eraser'){
-    // 橡皮擦：恢复原图像素
-    maskCtx.beginPath();
-    maskCtx.arc(x, y, radius, 0, Math.PI * 2);
-    maskCtx.clip();
-    maskCtx.clearRect(x - radius, y - radius, radius * 2, radius * 2);
-    maskCtx.drawImage(maskOriginalImg, 0, 0);
-  } else {
-    // 画笔：绘制半透明红色（显示层）
-    maskCtx.fillStyle = 'rgba(255, 0, 0, 0.4)';
+    // 橡皮擦：直接清除遮罩层像素，底层原图自然露出
+    maskCtx.save();
+    maskCtx.globalCompositeOperation = 'destination-out';
+    // 柔边橡皮擦：径向渐变从中心不透明到边缘透明
+    const grad = maskCtx.createRadialGradient(x, y, 0, x, y, radius);
+    grad.addColorStop(0, 'rgba(0,0,0,1)');
+    grad.addColorStop(0.7, 'rgba(0,0,0,0.8)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    maskCtx.fillStyle = grad;
     maskCtx.beginPath();
     maskCtx.arc(x, y, radius, 0, Math.PI * 2);
     maskCtx.fill();
+    maskCtx.restore();
+  } else {
+    // 画笔：柔边雾化效果
+    maskCtx.save();
+    maskCtx.globalCompositeOperation = 'source-over';
+    // 连续笔触插值：两点之间按间距填充 dab，避免快速滑动时断点
+    if(maskLastX !== null){
+      const dx = x - maskLastX, dy = y - maskLastY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const step = Math.max(radius * 0.3, 1);
+      const count = Math.ceil(dist / step);
+      for(let i = 1; i <= count; i++){
+        const t = i / count;
+        const ix = maskLastX + dx * t;
+        const iy = maskLastY + dy * t;
+        drawBrushDab(ix, iy, radius);
+      }
+    } else {
+      drawBrushDab(x, y, radius);
+    }
+    maskCtx.restore();
+    maskLastX = x;
+    maskLastY = y;
   }
-  maskCtx.restore();
+}
+
+function drawBrushDab(x, y, radius){
+  // 径向渐变柔边：中心 0.25 alpha → 边缘 0 alpha
+  const grad = maskCtx.createRadialGradient(x, y, 0, x, y, radius);
+  grad.addColorStop(0, 'rgba(255, 40, 40, 0.25)');
+  grad.addColorStop(0.6, 'rgba(255, 40, 40, 0.15)');
+  grad.addColorStop(1, 'rgba(255, 40, 40, 0)');
+  maskCtx.fillStyle = grad;
+  maskCtx.beginPath();
+  maskCtx.arc(x, y, radius, 0, Math.PI * 2);
+  maskCtx.fill();
 }
 
 function setMaskTool(tool){
@@ -589,7 +645,6 @@ function undoMask(){
 
 function clearMask(){
   maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
-  maskCtx.drawImage(maskOriginalImg, 0, 0);
   maskHistory = [];
   saveMaskSnapshot();
   updateMaskCoverage();
@@ -598,14 +653,13 @@ function clearMask(){
 function getMaskCoveragePercent(){
   const imageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
   const pixels = imageData.data;
-  let redPixels = 0;
+  let maskPixels = 0;
   const total = pixels.length / 4;
-  for(let i = 0; i < pixels.length; i += 4){
-    if(pixels[i] > 200 && pixels[i+1] < 60 && pixels[i+2] < 60 && pixels[i+3] > 80){
-      redPixels++;
-    }
+  // 柔边画笔 alpha 较低，用 10 作为阈值（区分完全透明和半透明笔触）
+  for(let i = 3; i < pixels.length; i += 4){
+    if(pixels[i] > 10) maskPixels++;
   }
-  return Math.round(redPixels / total * 100);
+  return Math.round(maskPixels / total * 100);
 }
 
 function updateMaskCoverage(){
@@ -640,20 +694,20 @@ function confirmMask(){
   exportCtx.fillStyle = '#000';
   exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
 
-  // 从显示 canvas 提取红色区域，转为白色
-  const displayData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+  // 从遮罩层提取有内容的区域，转为白色
+  const maskData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
   const exportData = exportCtx.getImageData(0, 0, exportCanvas.width, exportCanvas.height);
-  for(let i = 0; i < displayData.data.length; i += 4){
-    if(displayData.data[i] > 200 && displayData.data[i+1] < 60 && displayData.data[i+2] < 60 && displayData.data[i+3] > 80){
+  for(let i = 0; i < maskData.data.length; i += 4){
+    if(maskData.data[i + 3] > 10){ // alpha > 10 视为遮罩区域
       exportData.data[i] = 255;
-      exportData.data[i+1] = 255;
-      exportData.data[i+2] = 255;
-      exportData.data[i+3] = 255;
+      exportData.data[i + 1] = 255;
+      exportData.data[i + 2] = 255;
+      exportData.data[i + 3] = 255;
     }
   }
   exportCtx.putImageData(exportData, 0, 0);
 
-  // 保存 mask base64
+  // 保存 mask base64 + ImageData（用于重新打开编辑器时恢复）
   maskImageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
   window._maskBase64 = exportCanvas.toDataURL('image/png');
 
@@ -663,6 +717,19 @@ function confirmMask(){
   status.className = 'mask-entry-hint active';
 
   closeMaskEditor();
+}
+
+function resetMaskState(){
+  maskImageData = null;
+  window._maskBase64 = null;
+  maskHistory = [];
+  maskLastX = null;
+  maskLastY = null;
+  const status = document.getElementById('maskStatus');
+  if(status){
+    status.textContent = '未设置遮罩';
+    status.className = 'mask-entry-hint';
+  }
 }
 
 // 图片生成计时器（防重复创建）
@@ -741,6 +808,7 @@ async function genImage(){
       document.getElementById('imgToolbar').classList.add('show');
       saveAsset('image', prompt, data.image_url);
       saveRecentResult('image', {url: data.image_url, prompt});
+      resetMaskState(); // 生成成功后清空遮罩，避免下次误带
 
       // 图生图模式：显示对比滑块
       if(imgMode === 'img2img' && img2imgFiles.length > 0){
