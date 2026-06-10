@@ -1239,7 +1239,7 @@ async function loadUsersList() {
  */
 async function showEditUserModal(userId, userName, currentPosition) {
     // 获取用户当前权限
-    constPermissionsResult = await getUserPermissions(userId);
+    const permissionsResult = await getUserPermissions(userId);
     const currentPermissions = permissionsResult.success ? permissionsResult.permissions : [];
 
     const modal = document.createElement('div');
