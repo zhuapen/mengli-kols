@@ -400,10 +400,17 @@ function isAdmin() {
 /**
  * 检查是否有某个功能的权限
  */
+// 页面名 → 数据库 feature_key 映射（data-page 值和 feature_key 不一致时用）
+const PAGE_TO_FEATURE = {
+    'image': 'image_gen',
+    'copy': 'copywriting'
+};
+
 function hasPermission(featureKey) {
     if (!isLoggedIn()) return false;
     if (isAdmin()) return true;
-    return userPermissions.includes(featureKey);
+    const mapped = PAGE_TO_FEATURE[featureKey] || featureKey;
+    return userPermissions.includes(mapped);
 }
 
 /**
