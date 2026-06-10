@@ -254,20 +254,25 @@ async function createUser(email, password, displayName, position) {
     }
 
     try {
-        // 使用 Supabase Admin API 创建用户
-        const { data, error } = await supabase.auth.admin.createUser({
-            email: email,
-            password: password,
-            email_confirm: true,
-            user_metadata: {
+        // 通过后端 API 调用 Supabase Admin API（service_role key 不暴露到前端）
+        const resp = await fetch('/api', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'create_user',
+                email: email,
+                password: password,
                 display_name: displayName,
                 position: position
-            }
+            })
         });
+        const result = await resp.json();
 
-        if (error) throw error;
+        if (result.error) {
+            return { success: false, error: result.error };
+        }
 
-        return { success: true, user: data.user };
+        return { success: true, user: { id: result.user_id } };
     } catch (error) {
         console.error('创建用户失败:', error);
         return { success: false, error: error.message };

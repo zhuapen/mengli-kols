@@ -69,6 +69,8 @@ MIMO_KEY = os.environ.get("XIAOMI_API_KEY", "")
 MIMO_URL = "https://token-plan-cn.xiaomimimo.com/anthropic/v1/messages"
 IMG_KEY = os.environ.get("OPENAI_API_KEY", "")
 IMG_URL = os.environ.get("OPENAI_BASE_URL", "https://ai.t8star.org/v1") + "/images/generations"
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://fjlxlkokmcdfmwskgvsp.supabase.co")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
 # === Prompts ===
 KOL_SEARCH_PROMPT = """你是一个达人筛选助手。用户的自然语言描述想找什么样的达人，你把它解析成筛选参数，只返回 JSON。
@@ -427,6 +429,55 @@ def feedback(body):
         return {"error": str(e)}
 
 
+def create_user(body):
+    """管理员创建用户（通过 Supabase Admin API）"""
+    if not SUPABASE_SERVICE_KEY:
+        return {"error": "服务端未配置 SUPABASE_SERVICE_ROLE_KEY"}
+
+    email = body.get("email", "").strip()
+    password = body.get("password", "")
+    display_name = body.get("display_name", "")
+    position = body.get("position", "")
+
+    if not email:
+        return {"error": "请输入邮箱"}
+    if not password or len(password) < 6:
+        return {"error": "密码至少6位"}
+
+    try:
+        payload = json.dumps({
+            "email": email,
+            "password": password,
+            "email_confirm": True,
+            "user_metadata": {
+                "display_name": display_name,
+                "position": position
+            }
+        }).encode()
+
+        req = Request(
+            f"{SUPABASE_URL}/auth/v1/admin/users",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                "apikey": SUPABASE_SERVICE_KEY,
+                "Content-Type": "application/json"
+            }
+        )
+        resp = urlopen(req, timeout=30)
+        data = json.loads(resp.read())
+        user_id = data.get("id", "")
+        return {"success": True, "user_id": user_id}
+    except Exception as e:
+        err_detail = ""
+        if hasattr(e, "read"):
+            try:
+                err_detail = json.loads(e.read()).get("msg", "")
+            except Exception:
+                pass
+        return {"error": err_detail or str(e)}
+
+
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -464,6 +515,8 @@ class handler(BaseHTTPRequestHandler):
             result = chat(body)
         elif action == "feedback":
             result = feedback(body)
+        elif action == "create_user":
+            result = create_user(body)
         else:
             result = {"error": f"未知 action: {action}"}
 
