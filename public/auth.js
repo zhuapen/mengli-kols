@@ -1498,6 +1498,8 @@ async function showPluginForm(id) {
         } catch(e){}
     }
 
+    const hasFile = plugin.download_url && plugin.download_url.includes('supabase');
+
     area.innerHTML = `
         <div style="border:2px solid var(--accent);border-radius:8px;padding:16px;margin-bottom:16px;background:#FFFBF7">
             <h4 style="margin:0 0 12px">${id ? '编辑插件' : '新增插件'}</h4>
@@ -1511,7 +1513,18 @@ async function showPluginForm(id) {
             <div style="margin-top:12px"><label style="font-size:12px;font-weight:600">详细说明</label><textarea id="pf_description" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;min-height:80px">${plugin.description||''}</textarea></div>
             <div style="margin-top:12px"><label style="font-size:12px;font-weight:600">安装教程（每行一步）</label><textarea id="pf_install_guide" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;min-height:80px">${plugin.install_guide||''}</textarea></div>
             <div style="margin-top:12px"><label style="font-size:12px;font-weight:600">已知问题</label><textarea id="pf_known_issues" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;min-height:60px">${plugin.known_issues||''}</textarea></div>
-            <div style="margin-top:12px"><label style="font-size:12px;font-weight:600">下载链接</label><input id="pf_download_url" value="${(plugin.download_url||'').replace(/"/g,'&quot;')}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px"></div>
+            <div style="margin-top:12px">
+                <label style="font-size:12px;font-weight:600">插件文件（zip）</label>
+                <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+                    <input type="file" id="pf_file" accept=".zip" style="font-size:13px">
+                    ${hasFile ? '<span style="font-size:12px;color:green">✓ 已有文件</span>' : ''}
+                </div>
+                <input type="hidden" id="pf_download_url" value="${(plugin.download_url||'').replace(/"/g,'&quot;')}">
+            </div>
+            <div style="margin-top:12px">
+                <label style="font-size:12px;font-weight:600">本次更新日志（${id ? '编辑时填写，留空则不新增' : '必填，每行一条'}）</label>
+                <textarea id="pf_changelog" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;min-height:60px" placeholder="修复xxx问题&#10;新增xxx功能"></textarea>
+            </div>
             <div style="display:flex;gap:8px;margin-top:16px">
                 <button onclick="savePluginForm('${id||''}')" style="padding:10px 24px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">保存</button>
                 <button onclick="document.getElementById('pluginFormArea').innerHTML=''" style="padding:10px 24px;background:#f5f5f5;border:none;border-radius:6px;cursor:pointer">取消</button>
@@ -1520,6 +1533,9 @@ async function showPluginForm(id) {
 }
 
 async function savePluginForm(id) {
+    const fileInput = document.getElementById('pf_file');
+    const changelogContent = document.getElementById('pf_changelog').value.trim();
+
     const payload = {
         name: document.getElementById('pf_name').value.trim(),
         icon: document.getElementById('pf_icon').value.trim(),
@@ -1537,20 +1553,60 @@ async function savePluginForm(id) {
         alert('插件名称和版本号为必填');
         return;
     }
+    if (!id && !changelogContent) {
+        alert('新增插件请填写更新日志');
+        return;
+    }
+
+    const btn = event.target;
+    btn.disabled = true; btn.textContent = '保存中...';
 
     try {
+        // 上传文件到 Supabase Storage
+        if (fileInput.files.length > 0) {
+            const file = fileInput.files[0];
+            const ext = file.name.split('.').pop();
+            const filePath = `${Date.now()}_${payload.name.replace(/\s+/g,'_')}.${ext}`;
+
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from('plugins')
+                .upload(filePath, file, { upsert: false });
+
+            if (uploadError) throw new Error('文件上传失败：' + uploadError.message);
+
+            const { data: urlData } = supabase.storage
+                .from('plugins')
+                .getPublicUrl(filePath);
+
+            payload.download_url = urlData.publicUrl;
+        }
+
+        // 保存插件信息
+        let pluginId = id;
         if (id) {
             const { error } = await supabase.from('plugins').update(payload).eq('id', id);
             if (error) throw error;
         } else {
-            const { error } = await supabase.from('plugins').insert(payload);
+            const { data, error } = await supabase.from('plugins').insert(payload).select().single();
             if (error) throw error;
+            pluginId = data.id;
         }
+
+        // 自动创建更新日志
+        if (changelogContent && pluginId) {
+            await supabase.from('plugin_changelog').insert({
+                plugin_id: pluginId,
+                version: payload.version,
+                content: changelogContent
+            });
+        }
+
         showToast('✅ 保存成功');
         showPluginManagement();
     } catch(e) {
         alert('保存失败：' + e.message);
     }
+    btn.disabled = false; btn.textContent = '保存';
 }
 
 async function deletePlugin(id) {

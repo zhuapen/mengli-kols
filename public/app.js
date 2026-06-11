@@ -1205,7 +1205,6 @@ async function showPluginDetail(id){
 
       <div class="plugin-download-area">
         <button class="plugin-download-big" onclick="downloadPlugin('${p.id}','${(p.download_url||'#').replace(/'/g,"\\'")}')">⬇ 下载最新版</button>
-        <div class="plugin-download-count">下载次数：${p.downloads || 0}</div>
       </div>
 
       <div class="plugin-section">

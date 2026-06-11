@@ -82,3 +82,22 @@ INSERT INTO public.plugins (name, icon, version, short_desc, description, platfo
 4. 点击「加载已解压的扩展程序」
 5. 选择解压后的文件夹
 6. 插件图标出现在浏览器工具栏即安装成功', '当前暂不支持 Safari 浏览器和 Edge 老版本', '#', 2531);
+
+-- 6. 创建 Storage Bucket（插件文件上传）
+INSERT INTO storage.buckets (id, name, public) VALUES ('plugins', 'plugins', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Storage RLS: 所有人可下载
+CREATE POLICY "Plugins bucket public download"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'plugins');
+
+-- Storage RLS: 管理员可上传
+CREATE POLICY "Plugins bucket admin upload"
+  ON storage.objects FOR INSERT
+  WITH CHECK (bucket_id = 'plugins' AND EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND role = 'admin'));
+
+-- Storage RLS: 管理员可删除
+CREATE POLICY "Plugins bucket admin delete"
+  ON storage.objects FOR DELETE
+  USING (bucket_id = 'plugins' AND EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND role = 'admin'));
