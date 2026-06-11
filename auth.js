@@ -147,12 +147,17 @@ async function loadUserPermissions() {
 /**
  * 处理用户登录
  */
+let _sessionCheckTimer = null;
+
 async function handleLogin(user) {
     currentUser = user;
     console.log('用户已登录:', user.email);
 
     // 获取用户配置
     await loadUserProfile();
+
+    // 单设备登录：生成 token 并检查是否被踢
+    await initSessionToken(user.id);
 
     // 加载用户权限
     await loadUserPermissions();
@@ -167,10 +172,61 @@ async function handleLogin(user) {
     migrateLocalStorageToSupabase();
 }
 
+async function initSessionToken(userId) {
+    try {
+        // 读取 DB 中的 token
+        const { data } = await supabase
+            .from('user_profiles')
+            .select('session_token')
+            .eq('id', userId)
+            .single();
+
+        const localToken = localStorage.getItem('session_token');
+        const dbToken = data?.session_token || '';
+
+        // 如果 DB 有 token 且和本地不一致 → 被其他人登录了
+        if (dbToken && localToken && dbToken !== localToken) {
+            // 不需要提示，直接让对方接管（我们生成新 token）
+        }
+
+        // 生成新 token 并写入 DB + localStorage
+        const newToken = crypto.randomUUID();
+        localStorage.setItem('session_token', newToken);
+        await supabase.from('user_profiles').update({ session_token: newToken }).eq('id', userId);
+
+        // 启动定时检查（每 30 秒）
+        startSessionCheck(userId, newToken);
+    } catch(e) {
+        console.warn('Session token 初始化失败:', e);
+    }
+}
+
+function startSessionCheck(userId, myToken) {
+    if (_sessionCheckTimer) clearInterval(_sessionCheckTimer);
+    _sessionCheckTimer = setInterval(async () => {
+        if (!currentUser) { clearInterval(_sessionCheckTimer); return; }
+        try {
+            const { data } = await supabase
+                .from('user_profiles')
+                .select('session_token')
+                .eq('id', userId)
+                .single();
+            if (data && data.session_token && data.session_token !== myToken) {
+                // 被其他设备踢出
+                clearInterval(_sessionCheckTimer);
+                localStorage.removeItem('session_token');
+                showToast('您的账号已在其他设备登录，当前会话已退出');
+                await logout();
+            }
+        } catch(e) { /* 静默失败 */ }
+    }, 30000);
+}
+
 /**
  * 处理用户登出
  */
 function handleLogout() {
+    if (_sessionCheckTimer) { clearInterval(_sessionCheckTimer); _sessionCheckTimer = null; }
     currentUser = null;
     userProfile = null;
     userPermissions = [];
@@ -1227,7 +1283,8 @@ async function loadUsersList() {
                     <div class="user-item-actions">
                         ${user.role === 'admin'
                             ? '<span style="color: #3B82F6; font-weight: 600;">管理员</span>'
-                            : `<button class="save-permissions-btn" onclick="showEditUserModal('${user.id}', '${user.display_name}', '${user.position || ''}')">编辑权限</button>`
+                            : `<button class="save-permissions-btn" onclick="showEditUserModal('${user.id}', '${user.display_name}', '${user.position || ''}')">编辑权限</button>
+                               <button onclick="deleteUserAccount('${user.id}', '${(user.display_name||user.email).replace(/'/g,"\\'")}')" style="padding:6px 12px;border:1px solid #FCA5A5;background:#FEE2E2;color:#DC2626;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">删除</button>`
                         }
                     </div>
                 </div>
@@ -1448,6 +1505,30 @@ async function handleCreateUser(event) {
 
     btn.disabled = false;
     btn.textContent = '创建用户';
+}
+
+// ========== DELETE USER (Admin) ==========
+async function deleteUserAccount(userId, userName) {
+    if (!confirm(`确定删除用户「${userName}」？\n\n此操作不可恢复，该用户的所有数据将被清除。`)) return;
+
+    try {
+        const resp = await fetch('/api', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'delete_user', user_id: userId })
+        });
+        const result = await resp.json();
+
+        if (result.error) {
+            alert('删除失败：' + result.error);
+            return;
+        }
+
+        showToast('✅ 用户已删除');
+        loadUsersList();
+    } catch(e) {
+        alert('删除失败：' + e.message);
+    }
 }
 
 // ========== PLUGIN MANAGEMENT (Admin) ==========
@@ -1952,7 +2033,6 @@ async function getUserAssets() {
         const { data, error } = await supabase
             .from('user_assets')
             .select('*')
-            .eq('user_id', currentUser.id)
             .order('created_at', { ascending: false });
         if (error) throw error;
         return data || [];
@@ -1965,7 +2045,7 @@ async function getUserAssets() {
 async function updateUserAssetRating(id, rating) {
     if (!isLoggedIn() || !supabase) return;
     try {
-        await supabase.from('user_assets').update({ rating }).eq('id', id).eq('user_id', currentUser.id);
+        await supabase.from('user_assets').update({ rating }).eq('id', id);
     } catch (e) {
         console.warn('更新素材评分失败:', e);
     }
@@ -1974,7 +2054,7 @@ async function updateUserAssetRating(id, rating) {
 async function deleteUserAssets(ids) {
     if (!isLoggedIn() || !supabase || !ids.length) return;
     try {
-        await supabase.from('user_assets').delete().in('id', ids).eq('user_id', currentUser.id);
+        await supabase.from('user_assets').delete().in('id', ids);
     } catch (e) {
         console.warn('删除素材失败:', e);
     }

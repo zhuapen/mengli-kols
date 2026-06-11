@@ -657,6 +657,36 @@ def create_user(body):
         return {"error": err_detail or str(e)}
 
 
+def delete_user(body):
+    """管理员删除用户（通过 Supabase Admin API）"""
+    if not SUPABASE_SERVICE_KEY:
+        return {"error": "服务端未配置 SUPABASE_SERVICE_ROLE_KEY"}
+
+    user_id = body.get("user_id", "")
+    if not user_id:
+        return {"error": "缺少 user_id"}
+
+    try:
+        req = Request(
+            f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+            method="DELETE",
+            headers={
+                "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                "apikey": SUPABASE_SERVICE_KEY
+            }
+        )
+        urlopen(req, timeout=30)
+        return {"success": True}
+    except Exception as e:
+        err_detail = ""
+        if hasattr(e, "read"):
+            try:
+                err_detail = json.loads(e.read()).get("msg", "")
+            except Exception:
+                pass
+        return {"error": err_detail or str(e)}
+
+
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -696,6 +726,8 @@ class handler(BaseHTTPRequestHandler):
             result = feedback(body)
         elif action == "create_user":
             result = create_user(body)
+        elif action == "delete_user":
+            result = delete_user(body)
         else:
             result = {"error": f"未知 action: {action}"}
 
