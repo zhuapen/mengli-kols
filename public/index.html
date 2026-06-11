@@ -37,6 +37,7 @@
       <a href="#" class="nav-link" data-page="article" onclick="showPage('article')">公众号写稿</a>
       <a href="#" class="nav-link" data-page="knowledge" onclick="showPage('knowledge')">品牌知识库</a>
       <a href="#" class="nav-link" data-page="assets" onclick="showPage('assets')">素材库</a>
+      <a href="#" class="nav-link" data-page="plugin" onclick="showPage('plugin')">插件中心</a>
       <a href="#" class="nav-link" data-page="history" onclick="showPage('history')">历史记录</a>
     </div>
   </div>
@@ -657,6 +658,28 @@
   </div>
   <div class="history-list" id="historyList">
     <div class="asset-empty"><div class="icon">🔒</div><h3>请先登录</h3><p>登录后可查看生成历史</p></div>
+  </div>
+</div>
+
+<!-- ========== PLUGIN PAGE ========== -->
+<div class="page" id="pagePlugin">
+  <div id="pluginListView">
+    <div class="page-header">
+      <div class="page-header-inner">
+        <div>
+          <h1 class="page-title">插件中心</h1>
+          <p class="page-desc">提供运营工具、浏览器插件、自动化工具下载</p>
+        </div>
+      </div>
+    </div>
+    <div class="plugin-banner" id="pluginBanner"></div>
+    <div class="plugin-grid" id="pluginGrid"></div>
+  </div>
+  <div id="pluginDetailView" style="display:none">
+    <div class="plugin-detail-header">
+      <button class="plugin-back-btn" onclick="showPluginList()">← 返回列表</button>
+    </div>
+    <div id="pluginDetail"></div>
   </div>
 </div>
 

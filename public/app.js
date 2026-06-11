@@ -143,6 +143,9 @@ function showPage(page){
   if(page === 'history'){
     renderHistory();
   }
+  if(page === 'plugin'){
+    initPluginPage();
+  }
 }
 
 // ========== FILTERS ==========
@@ -1097,6 +1100,216 @@ refreshBrandSelects();
 
 // ========== ASSETS SEARCH ==========
 function searchAssets(){ renderAssets(); }
+
+// ========== PLUGIN CENTER ==========
+let pluginList = [];
+let currentPlugin = null;
+let currentPluginChangelog = [];
+let pluginFeedbackType = 'bug';
+
+async function initPluginPage(){
+  await loadPluginList();
+}
+
+async function loadPluginList(){
+  const grid = document.getElementById('pluginGrid');
+  const banner = document.getElementById('pluginBanner');
+  grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#999">加载中...</div>';
+
+  try {
+    const { data, error } = await supabase
+      .from('plugins')
+      .select('*')
+      .order('updated_at', { ascending: false });
+    if(error) throw error;
+    pluginList = data || [];
+  } catch(e){
+    console.error('加载插件列表失败:', e);
+    pluginList = [];
+  }
+
+  // Banner
+  const latest = pluginList[0];
+  const latestDate = latest ? new Date(latest.updated_at).toLocaleDateString('zh-CN') : '—';
+  banner.innerHTML = `
+    <div class="plugin-banner-info">
+      <h2>🧩 插件中心</h2>
+      <p>持续更新 · 提供运营工具、浏览器插件、自动化工具下载</p>
+    </div>
+    <div class="plugin-banner-meta">
+      ${latest ? `最新版本：${latest.name} ${latest.version}` : '暂无插件'}<br>
+      最近更新：${latestDate}
+    </div>`;
+
+  renderPluginList();
+}
+
+function renderPluginList(){
+  const grid = document.getElementById('pluginGrid');
+  if(!pluginList.length){
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px;color:#999"><div style="font-size:48px;margin-bottom:12px">🔌</div><p>暂无插件，敬请期待</p></div>';
+    return;
+  }
+  grid.innerHTML = pluginList.map(p => `
+    <div class="plugin-card">
+      <div class="plugin-card-top">
+        <div class="plugin-card-icon">${p.icon || '🔌'}</div>
+        <div>
+          <div class="plugin-card-name">${p.name}</div>
+          <div class="plugin-card-version">${p.version} · ${new Date(p.updated_at).toLocaleDateString('zh-CN')}</div>
+        </div>
+      </div>
+      <div class="plugin-card-desc">${p.short_desc || ''}</div>
+      <div class="plugin-card-actions">
+        <button class="plugin-download-btn" onclick="downloadPlugin('${p.id}','${(p.download_url||'#').replace(/'/g,"\\'")}')">立即下载</button>
+        <button class="plugin-detail-btn" onclick="showPluginDetail('${p.id}')">查看详情</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function showPluginDetail(id){
+  const listView = document.getElementById('pluginListView');
+  const detailView = document.getElementById('pluginDetailView');
+  const detail = document.getElementById('pluginDetail');
+
+  listView.style.display = 'none';
+  detailView.style.display = 'block';
+
+  // 加载插件信息
+  try {
+    const [{data: plugin}, {data: changelog}] = await Promise.all([
+      supabase.from('plugins').select('*').eq('id', id).single(),
+      supabase.from('plugin_changelog').select('*').eq('plugin_id', id).order('created_at', {ascending: false})
+    ]);
+    currentPlugin = plugin;
+    currentPluginChangelog = changelog || [];
+  } catch(e){
+    detail.innerHTML = '<p style="color:red;padding:48px">加载失败</p>';
+    return;
+  }
+
+  const p = currentPlugin;
+  const installSteps = (p.install_guide || '').split('\n').filter(s=>s.trim());
+  const issues = (p.known_issues || '').split('\n').filter(s=>s.trim());
+
+  detail.innerHTML = `
+    <div class="plugin-detail">
+      <div class="plugin-detail-hero">
+        <div class="plugin-detail-icon">${p.icon || '🔌'}</div>
+        <div>
+          <div class="plugin-detail-name">${p.name}</div>
+          <div class="plugin-detail-meta">${p.version} · 支持：${p.platforms || '—'}</div>
+        </div>
+      </div>
+
+      <div class="plugin-download-area">
+        <button class="plugin-download-big" onclick="downloadPlugin('${p.id}','${(p.download_url||'#').replace(/'/g,"\\'")}')">⬇ 下载最新版</button>
+        <div class="plugin-download-count">下载次数：${p.downloads || 0}</div>
+      </div>
+
+      <div class="plugin-section">
+        <div class="plugin-section-title">📋 插件介绍</div>
+        <div class="plugin-section-body">${(p.description || '暂无介绍').replace(/\n/g,'<br>')}</div>
+      </div>
+
+      ${installSteps.length ? `
+      <div class="plugin-section">
+        <div class="plugin-section-title">🔧 安装教程</div>
+        <div class="install-steps">
+          ${installSteps.map((s,i) => `
+            <div class="install-step">
+              <div class="install-step-num">${i+1}</div>
+              <div class="install-step-text">${s.replace(/^\d+[\.\、]\s*/,'')}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>` : ''}
+
+      ${currentPluginChangelog.length ? `
+      <div class="plugin-section">
+        <div class="plugin-section-title">📝 更新日志</div>
+        <div class="plugin-timeline">
+          ${currentPluginChangelog.map(c => `
+            <div class="timeline-item">
+              <div class="timeline-version">${c.version}</div>
+              <div class="timeline-date">${new Date(c.created_at).toLocaleDateString('zh-CN')}</div>
+              <div class="timeline-content">${c.content.replace(/\n/g,'<br>')}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>` : ''}
+
+      ${issues.length ? `
+      <div class="plugin-section">
+        <div class="plugin-section-title">⚠️ 已知问题</div>
+        <div class="plugin-issues">
+          <ul>${issues.map(i => `<li>${i.replace(/^[\*\-]\s*/,'')}</li>`).join('')}</ul>
+        </div>
+      </div>` : ''}
+
+      <div class="plugin-section">
+        <div class="plugin-section-title">💬 用户反馈</div>
+        <div class="plugin-feedback-form">
+          <div class="feedback-type-tabs">
+            <button class="feedback-type-tab active" onclick="setPluginFeedbackType('bug',this)">🐛 Bug反馈</button>
+            <button class="feedback-type-tab" onclick="setPluginFeedbackType('feature',this)">💡 功能建议</button>
+            <button class="feedback-type-tab" onclick="setPluginFeedbackType('question',this)">❓ 使用问题</button>
+          </div>
+          <textarea id="pluginFeedbackContent" placeholder="请描述你遇到的问题或建议..."></textarea>
+          <button class="plugin-feedback-submit" onclick="submitPluginFeedback('${p.id}')">提交反馈</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function showPluginList(){
+  document.getElementById('pluginListView').style.display = 'block';
+  document.getElementById('pluginDetailView').style.display = 'none';
+  currentPlugin = null;
+}
+
+async function downloadPlugin(id, url){
+  // 更新下载计数
+  try {
+    const plugin = pluginList.find(p => p.id === id);
+    if(plugin){
+      await supabase.from('plugins').update({ downloads: (plugin.downloads||0) + 1 }).eq('id', id);
+      plugin.downloads = (plugin.downloads||0) + 1;
+    }
+  } catch(e){ console.warn('更新下载计数失败:', e); }
+  if(url && url !== '#') window.open(url, '_blank');
+  else showToast('下载链接暂未配置');
+}
+
+function setPluginFeedbackType(type, btn){
+  pluginFeedbackType = type;
+  document.querySelectorAll('.feedback-type-tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+async function submitPluginFeedback(pluginId){
+  const content = document.getElementById('pluginFeedbackContent').value.trim();
+  if(!content){ showToast('请输入反馈内容'); return; }
+
+  const btn = document.querySelector('.plugin-feedback-submit');
+  btn.disabled = true; btn.textContent = '提交中...';
+
+  try {
+    const { error } = await supabase.from('plugin_feedback').insert({
+      plugin_id: pluginId,
+      user_id: currentUser?.id || null,
+      feedback_type: pluginFeedbackType,
+      content: content
+    });
+    if(error) throw error;
+    showToast('✅ 反馈已提交，感谢！');
+    document.getElementById('pluginFeedbackContent').value = '';
+  } catch(e){
+    showToast('提交失败：' + (e.message || '未知错误'));
+  }
+  btn.disabled = false; btn.textContent = '提交反馈';
+}
 
 // ========== ARTICLE ==========
 let articleFiles = [];   // {name, size, base64, type}

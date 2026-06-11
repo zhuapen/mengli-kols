@@ -916,6 +916,7 @@ function showAdminPanel() {
             <div class="admin-tabs">
                 <button class="admin-tab active" onclick="switchAdminTab('users', this)">用户管理</button>
                 <button class="admin-tab" onclick="switchAdminTab('create', this)">创建用户</button>
+                <button class="admin-tab" onclick="switchAdminTab('plugins', this)">插件管理</button>
             </div>
             <div id="adminTabContent" class="admin-tab-content">
                 <div class="loading">加载中...</div>
@@ -1178,7 +1179,6 @@ function showAdminPanel() {
  * 切换管理员面板标签
  */
 function switchAdminTab(tab, btn) {
-    // 更新标签样式
     document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
 
@@ -1186,6 +1186,8 @@ function switchAdminTab(tab, btn) {
         loadUsersList();
     } else if (tab === 'create') {
         showCreateUserForm();
+    } else if (tab === 'plugins') {
+        showPluginManagement();
     }
 }
 
@@ -1446,6 +1448,195 @@ async function handleCreateUser(event) {
 
     btn.disabled = false;
     btn.textContent = '创建用户';
+}
+
+// ========== PLUGIN MANAGEMENT (Admin) ==========
+async function showPluginManagement() {
+    const content = document.getElementById('adminTabContent');
+    content.innerHTML = '<div style="text-align:center;padding:20px">加载中...</div>';
+
+    try {
+        const { data: plugins, error } = await supabase
+            .from('plugins')
+            .select('*')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+
+        content.innerHTML = `
+            <div style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+                <h4 style="margin:0">插件列表 (${plugins.length})</h4>
+                <button onclick="showPluginForm()" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">+ 新增插件</button>
+            </div>
+            <div id="pluginFormArea"></div>
+            <div id="pluginListArea">
+                ${plugins.length ? plugins.map(p => `
+                    <div style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid #eee;border-radius:8px;margin-bottom:8px">
+                        <span style="font-size:24px">${p.icon || '🔌'}</span>
+                        <div style="flex:1;min-width:0">
+                            <div style="font-weight:600;font-size:14px">${p.name}</div>
+                            <div style="font-size:12px;color:#999">${p.version} · 下载 ${p.downloads || 0} 次</div>
+                        </div>
+                        <button onclick="showPluginForm('${p.id}')" style="padding:6px 12px;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer;font-size:12px">编辑</button>
+                        <button onclick="showPluginChangelog('${p.id}','${p.name.replace(/'/g,"\\'")}')" style="padding:6px 12px;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer;font-size:12px">日志</button>
+                        <button onclick="deletePlugin('${p.id}')" style="padding:6px 12px;border:1px solid #FCA5A5;background:#FEE2E2;color:#DC2626;border-radius:4px;cursor:pointer;font-size:12px">删除</button>
+                    </div>
+                `).join('') : '<p style="color:#999;text-align:center;padding:20px">暂无插件</p>'}
+            </div>`;
+    } catch(e) {
+        content.innerHTML = `<p style="color:red">加载失败：${e.message}</p>`;
+    }
+}
+
+async function showPluginForm(id) {
+    const area = document.getElementById('pluginFormArea');
+    let plugin = { name:'', icon:'🔌', version:'v1.0.0', short_desc:'', description:'', platforms:'', install_guide:'', known_issues:'', download_url:'' };
+
+    if (id) {
+        try {
+            const { data } = await supabase.from('plugins').select('*').eq('id', id).single();
+            if (data) plugin = data;
+        } catch(e){}
+    }
+
+    area.innerHTML = `
+        <div style="border:2px solid var(--accent);border-radius:8px;padding:16px;margin-bottom:16px;background:#FFFBF7">
+            <h4 style="margin:0 0 12px">${id ? '编辑插件' : '新增插件'}</h4>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div><label style="font-size:12px;font-weight:600">插件名称 *</label><input id="pf_name" value="${plugin.name}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px"></div>
+                <div><label style="font-size:12px;font-weight:600">图标</label><input id="pf_icon" value="${plugin.icon}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px"></div>
+                <div><label style="font-size:12px;font-weight:600">版本号 *</label><input id="pf_version" value="${plugin.version}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px"></div>
+                <div><label style="font-size:12px;font-weight:600">支持平台</label><input id="pf_platforms" value="${plugin.platforms}" placeholder="Chrome, Edge" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px"></div>
+            </div>
+            <div style="margin-top:12px"><label style="font-size:12px;font-weight:600">简介</label><input id="pf_short_desc" value="${(plugin.short_desc||'').replace(/"/g,'&quot;')}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px"></div>
+            <div style="margin-top:12px"><label style="font-size:12px;font-weight:600">详细说明</label><textarea id="pf_description" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;min-height:80px">${plugin.description||''}</textarea></div>
+            <div style="margin-top:12px"><label style="font-size:12px;font-weight:600">安装教程（每行一步）</label><textarea id="pf_install_guide" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;min-height:80px">${plugin.install_guide||''}</textarea></div>
+            <div style="margin-top:12px"><label style="font-size:12px;font-weight:600">已知问题</label><textarea id="pf_known_issues" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;min-height:60px">${plugin.known_issues||''}</textarea></div>
+            <div style="margin-top:12px"><label style="font-size:12px;font-weight:600">下载链接</label><input id="pf_download_url" value="${(plugin.download_url||'').replace(/"/g,'&quot;')}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px"></div>
+            <div style="display:flex;gap:8px;margin-top:16px">
+                <button onclick="savePluginForm('${id||''}')" style="padding:10px 24px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">保存</button>
+                <button onclick="document.getElementById('pluginFormArea').innerHTML=''" style="padding:10px 24px;background:#f5f5f5;border:none;border-radius:6px;cursor:pointer">取消</button>
+            </div>
+        </div>`;
+}
+
+async function savePluginForm(id) {
+    const payload = {
+        name: document.getElementById('pf_name').value.trim(),
+        icon: document.getElementById('pf_icon').value.trim(),
+        version: document.getElementById('pf_version').value.trim(),
+        short_desc: document.getElementById('pf_short_desc').value.trim(),
+        description: document.getElementById('pf_description').value.trim(),
+        platforms: document.getElementById('pf_platforms').value.trim(),
+        install_guide: document.getElementById('pf_install_guide').value.trim(),
+        known_issues: document.getElementById('pf_known_issues').value.trim(),
+        download_url: document.getElementById('pf_download_url').value.trim(),
+        updated_at: new Date().toISOString()
+    };
+
+    if (!payload.name || !payload.version) {
+        alert('插件名称和版本号为必填');
+        return;
+    }
+
+    try {
+        if (id) {
+            const { error } = await supabase.from('plugins').update(payload).eq('id', id);
+            if (error) throw error;
+        } else {
+            const { error } = await supabase.from('plugins').insert(payload);
+            if (error) throw error;
+        }
+        showToast('✅ 保存成功');
+        showPluginManagement();
+    } catch(e) {
+        alert('保存失败：' + e.message);
+    }
+}
+
+async function deletePlugin(id) {
+    if (!confirm('确定删除此插件？')) return;
+    try {
+        await supabase.from('plugins').delete().eq('id', id);
+        showToast('已删除');
+        showPluginManagement();
+    } catch(e) {
+        alert('删除失败：' + e.message);
+    }
+}
+
+async function showPluginChangelog(pluginId, pluginName) {
+    const content = document.getElementById('adminTabContent');
+    content.innerHTML = '<div style="text-align:center;padding:20px">加载中...</div>';
+
+    try {
+        const { data: logs } = await supabase
+            .from('plugin_changelog')
+            .select('*')
+            .eq('plugin_id', pluginId)
+            .order('created_at', { ascending: false });
+
+        content.innerHTML = `
+            <div style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+                <div><button onclick="showPluginManagement()" style="background:none;border:none;color:var(--accent);cursor:pointer;font-weight:600">← 返回</button> <span style="font-weight:600">${pluginName} · 更新日志</span></div>
+                <button onclick="showChangelogForm('${pluginId}')" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">+ 新增日志</button>
+            </div>
+            <div id="changelogFormArea"></div>
+            <div id="changelogListArea">
+                ${(logs||[]).map(l => `
+                    <div style="padding:12px;border:1px solid #eee;border-radius:8px;margin-bottom:8px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                            <strong>${l.version}</strong>
+                            <span style="font-size:12px;color:#999">${new Date(l.created_at).toLocaleDateString('zh-CN')}</span>
+                        </div>
+                        <div style="font-size:13px;color:#555;white-space:pre-wrap">${l.content}</div>
+                        <button onclick="deleteChangelog('${l.id}','${pluginId}','${pluginName.replace(/'/g,"\\'")}')" style="margin-top:8px;padding:4px 10px;border:1px solid #FCA5A5;background:#FEE2E2;color:#DC2626;border-radius:4px;cursor:pointer;font-size:11px">删除</button>
+                    </div>
+                `).join('') || '<p style="color:#999;text-align:center;padding:20px">暂无更新日志</p>'}
+            </div>`;
+    } catch(e) {
+        content.innerHTML = `<p style="color:red">加载失败：${e.message}</p>`;
+    }
+}
+
+function showChangelogForm(pluginId) {
+    document.getElementById('changelogFormArea').innerHTML = `
+        <div style="border:2px solid var(--accent);border-radius:8px;padding:16px;margin-bottom:16px;background:#FFFBF7">
+            <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px">
+                <div><label style="font-size:12px;font-weight:600">版本号</label><input id="cl_version" placeholder="v1.0.0" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px"></div>
+                <div><label style="font-size:12px;font-weight:600">更新内容（每行一条）</label><textarea id="cl_content" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;min-height:80px" placeholder="修复xxx问题&#10;新增xxx功能"></textarea></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px">
+                <button onclick="saveChangelog('${pluginId}')" style="padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">保存</button>
+                <button onclick="document.getElementById('changelogFormArea').innerHTML=''" style="padding:8px 20px;background:#f5f5f5;border:none;border-radius:6px;cursor:pointer">取消</button>
+            </div>
+        </div>`;
+}
+
+async function saveChangelog(pluginId) {
+    const version = document.getElementById('cl_version').value.trim();
+    const content = document.getElementById('cl_content').value.trim();
+    if (!version || !content) { alert('版本号和内容为必填'); return; }
+
+    try {
+        await supabase.from('plugin_changelog').insert({ plugin_id: pluginId, version, content });
+        showToast('✅ 日志已添加');
+        // 刷新列表
+        const { data: plugin } = await supabase.from('plugins').select('name').eq('id', pluginId).single();
+        showPluginChangelog(pluginId, plugin?.name || '');
+    } catch(e) {
+        alert('保存失败：' + e.message);
+    }
+}
+
+async function deleteChangelog(logId, pluginId, pluginName) {
+    if (!confirm('确定删除此日志？')) return;
+    try {
+        await supabase.from('plugin_changelog').delete().eq('id', logId);
+        showToast('已删除');
+        showPluginChangelog(pluginId, pluginName);
+    } catch(e) {
+        alert('删除失败：' + e.message);
+    }
 }
 
 // ========== A+B 学习系统 ==========
