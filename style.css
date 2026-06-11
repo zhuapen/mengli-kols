@@ -786,6 +786,50 @@ tbody tr:hover{
 }
 .article-actions .secondary:hover{background:var(--black);color:var(--white)}
 
+/* Article file upload */
+.article-upload{
+  padding:32px;border:2px dashed var(--gray-200);
+  text-align:center;cursor:pointer;transition:all 0.3s;
+  border-radius:8px;
+}
+.article-upload:hover{border-color:var(--accent);background:var(--gray-50)}
+.article-upload.drag-over{border-color:var(--accent);background:#FFF5F2;box-shadow:0 0 0 3px rgba(244,132,95,0.2)}
+.article-upload-icon{font-size:36px;margin-bottom:8px}
+.article-upload-text{font-size:14px;font-weight:600;margin-bottom:4px}
+.article-upload-hint{font-size:12px;color:var(--gray-400)}
+.article-file-list{margin-top:8px}
+.article-file-item{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 14px;background:var(--gray-50);
+  border-radius:8px;margin-top:8px;
+}
+.article-file-item .file-icon{font-size:20px}
+.article-file-item .file-info{flex:1;min-width:0}
+.article-file-item .file-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.article-file-item .file-size{font-size:11px;color:var(--gray-400)}
+.article-file-item .file-remove{
+  width:24px;height:24px;border:none;background:#f5f5f5;
+  border-radius:50%;font-size:14px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:all 0.2s;flex-shrink:0;
+}
+.article-file-item .file-remove:hover{background:#FEE2E2;color:#EF4444}
+
+/* Article mode tabs */
+.article-mode-tabs{display:flex;gap:8px}
+.article-mode-tab{
+  flex:1;padding:12px;border:2px solid var(--gray-200);
+  background:var(--white);font-size:14px;font-weight:600;
+  cursor:pointer;transition:all 0.3s;font-family:var(--font);
+  border-radius:8px;text-align:center;
+}
+.article-mode-tab:hover{border-color:var(--black)}
+.article-mode-tab.active{background:var(--black);color:var(--white);border-color:var(--black)}
+.article-mode-hint{
+  margin-top:8px;font-size:12px;color:var(--gray-400);
+  padding:8px 12px;background:var(--gray-50);border-radius:6px;
+}
+
 /* ========== ASSETS PAGE ========== */
 .assets-header{
   padding:48px 48px 0;

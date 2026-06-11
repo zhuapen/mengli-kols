@@ -306,39 +306,24 @@
 
   <div class="article-layout">
     <div class="article-left">
-      <div class="gen-label">文章类型</div>
-      <select class="gen-textarea" id="articleType" style="min-height:auto;padding:16px;cursor:pointer">
-        <option value="种草推荐">种草推荐 - 产品安利</option>
-        <option value="品牌故事">品牌故事 - 品牌介绍</option>
-        <option value="行业干货">行业干货 - 知识分享</option>
-        <option value="活动宣传">活动宣传 - 活动推广</option>
-        <option value="用户案例">用户案例 - 成功故事</option>
-        <option value="产品评测">产品评测 - 深度测评</option>
-        <option value="节日营销">节日营销 - 节点推广</option>
-      </select>
+      <div class="gen-label">📎 上传客户需求文件</div>
+      <div class="article-upload" id="articleUpload" onclick="document.getElementById('articleFileInput').click()">
+        <input type="file" id="articleFileInput" accept=".pdf,.doc,.docx,.txt" style="display:none" onchange="handleArticleFileUpload(event)">
+        <div class="article-upload-icon">📄</div>
+        <div class="article-upload-text">点击或拖拽上传客户 Brief</div>
+        <div class="article-upload-hint">支持 PDF、Word、TXT</div>
+      </div>
+      <div class="article-file-list" id="articleFileList"></div>
 
-      <div class="gen-label" style="margin-top:24px">品牌</div>
-      <select class="gen-textarea" id="articleBrand" style="min-height:auto;padding:16px;cursor:pointer">
-        <option value="">通用品牌</option>
-        <option value="听研 BIOLAB">听研 BIOLAB - 科技护肤</option>
-        <option value="汤臣倍健">汤臣倍健 - 保健品</option>
-        <option value="她多维">她多维 - 女性维生素</option>
-        <option value="SLIM蛋">SLIM蛋 - 蛋白粉</option>
-        <option value="臻钻蛋白粉">臻钻蛋白粉 - 高端蛋白</option>
-        <option value="特医">特医 - 特医食品</option>
-      </select>
+      <div class="gen-label" style="margin-top:24px">生成模式</div>
+      <div class="article-mode-tabs">
+        <button class="article-mode-tab active" data-mode="outline" onclick="setArticleMode('outline',this)">📋 大纲</button>
+        <button class="article-mode-tab" data-mode="draft" onclick="setArticleMode('draft',this)">📝 初稿</button>
+      </div>
+      <div class="article-mode-hint" id="articleModeHint">输出结构化大纲（800-1200字），包含标题、论点框架和要点展开</div>
 
-      <div class="gen-label" style="margin-top:24px">文章主题</div>
-      <input type="text" class="gen-textarea" id="articleTopic" placeholder="如：听研超上扬精华新品上市、汤臣倍健钙片选购指南..." style="min-height:auto;padding:16px">
-
-      <div class="gen-label" style="margin-top:24px">目标人群</div>
-      <input type="text" class="gen-textarea" id="articleAudience" placeholder="如：25-35岁宝妈、职场新人、健身爱好者..." style="min-height:auto;padding:16px">
-
-      <div class="gen-label" style="margin-top:24px">核心卖点 / 要点</div>
-      <textarea class="gen-textarea" id="articlePoints" placeholder="列出文章要突出的3-5个要点..."></textarea>
-
-      <div class="gen-label" style="margin-top:24px">补充要求</div>
-      <textarea class="gen-textarea" id="articleExtra" placeholder="如：语气轻松活泼、需要插入表情包、字数1500字左右..."></textarea>
+      <div class="gen-label" style="margin-top:24px">补充说明（选填）</div>
+      <textarea class="gen-textarea" id="articleExtra" placeholder="如有特殊要求可在此补充，如：语气轻松活泼、字数1500字左右..." style="min-height:100px"></textarea>
 
       <button class="gen-btn" id="articleBtn" onclick="genArticleStream()">生成写稿</button>
     </div>

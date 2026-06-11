@@ -1075,7 +1075,7 @@ function renderCustomBrands(){
 }
 function refreshBrandSelects(){
   const brands = getCustomBrands();
-  const selects = ['copyBrand', 'articleBrand'];
+  const selects = ['copyBrand'];
   selects.forEach(selId => {
     const sel = document.getElementById(selId);
     if(!sel) return;
@@ -1099,74 +1099,79 @@ refreshBrandSelects();
 function searchAssets(){ renderAssets(); }
 
 // ========== ARTICLE ==========
-async function genArticle(){
-  // 检查权限
-  if (!hasPermission('article')) {
-    showUpgradePrompt('article');
-    return;
+let articleFiles = [];   // {name, size, base64, type}
+let articleMode = 'outline'; // 'outline' | 'draft'
+
+function setArticleMode(mode, btn){
+  articleMode = mode;
+  document.querySelectorAll('.article-mode-tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const hint = document.getElementById('articleModeHint');
+  if(mode === 'outline'){
+    hint.textContent = '输出结构化大纲（800-1200字），包含标题、论点框架和要点展开';
+  } else {
+    hint.textContent = '输出完整初稿（2000-4000字），按大纲结构扩充，含配图标注';
   }
+}
 
-  const type = document.getElementById('articleType').value;
-  const brand = document.getElementById('articleBrand').value;
-  const topic = document.getElementById('articleTopic').value.trim();
-  const audience = document.getElementById('articleAudience').value.trim();
-  const points = document.getElementById('articlePoints').value.trim();
-  const extra = document.getElementById('articleExtra').value.trim();
+function handleArticleFileUpload(event){
+  const files = Array.from(event.target.files);
+  if(!files.length) return;
+  processArticleFiles(files);
+  event.target.value = '';
+}
 
-  if(!topic){ alert('请输入文章主题'); return; }
+function processArticleFiles(files){
+  // 只保留一个文件
+  const file = files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    articleFiles = [{
+      name: file.name,
+      size: file.size,
+      base64: e.target.result,
+      type: file.type
+    }];
+    renderArticleFileList();
+  };
+  reader.readAsDataURL(file);
+}
 
-  const btn = document.getElementById('articleBtn');
-  const out = document.getElementById('articleOutput');
-  const retry = document.getElementById('articleRetry');
-  btn.disabled = true; btn.textContent = '创作中...';
-  retry.disabled = true;
-  out.className = 'article-output'; out.textContent = '';
+function renderArticleFileList(){
+  const list = document.getElementById('articleFileList');
+  if(!articleFiles.length){ list.innerHTML = ''; return; }
+  const f = articleFiles[0];
+  const sizeStr = f.size > 1024*1024
+    ? (f.size/1024/1024).toFixed(1)+'MB'
+    : (f.size/1024).toFixed(0)+'KB';
+  const ext = f.name.split('.').pop().toLowerCase();
+  const icons = {pdf:'📕',doc:'📘',docx:'📘',txt:'📄'};
+  list.innerHTML = `
+    <div class="article-file-item">
+      <span class="file-icon">${icons[ext]||'📎'}</span>
+      <div class="file-info">
+        <div class="file-name">${f.name}</div>
+        <div class="file-size">${sizeStr}</div>
+      </div>
+      <button class="file-remove" onclick="removeArticleFile()">×</button>
+    </div>`;
+}
 
-  try{
-    // 获取高分历史案例
-    let examples = [];
-    if(isLoggedIn()){
-      const highRated = await getHighRatedExamples('article');
-      examples = highRated.map(h => h.output_content).filter(Boolean);
-    }
+function removeArticleFile(){
+  articleFiles = [];
+  renderArticleFileList();
+}
 
-    const resp = await fetch('/api', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        action:'article',
-        type,
-        brand,
-        topic,
-        audience,
-        points,
-        prompt: extra,
-        examples
-      })
-    });
-    const data = await resp.json();
-    out.textContent = data.text || data.error || '生成失败';
-    if(data.text) {
-      saveAsset('article', topic, data.text);
-      saveRecentResult('article', {text: data.text});
-
-      // 保存历史并显示评分
-      const inputParams = {type, brand, topic, audience, points, prompt:extra};
-      if(isLoggedIn()){
-        saveGenerationHistory('article', inputParams, data.text).then(historyId => {
-          if(historyId) createStarRating('articleRating', historyId, data.text, 'article');
-        });
-        if(type) savePreference('article_type', type);
-        if(brand) savePreference('article_brand', brand);
-      } else {
-        createStarRating('articleRating', null, data.text, 'article');
-      }
-    }
-  } catch(e){
-    out.className = 'article-output empty'; out.textContent = getApiErrorMessage(e);
-  }
-  btn.disabled = false; btn.textContent = '生成写稿';
-  retry.style.display = 'inline-flex';
-  retry.disabled = false;
+function initArticleDragDrop(){
+  const zone = document.getElementById('articleUpload');
+  if(!zone) return;
+  zone.addEventListener('dragover', e=>{e.preventDefault();zone.classList.add('drag-over')});
+  zone.addEventListener('dragleave', e=>{e.preventDefault();zone.classList.remove('drag-over')});
+  zone.addEventListener('drop', e=>{
+    e.preventDefault();zone.classList.remove('drag-over');
+    processArticleFiles(Array.from(e.dataTransfer.files));
+  });
 }
 
 function copyArticle(){
@@ -1538,23 +1543,6 @@ async function autoFillPreferences() {
       }
     }
 
-    // 写稿类型偏好
-    const articleTypes = await getUserPreferences('article_type');
-    if (articleTypes.length > 0) {
-      const select = document.getElementById('articleType');
-      if (select) {
-        const option = Array.from(select.options).find(o => o.value === articleTypes[0]);
-        if (option) select.value = articleTypes[0];
-      }
-    }
-
-    // 写稿品牌偏好
-    const articleBrands = await getUserPreferences('article_brand');
-    if (articleBrands.length > 0) {
-      const input = document.getElementById('articleBrand');
-      if (input && !input.value) input.value = articleBrands[0];
-    }
-
     // 图片尺寸偏好
     const imgSizes = await getUserPreferences('img_size');
     if (imgSizes.length > 0) {
@@ -1674,6 +1662,7 @@ initFilters();
 render();
 initDragDrop();
 initMaskCanvasEvents();
+initArticleDragDrop();
 restoreRecentResults();
 
 
@@ -2207,12 +2196,7 @@ function reuseHistoryInput(genType, params){
     if(params.prompt) document.getElementById('copyExtra').value = params.prompt;
   } else if(genType === 'article'){
     showPage('article');
-    if(params.type) document.getElementById('articleType').value = params.type;
-    if(params.brand) document.getElementById('articleBrand').value = params.brand;
-    if(params.topic) document.getElementById('articleTopic').value = params.topic;
-    if(params.audience) document.getElementById('articleAudience').value = params.audience;
-    if(params.points) document.getElementById('articlePoints').value = params.points;
-    if(params.prompt) document.getElementById('articleExtra').value = params.prompt;
+    if(params.extra) document.getElementById('articleExtra').value = params.extra;
   }
 }
 
@@ -2338,13 +2322,9 @@ async function genCopyStream(){
 // 流式写稿生成
 async function genArticleStream(){
   if(!hasPermission('article')){ showUpgradePrompt('article'); return; }
-  const type = document.getElementById('articleType').value;
-  const brand = document.getElementById('articleBrand').value;
-  const topic = document.getElementById('articleTopic').value.trim();
-  const audience = document.getElementById('articleAudience').value.trim();
-  const points = document.getElementById('articlePoints').value.trim();
+
   const extra = document.getElementById('articleExtra').value.trim();
-  if(!topic){ alert('请填写文章主题'); return; }
+  const file = articleFiles.length > 0 ? articleFiles[0] : null;
 
   const btn = document.getElementById('articleBtn');
   const out = document.getElementById('articleOutput');
@@ -2361,8 +2341,9 @@ async function genArticleStream(){
     completed = true;
     text = text.replace(/\*+/g, '');
     out.textContent = text;
-    if(text){ saveAsset('article', topic || '写稿', text); saveRecentResult('article', {text}); }
-    const inputParams = {type, brand, topic, audience, points, prompt:extra};
+    const label = articleMode === 'outline' ? '大纲' : '初稿';
+    if(text){ saveAsset('article', label + (file ? ' — '+file.name : ''), text); saveRecentResult('article', {text}); }
+    const inputParams = {mode:articleMode, extra};
     if(isLoggedIn()){
       saveGenerationHistory('article', inputParams, text).then(historyId => {
         if(historyId) createStarRating('articleRating', historyId, text, 'article');
@@ -2374,9 +2355,10 @@ async function genArticleStream(){
     retry.style.display = 'inline-flex'; retry.disabled = false;
   }
 
-  fetchStream('/api', {
-    action:'stream_article', type, brand, topic, audience, points, prompt:extra
-  },
+  const body = { action:'stream_article', mode:articleMode, extra };
+  if(file) body.file = { name:file.name, base64:file.base64, type:file.type };
+
+  fetchStream('/api', body,
   (chunk) => { fullText += chunk; out.textContent = fullText; },
   () => { finalizeArticle(fullText); },
   (e) => {
@@ -2385,7 +2367,10 @@ async function genArticleStream(){
       showToast('⚠️ 流式中断，已保留已生成内容');
       finalizeArticle(fullText);
     } else {
-      genArticle();
+      // 非流式回退
+      fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+        .then(r=>r.json()).then(d=>{ out.textContent=d.text||d.error||'生成失败'; finalizeArticle(d.text||''); })
+        .catch(()=>{ out.className='article-output empty'; out.textContent=getApiErrorMessage(e); });
     }
   });
 }
