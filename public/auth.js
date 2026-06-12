@@ -1858,11 +1858,17 @@ async function updateFeedbackStatus(id, status) {
 async function deleteFeedback(id) {
     if (!confirm('确定删除此反馈？')) return;
     try {
-        const { error } = await supabase.from('plugin_feedback').delete().eq('id', id);
-        if (error) {
-            console.error('删除反馈失败:', error);
-            alert('删除失败：' + (error.message || JSON.stringify(error)));
-            return;
+        // 直接调 REST API，绕过 Supabase JS 客户端对 204 响应的解析问题
+        const resp = await fetch(`${SUPABASE_URL}/rest/v1/plugin_feedback?id=eq.${id}`, {
+            method: 'DELETE',
+            headers: {
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+            }
+        });
+        if (!resp.ok && resp.status !== 204) {
+            const errText = await resp.text();
+            throw new Error(errText || `HTTP ${resp.status}`);
         }
         showToast('已删除');
         showFeedbackManagement();
