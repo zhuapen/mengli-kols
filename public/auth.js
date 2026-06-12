@@ -973,6 +973,7 @@ function showAdminPanel() {
                 <button class="admin-tab active" onclick="switchAdminTab('users', this)">用户管理</button>
                 <button class="admin-tab" onclick="switchAdminTab('create', this)">创建用户</button>
                 <button class="admin-tab" onclick="switchAdminTab('plugins', this)">插件管理</button>
+                <button class="admin-tab" onclick="switchAdminTab('feedback', this)">反馈管理</button>
             </div>
             <div id="adminTabContent" class="admin-tab-content">
                 <div class="loading">加载中...</div>
@@ -1244,6 +1245,8 @@ function switchAdminTab(tab, btn) {
         showCreateUserForm();
     } else if (tab === 'plugins') {
         showPluginManagement();
+    } else if (tab === 'feedback') {
+        showFeedbackManagement();
     }
 }
 
@@ -1771,6 +1774,91 @@ async function deleteChangelog(logId, pluginId, pluginName) {
         await supabase.from('plugin_changelog').delete().eq('id', logId);
         showToast('已删除');
         showPluginChangelog(pluginId, pluginName);
+    } catch(e) {
+        alert('删除失败：' + e.message);
+    }
+}
+
+// ========== FEEDBACK MANAGEMENT (Admin) ==========
+async function showFeedbackManagement() {
+    const content = document.getElementById('adminTabContent');
+    content.innerHTML = '<div style="text-align:center;padding:20px">加载中...</div>';
+
+    try {
+        // 加载反馈和插件列表
+        const [{ data: feedbacks }, { data: plugins }] = await Promise.all([
+            supabase.from('plugin_feedback').select('*').order('created_at', { ascending: false }),
+            supabase.from('plugins').select('id,name')
+        ]);
+
+        const pluginMap = {};
+        (plugins||[]).forEach(p => pluginMap[p.id] = p.name);
+
+        const typeIcons = { bug:'🐛', feature:'💡', question:'❓' };
+        const statusLabels = { pending:'待处理', resolved:'已解决' };
+
+        content.innerHTML = `
+            <div style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+                <h4 style="margin:0">反馈列表 (${(feedbacks||[]).length})</h4>
+                <select id="feedbackFilterPlugin" onchange="filterFeedbackByPlugin()" style="padding:6px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px">
+                    <option value="">全部插件</option>
+                    ${(plugins||[]).map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+                </select>
+            </div>
+            <div id="feedbackListArea">
+                ${(feedbacks||[]).length ? (feedbacks||[]).map(f => `
+                    <div class="feedback-item" data-plugin="${f.plugin_id}" style="padding:16px;border:1px solid #eee;border-radius:8px;margin-bottom:12px;${f.status==='resolved'?'opacity:0.6':''}">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                            <div>
+                                <span style="font-size:14px;font-weight:600">${typeIcons[f.feedback_type]||'💬'} ${f.feedback_type === 'bug' ? 'Bug反馈' : f.feedback_type === 'feature' ? '功能建议' : '使用问题'}</span>
+                                <span style="font-size:12px;color:#999;margin-left:8px">${pluginMap[f.plugin_id]||'未知插件'}</span>
+                            </div>
+                            <span style="font-size:12px;color:#999">${new Date(f.created_at).toLocaleString('zh-CN')}</span>
+                        </div>
+                        <div style="font-size:12px;color:#666;margin-bottom:6px">用户：${f.user_name||'匿名'}</div>
+                        <div style="font-size:14px;color:#333;line-height:1.6;margin-bottom:8px;white-space:pre-wrap">${f.content}</div>
+                        ${f.images && f.images.length ? `
+                            <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+                                ${f.images.map(url => `<a href="${url}" target="_blank"><img src="${url}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;border:1px solid #eee"></a>`).join('')}
+                            </div>
+                        ` : ''}
+                        <div style="display:flex;gap:8px;align-items:center">
+                            <select onchange="updateFeedbackStatus('${f.id}',this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px">
+                                <option value="pending" ${f.status==='pending'?'selected':''}>待处理</option>
+                                <option value="resolved" ${f.status==='resolved'?'selected':''}>已解决</option>
+                            </select>
+                            <button onclick="deleteFeedback('${f.id}')" style="padding:4px 10px;border:1px solid #FCA5A5;background:#FEE2E2;color:#DC2626;border-radius:4px;cursor:pointer;font-size:11px">删除</button>
+                        </div>
+                    </div>
+                `).join('') : '<p style="color:#999;text-align:center;padding:30px">暂无反馈</p>'}
+            </div>`;
+    } catch(e) {
+        content.innerHTML = `<p style="color:red">加载失败：${e.message}</p>`;
+    }
+}
+
+function filterFeedbackByPlugin() {
+    const pluginId = document.getElementById('feedbackFilterPlugin').value;
+    document.querySelectorAll('.feedback-item').forEach(el => {
+        el.style.display = (!pluginId || el.dataset.plugin === pluginId) ? '' : 'none';
+    });
+}
+
+async function updateFeedbackStatus(id, status) {
+    try {
+        await supabase.from('plugin_feedback').update({ status }).eq('id', id);
+        showToast('状态已更新');
+    } catch(e) {
+        alert('更新失败：' + e.message);
+    }
+}
+
+async function deleteFeedback(id) {
+    if (!confirm('确定删除此反馈？')) return;
+    try {
+        await supabase.from('plugin_feedback').delete().eq('id', id);
+        showToast('已删除');
+        showFeedbackManagement();
     } catch(e) {
         alert('删除失败：' + e.message);
     }

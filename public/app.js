@@ -1256,6 +1256,15 @@ async function showPluginDetail(id){
             <button class="feedback-type-tab" onclick="setPluginFeedbackType('question',this)">❓ 使用问题</button>
           </div>
           <textarea id="pluginFeedbackContent" placeholder="请描述你遇到的问题或建议..."></textarea>
+          <div class="feedback-images-section">
+            <label style="font-size:12px;font-weight:600;color:#666;margin-bottom:6px;display:block">📷 上传截图（最多3张，选填）</label>
+            <div class="feedback-images-list" id="feedbackImagesList">
+              <label class="feedback-image-add" id="feedbackImageAdd">
+                <input type="file" id="feedbackImageInput" accept="image/*" multiple style="display:none" onchange="addFeedbackImages(event)">
+                <span>+ 添加图片</span>
+              </label>
+            </div>
+          </div>
           <button class="plugin-feedback-submit" onclick="submitPluginFeedback('${p.id}')">提交反馈</button>
         </div>
       </div>
@@ -1287,6 +1296,47 @@ function setPluginFeedbackType(type, btn){
   btn.classList.add('active');
 }
 
+let feedbackImages = []; // {file, preview}
+
+function addFeedbackImages(event){
+  const files = Array.from(event.target.files);
+  const remaining = 3 - feedbackImages.length;
+  if(remaining <= 0){ showToast('最多上传3张图片'); return; }
+  files.slice(0, remaining).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      feedbackImages.push({ file, preview: e.target.result });
+      renderFeedbackImages();
+    };
+    reader.readAsDataURL(file);
+  });
+  event.target.value = '';
+}
+
+function removeFeedbackImage(index){
+  feedbackImages.splice(index, 1);
+  renderFeedbackImages();
+}
+
+function renderFeedbackImages(){
+  const list = document.getElementById('feedbackImagesList');
+  const addBtn = document.getElementById('feedbackImageAdd');
+  if(!list) return;
+  let html = feedbackImages.map((img, i) =>
+    `<div class="feedback-image-thumb">
+      <img src="${img.preview}">
+      <button class="feedback-image-remove" onclick="removeFeedbackImage(${i})">×</button>
+    </div>`
+  ).join('');
+  if(feedbackImages.length < 3){
+    html += `<label class="feedback-image-add" id="feedbackImageAdd">
+      <input type="file" id="feedbackImageInput" accept="image/*" multiple style="display:none" onchange="addFeedbackImages(event)">
+      <span>+ 添加图片</span>
+    </label>`;
+  }
+  list.innerHTML = html;
+}
+
 async function submitPluginFeedback(pluginId){
   const content = document.getElementById('pluginFeedbackContent').value.trim();
   if(!content){ showToast('请输入反馈内容'); return; }
@@ -1295,15 +1345,32 @@ async function submitPluginFeedback(pluginId){
   btn.disabled = true; btn.textContent = '提交中...';
 
   try {
+    // 上传图片到 Storage
+    const imageUrls = [];
+    for(const img of feedbackImages){
+      const ext = img.file.name.split('.').pop();
+      const path = `${pluginId}/${Date.now()}_${Math.random().toString(36).slice(2,6)}.${ext}`;
+      const { data, error: uploadErr } = await supabase.storage
+        .from('feedback-images')
+        .upload(path, img.file);
+      if(uploadErr) throw new Error('图片上传失败：' + uploadErr.message);
+      const { data: urlData } = supabase.storage.from('feedback-images').getPublicUrl(path);
+      imageUrls.push(urlData.publicUrl);
+    }
+
     const { error } = await supabase.from('plugin_feedback').insert({
       plugin_id: pluginId,
       user_id: currentUser?.id || null,
+      user_name: currentUser ? (userProfile?.display_name || currentUser.email) : '匿名用户',
       feedback_type: pluginFeedbackType,
-      content: content
+      content: content,
+      images: imageUrls
     });
     if(error) throw error;
     showToast('✅ 反馈已提交，感谢！');
     document.getElementById('pluginFeedbackContent').value = '';
+    feedbackImages = [];
+    renderFeedbackImages();
   } catch(e){
     showToast('提交失败：' + (e.message || '未知错误'));
   }
