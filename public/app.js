@@ -1339,9 +1339,10 @@ function renderFeedbackImages(){
 
 async function submitPluginFeedback(pluginId){
   const content = document.getElementById('pluginFeedbackContent').value.trim();
-  if(!content){ showToast('请输入反馈内容'); return; }
+  if(!content){ alert('请输入反馈内容'); return; }
 
   const btn = document.querySelector('.plugin-feedback-submit');
+  if(!btn) return;
   btn.disabled = true; btn.textContent = '提交中...';
 
   try {
@@ -1374,15 +1375,19 @@ async function submitPluginFeedback(pluginId){
     const { error } = await supabase.from('plugin_feedback').insert(insertData);
     if(error) throw error;
 
-    showToast('✅ 反馈已提交，感谢！');
-    document.getElementById('pluginFeedbackContent').value = '';
-    feedbackImages = [];
-    renderFeedbackImages();
+    alert('✅ 反馈已提交，感谢！');
+    try {
+      document.getElementById('pluginFeedbackContent').value = '';
+      feedbackImages = [];
+      renderFeedbackImages();
+    } catch(e2){ /* 清理失败不影响主流程 */ }
   } catch(e){
     console.error('反馈提交失败:', e);
-    showToast('提交失败：' + (e.message || '未知错误'));
+    alert('提交失败：' + (e.message || '未知错误'));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '提交反馈';
   }
-  btn.disabled = false; btn.textContent = '提交反馈';
 }
 
 // ========== ARTICLE ==========
