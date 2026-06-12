@@ -1858,10 +1858,16 @@ async function updateFeedbackStatus(id, status) {
 async function deleteFeedback(id) {
     if (!confirm('确定删除此反馈？')) return;
     try {
-        await supabase.from('plugin_feedback').delete().eq('id', id);
+        const { error } = await supabase.from('plugin_feedback').delete().eq('id', id);
+        if (error) {
+            console.error('删除反馈失败:', error);
+            alert('删除失败：' + (error.message || JSON.stringify(error)));
+            return;
+        }
         showToast('已删除');
         showFeedbackManagement();
     } catch(e) {
+        console.error('删除反馈异常:', e);
         alert('删除失败：' + e.message);
     }
 }
