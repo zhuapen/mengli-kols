@@ -1345,33 +1345,41 @@ async function submitPluginFeedback(pluginId){
   btn.disabled = true; btn.textContent = '提交中...';
 
   try {
-    // 上传图片到 Storage
+    // 上传图片到 Storage（失败不阻塞反馈提交）
     const imageUrls = [];
     for(const img of feedbackImages){
-      const ext = img.file.name.split('.').pop();
-      const path = `${pluginId}/${Date.now()}_${Math.random().toString(36).slice(2,6)}.${ext}`;
-      const { data, error: uploadErr } = await supabase.storage
-        .from('feedback-images')
-        .upload(path, img.file);
-      if(uploadErr) throw new Error('图片上传失败：' + uploadErr.message);
-      const { data: urlData } = supabase.storage.from('feedback-images').getPublicUrl(path);
-      imageUrls.push(urlData.publicUrl);
+      try {
+        const ext = img.file.name.split('.').pop();
+        const path = `${pluginId}/${Date.now()}_${Math.random().toString(36).slice(2,6)}.${ext}`;
+        const { error: uploadErr } = await supabase.storage
+          .from('feedback-images')
+          .upload(path, img.file);
+        if(uploadErr) { console.warn('图片上传失败，跳过:', uploadErr.message); continue; }
+        const { data: urlData } = supabase.storage.from('feedback-images').getPublicUrl(path);
+        imageUrls.push(urlData.publicUrl);
+      } catch(imgErr) {
+        console.warn('图片上传异常，跳过:', imgErr);
+      }
     }
 
-    const { error } = await supabase.from('plugin_feedback').insert({
+    const insertData = {
       plugin_id: pluginId,
       user_id: currentUser?.id || null,
       user_name: currentUser ? (userProfile?.display_name || currentUser.email) : '匿名用户',
       feedback_type: pluginFeedbackType,
       content: content,
-      images: imageUrls
-    });
+      images: imageUrls.length ? imageUrls : null
+    };
+
+    const { error } = await supabase.from('plugin_feedback').insert(insertData);
     if(error) throw error;
+
     showToast('✅ 反馈已提交，感谢！');
     document.getElementById('pluginFeedbackContent').value = '';
     feedbackImages = [];
     renderFeedbackImages();
   } catch(e){
+    console.error('反馈提交失败:', e);
     showToast('提交失败：' + (e.message || '未知错误'));
   }
   btn.disabled = false; btn.textContent = '提交反馈';

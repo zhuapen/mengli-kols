@@ -1819,7 +1819,7 @@ async function showFeedbackManagement() {
                         <div style="font-size:14px;color:#333;line-height:1.6;margin-bottom:8px;white-space:pre-wrap">${f.content}</div>
                         ${f.images && f.images.length ? `
                             <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
-                                ${f.images.map(url => `<a href="${url}" target="_blank"><img src="${url}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;border:1px solid #eee"></a>`).join('')}
+                                ${f.images.map(url => `<img src="${url}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;border:1px solid #eee;cursor:pointer" onclick="openLightbox('${url.replace(/'/g,"\\'")}')" title="点击预览">`).join('')}
                             </div>
                         ` : ''}
                         <div style="display:flex;gap:8px;align-items:center">
@@ -1846,10 +1846,12 @@ function filterFeedbackByPlugin() {
 
 async function updateFeedbackStatus(id, status) {
     try {
-        await supabase.from('plugin_feedback').update({ status }).eq('id', id);
+        const { error } = await supabase.from('plugin_feedback').update({ status }).eq('id', id);
+        if (error) throw error;
         showToast('状态已更新');
     } catch(e) {
-        alert('更新失败：' + e.message);
+        console.error('更新反馈状态失败:', e);
+        showToast('更新失败：' + (e.message || '请检查权限'));
     }
 }
 
