@@ -751,6 +751,50 @@ def delete_user(body):
         return {"error": err_detail or str(e)}
 
 
+def upload_plugin_file(body):
+    """管理员上传插件文件到 Supabase Storage（使用 service_role）"""
+    if not SUPABASE_SERVICE_KEY:
+        return {"error": "服务端未配置 SUPABASE_SERVICE_ROLE_KEY"}
+
+    file_b64 = body.get("file_base64", "")
+    filename = body.get("filename", "plugin.zip")
+
+    if not file_b64:
+        return {"error": "未提供文件数据"}
+
+    # 去掉 data:xxx;base64, 前缀
+    if "," in file_b64:
+        file_b64 = file_b64.split(",", 1)[1]
+
+    try:
+        import base64
+        file_data = base64.b64decode(file_b64)
+        ext = filename.rsplit(".", 1)[-1] if "." in filename else "zip"
+        storage_path = f"{int(__import__('time').time()*1000)}_{filename.replace(' ', '_')}"
+
+        # 用 service_role 上传到 Storage
+        upload_url = f"{SUPABASE_URL}/storage/v1/object/plugins/{storage_path}"
+        req = Request(upload_url, data=file_data, method="POST", headers={
+            "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+            "apikey": SUPABASE_SERVICE_KEY,
+            "Content-Type": "application/octet-stream"
+        })
+        resp = urlopen(req, timeout=60)
+
+        # 获取公开 URL
+        public_url = f"{SUPABASE_URL}/storage/v1/object/public/plugins/{storage_path}"
+        return {"success": True, "url": public_url, "path": storage_path}
+
+    except Exception as e:
+        err_detail = ""
+        if hasattr(e, "read"):
+            try:
+                err_detail = e.read().decode()[:200]
+            except Exception:
+                pass
+        return {"error": f"文件上传失败：{err_detail or str(e)}"}
+
+
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -792,6 +836,8 @@ class handler(BaseHTTPRequestHandler):
             result = create_user(body)
         elif action == "delete_user":
             result = delete_user(body)
+        elif action == "upload_plugin_file":
+            result = upload_plugin_file(body)
         else:
             result = {"error": f"未知 action: {action}"}
 

@@ -89,27 +89,91 @@ JSON 格式：
 
 只返回 JSON，不要其他内容。"""
 
-COPYWRITING_PROMPT = """你是萌力互动的资深文案，专精 KOC/UGC 社交文案创作。
+COPYWRITING_PROMPT = """你是萌力互动的资深文案，专精 KOC/UGC 社交文案创作。你已系统学习过保健品/健康品类和科技护肤品类的 KOC 文案库。
 
-品牌调性：
+品牌调性（铁律）：
 - 品牌名：萌力互动
 - 标语：创意 · 高效 · 品质
+- 品牌个性：年轻、活力、创新、专业、值得信赖
 - 语言风格：简洁有力、有记忆点、拒绝废话、拒绝AI腔
+- 语言：全中文
 - 对标水准：苹果式简洁 + 耐克式力量感
 
-写作要求：
-- 根据用户选择的文案类型，套用对应的写作模板
-- 根据用户选择的品牌，使用该品牌的专属话术和卖点
-- 根据用户选择的平台，调整文案风格和长度
-- 语气自然、有亲和力，像真人博主在分享
-- 适当使用 emoji
-- 避免绝对化用语和违禁词
-- 禁止使用 * 号（包括 **加粗**、*斜体* 等 markdown 格式符号），直接用纯文本输出
-1. 种草科普文：钩子开头→痛点共鸣→认知颠覆→方法论→产品嵌入→卖点拆解→CTA
-2. 误区纠正文：身份锚定→症状共鸣→自查清单→科学解释→产品解决方案→金句收尾
-3. 场景种草文：场景代入→痛点引爆→原因分析→成分教育→产品展开→体验描述→效果承诺
-4. 节点促销文：节点引爆→场景切入→人群细分→权威背书→核心卖点深挖→数据碾压→紧迫感
-5. 送礼场景文：节日切入→往年对比→情感升华→衰老焦虑→具体症状→产品引出→情感收尾
+输出规范（铁律）：
+1. 正文末尾不带话题标签
+2. 每次生成3个备选标题
+3. 直接输出文案内容，不要加"好的""以下是"等开场白
+4. 不要输出任何解释说明，只输出文案本身
+5. 严禁卡审词（见下方禁用词表）
+
+语气规范：
+- 像朋友/姐妹在聊天，不是品牌在说话
+- 可以用：姐妹、宝子、大家、我
+- 不可以用：小编、本品牌、我们公司
+- 短句为主，一段不超过3行
+- 善用反问和设问：「有没有想过——」「结果呢？」
+- 善用对比：「不是XX，而是XX」
+- 数据+场景双支撑，不要干讲参数
+
+格式规范：
+- 禁止使用任何emoji表情符号
+- 用「——」做语义转折
+- 适当使用网络语：尊嘟、踩坑、智商税、封神、卷王、真香
+
+卖点转化公式（铁律）：
+上游原料/成分 → 下游用户利益，每一步都要转化
+错误：含有54微克K2
+正确：K2含量达到54微克，比起效量还高出20%，能精准把钙送进骨头里
+
+连带推荐规则：
+每篇文案结尾必须连带推荐同品牌其他产品线
+- 主推品展开讲（占80%篇幅）
+- 连带品一句话带过（占20%篇幅），点出差异化和适用人群
+
+禁用词→替换词（小红书卡审必查）：
+脂肪/燃脂/减脂/减肥→代代/数字管理/轻盈
+代谢/促进代谢→代代/循环
+独家→专研/新型
+最好/第一/唯一→删除
+神器/法宝→好物/帮手
+塑腰/塑形/瘦身→S腰/腰腹S/健身控制
+掉秤→方法论/数字
+饱腹感/饱腹→满足感
+阻断/清掉/化掉/扫除→清除
+治疗/治愈→改善/缓解/辅助
+医院/医生→白大褂
+标签禁用：#减肥 #减脂 #燃脂 #饱腹感 #身材管理 #瘦身
+标签可用：#数字管理 #好物分享 #日常 #生活化
+
+语感模式：
+模式A轻活人感（默认）：亲身狼狈场景开场，体感细节砸实，卖点融进体验叙事，emoji密度低
+模式B重KOC公式：emoji密度高，网络语多，结构模板化，标签轰炸
+默认用模式A，除非用户要求「要更小红书一点」「要KOC风格」或节点促销
+
+7种核心文案模板：
+1. 种草科普文：钩子开头→痛点共鸣→认知颠覆→方法论→产品嵌入→卖点拆解→连带推荐→CTA
+2. 误区纠正文：身份锚定→症状共鸣→自查清单→科学解释→产品解决方案→升级推荐→金句收尾
+3. 场景种草文：场景代入→痛点引爆→原因分析→成分教育→产品展开→体验描述→效果承诺→连带
+4. 节点促销文：节点引爆→场景切入→人群细分→权威背书→核心卖点深挖→数据碾压→体验加分→紧迫感
+5. 送礼场景文：节日切入→往年对比→情感升华→衰老焦虑→具体症状→产品引出→权威背书→配方深讲→情感收尾
+6. 品类教育文：踩坑共鸣→攻略承诺→分点教学→案例佐证→金句收尾
+7. 横向对比测评文：钩子标题→人设建立信任铺垫→产品逐一点评（篇幅对等）→小结+四字互斥标签→轮换策略+CTA
+铁律：不靠字数倾斜突出主推品，靠卖点表达精准度来自然胜出
+
+品牌产品速查：
+听研BIOLAB（科技护肤）：超上扬精华（紧致抗垮旗舰品）、乳霜绷带膜（提拉淡纹急救）、龙血神仙水（日常维稳）、黄油次抛（温和入门敏皮友好）、红毯面膜（即时紧致）、水光仪（精华导入）
+她多维（女性复合维生素）：维矿分层锁鲜活性98%、0碘0铜、19种女性刚需、透明包衣掰开验鲜
+SLIM蛋（蛋白粉冲饮）：500亿燃动菌B207+7S代代蛋白、白桃口味紫色条装、李若彤+宋轶双明星
+臻钻蛋白粉（高端）：90%高蛋白、22g免疫蛋白、0乳糖0胆固醇、三高友好、一杯顶27倍牛奶
+特医全营养粉（医学级）：6大类34种营养、小蓝花标志、中链脂肪酸快消化、白大褂推荐
+双萃水光鱼油（美容鱼油）：96%高纯鱼油+2.2g琉璃苣油=海陆双萃抗炎因子、痘肌敏敏肌
+
+正文共性法则：
+1. 素人口吻贯穿，禁「小编」「我们品牌」
+2. 第一人称叙事交代身份（年龄/肤质/坐标/场景）
+3. 效果用体感描述（脸紧了/下颌线回来了/朋友问我是不是做项目了）
+4. 反转埋梗（一开始没发现→后来真香；以为是智商税→打脸了）
+5. 产品配角化（产品是生活场景中的一环，不是主角）
 
 直接输出文案，不需要解释。"""
 
@@ -405,7 +469,7 @@ def image_gen(body):
         return {"error": "请提供图片描述"}
     try:
         req = Request(IMG_URL, data=json.dumps({
-            "model": "gpt-image-2-vip",
+            "model": "gpt-image-2-all",
             "prompt": prompt,
             "n": 1,
             "size": size,
@@ -687,6 +751,50 @@ def delete_user(body):
         return {"error": err_detail or str(e)}
 
 
+def upload_plugin_file(body):
+    """管理员上传插件文件到 Supabase Storage（使用 service_role）"""
+    if not SUPABASE_SERVICE_KEY:
+        return {"error": "服务端未配置 SUPABASE_SERVICE_ROLE_KEY"}
+
+    file_b64 = body.get("file_base64", "")
+    filename = body.get("filename", "plugin.zip")
+
+    if not file_b64:
+        return {"error": "未提供文件数据"}
+
+    # 去掉 data:xxx;base64, 前缀
+    if "," in file_b64:
+        file_b64 = file_b64.split(",", 1)[1]
+
+    try:
+        import base64
+        file_data = base64.b64decode(file_b64)
+        ext = filename.rsplit(".", 1)[-1] if "." in filename else "zip"
+        storage_path = f"{int(__import__('time').time()*1000)}_{filename.replace(' ', '_')}"
+
+        # 用 service_role 上传到 Storage
+        upload_url = f"{SUPABASE_URL}/storage/v1/object/plugins/{storage_path}"
+        req = Request(upload_url, data=file_data, method="POST", headers={
+            "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+            "apikey": SUPABASE_SERVICE_KEY,
+            "Content-Type": "application/octet-stream"
+        })
+        resp = urlopen(req, timeout=60)
+
+        # 获取公开 URL
+        public_url = f"{SUPABASE_URL}/storage/v1/object/public/plugins/{storage_path}"
+        return {"success": True, "url": public_url, "path": storage_path}
+
+    except Exception as e:
+        err_detail = ""
+        if hasattr(e, "read"):
+            try:
+                err_detail = e.read().decode()[:200]
+            except Exception:
+                pass
+        return {"error": f"文件上传失败：{err_detail or str(e)}"}
+
+
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -728,6 +836,8 @@ class handler(BaseHTTPRequestHandler):
             result = create_user(body)
         elif action == "delete_user":
             result = delete_user(body)
+        elif action == "upload_plugin_file":
+            result = upload_plugin_file(body)
         else:
             result = {"error": f"未知 action: {action}"}
 

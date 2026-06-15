@@ -1660,38 +1660,35 @@ async function savePluginForm(id) {
     btn.disabled = true; btn.textContent = '保存中...';
 
     try {
-        // 诊断日志
-        const { data: userData } = await supabase.auth.getUser();
-        console.log('[pluginUpload] currentUser:', currentUser?.id, currentUser?.email);
-        console.log('[pluginUpload] auth.getUser:', userData?.user?.id, userData?.user?.email);
-        console.log('[pluginUpload] isAdmin:', typeof isAdmin === 'function' ? isAdmin() : 'N/A');
-        console.log('[pluginUpload] userProfile role:', userProfile?.role);
-
-        // 上传文件到 Supabase Storage
+        // 上传文件到 Storage（走后端 service_role，避免 JWT/RLS 问题）
         if (fileInput.files.length > 0) {
             const file = fileInput.files[0];
-            const ext = file.name.split('.').pop();
-            const filePath = `${Date.now()}_${payload.name.replace(/\s+/g,'_')}.${ext}`;
 
-            console.log('[pluginUpload] filePath:', filePath);
-            console.log('[pluginUpload] fileSize:', file.size, 'bytes');
-            console.log('[pluginUpload] fileType:', file.type);
+            // 读取文件为 base64
+            const fileBase64 = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error('文件读取失败'));
+                reader.readAsDataURL(file);
+            });
 
-            const { data: uploadData, error: uploadError } = await supabase.storage
-                .from('plugins')
-                .upload(filePath, file, { upsert: false });
+            btn.textContent = '上传中...';
 
-            console.log('[pluginUpload] uploadData:', uploadData);
-            console.log('[pluginUpload] uploadError:', JSON.stringify(uploadError));
+            const resp = await fetch('/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'upload_plugin_file',
+                    file_base64: fileBase64,
+                    filename: file.name
+                })
+            });
+            const uploadResult = await resp.json();
 
-            if (uploadError) throw new Error('文件上传失败：' + uploadError.message);
+            if (uploadResult.error) throw new Error(uploadResult.error);
 
-            const { data: urlData } = supabase.storage
-                .from('plugins')
-                .getPublicUrl(filePath);
-
-            console.log('[pluginUpload] publicUrl:', urlData?.publicUrl);
-            payload.download_url = urlData.publicUrl;
+            payload.download_url = uploadResult.url;
+            btn.textContent = '保存中...';
         }
 
         // 保存插件信息
