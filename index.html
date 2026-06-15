@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20260615">
 </head>
 <body>
 
@@ -209,7 +209,8 @@
         <div class="gen-loading" id="imgLoading">
           <div class="spinner"></div>
           <p style="color:var(--gray-400);font-size:13px">创作中...</p>
-          <p class="gen-loading-sec" style="color:var(--gray-400);font-size:12px;margin-top:4px"></p>
+          <div class="gen-loading-bar"><div class="gen-loading-bar-inner"></div></div>
+          <p class="gen-loading-sec" style="color:var(--gray-400);font-size:12px;margin-top:8px"></p>
           <p class="gen-loading-tip" style="color:#F59E0B;font-size:12px;margin-top:4px;min-height:16px"></p>
         </div>
         <img class="gen-result" id="imgResult" src="" alt="" onclick="openLightbox(this.src)">
@@ -290,6 +291,7 @@
       <div class="copy-actions">
         <button class="gen-btn" id="copyRetry" onclick="genCopyStream()" style="display:none">重新生成</button>
         <button class="gen-btn secondary" onclick="copyText()">复制文案</button>
+        <button class="save-tpl-btn" id="copySaveTpl" onclick="saveAsTemplate('copy', document.getElementById('copyOutput').textContent)" style="display:none">保存为模板</button>
       </div>
       <div id="copyRating"></div>
     </div>
@@ -336,6 +338,7 @@
       <div class="article-actions">
         <button class="gen-btn" id="articleRetry" onclick="genArticleStream()" style="display:none">重新生成</button>
         <button class="gen-btn secondary" onclick="copyArticle()">复制全文</button>
+        <button class="save-tpl-btn" id="articleSaveTpl" onclick="saveAsTemplate('article', document.getElementById('articleOutput').textContent)" style="display:none">保存为模板</button>
       </div>
       <div id="articleRating"></div>
     </div>
@@ -675,6 +678,7 @@
       </div>
     </div>
     <div class="plugin-banner" id="pluginBanner"></div>
+    <div class="plugin-search"><input type="text" id="pluginSearchInput" placeholder="搜索插件..." oninput="filterPlugins()"></div>
     <div class="plugin-grid" id="pluginGrid"></div>
   </div>
   <div id="pluginDetailView" style="display:none">
@@ -688,7 +692,14 @@
 <!-- Image Lightbox -->
 <div class="img-lightbox" id="imgLightbox" onclick="closeLightbox(event)">
   <button class="img-lightbox-close" onclick="closeLightbox(event)">✕</button>
+  <button class="lightbox-nav prev" onclick="event.stopPropagation();lightboxNav(-1)">‹</button>
   <img id="lightboxImg" src="" onclick="event.stopPropagation()">
+  <button class="lightbox-nav next" onclick="event.stopPropagation();lightboxNav(1)">›</button>
+  <div class="lightbox-controls" onclick="event.stopPropagation()">
+    <button onclick="lightboxZoom(-1)" title="缩小">−</button>
+    <button onclick="lightboxZoom(0)" title="重置">⟳</button>
+    <button onclick="lightboxZoom(1)" title="放大">+</button>
+  </div>
 </div>
 
 <!-- Text Modal -->
@@ -801,7 +812,7 @@
   </div>
 </div>
 
-<script src="app.js"></script>
-<script src="auth.js"></script>
+<script src="app.js?v=20260615"></script>
+<script src="auth.js?v=20260615"></script>
 </body>
 </html>

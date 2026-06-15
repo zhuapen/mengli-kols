@@ -657,6 +657,84 @@ tbody tr:hover{
   0%,100%{opacity:1}
   50%{opacity:0.5}
 }
+.gen-loading-bar{
+  width:200px;height:3px;background:var(--gray-200);
+  border-radius:2px;margin:12px auto 0;overflow:hidden;
+}
+.gen-loading-bar-inner{
+  width:40%;height:100%;background:var(--accent);
+  border-radius:2px;animation:loading-slide 1.5s ease-in-out infinite;
+}
+@keyframes loading-slide{
+  0%{transform:translateX(-100%)}
+  50%{transform:translateX(150%)}
+  100%{transform:translateX(-100%)}
+}
+
+/* Word count badge */
+.word-count{
+  position:absolute;bottom:12px;right:16px;
+  font-size:11px;color:var(--gray-400);
+  background:rgba(255,255,255,0.9);padding:2px 8px;
+  border-radius:4px;
+}
+
+/* Save template button */
+.save-tpl-btn{
+  padding:6px 14px;border:1.5px solid var(--accent);
+  border-radius:6px;background:#fff;color:var(--accent);
+  font-size:12px;cursor:pointer;font-weight:600;
+  transition:all 0.2s;font-family:var(--font);
+}
+.save-tpl-btn:hover{background:var(--accent);color:#fff}
+
+/* History detail */
+.history-detail{padding:20px;background:#fff;border-radius:12px;margin-top:12px}
+.history-detail pre{
+  white-space:pre-wrap;word-break:break-all;
+  font-size:13px;line-height:1.8;color:#333;
+  background:var(--gray-50);padding:16px;border-radius:8px;
+  max-height:400px;overflow-y:auto;
+}
+.history-detail-meta{font-size:12px;color:#999;margin-bottom:12px}
+
+/* Plugin search */
+.plugin-search{
+  max-width:1400px;margin:0 auto 20px;padding:0 48px;
+}
+.plugin-search input{
+  width:100%;max-width:400px;padding:10px 16px;
+  border:2px solid var(--gray-200);border-radius:8px;
+  font-size:14px;font-family:var(--font);outline:none;
+  transition:border-color 0.2s;
+}
+.plugin-search input:focus{border-color:var(--accent)}
+
+/* Lightbox zoom controls */
+.lightbox-controls{
+  position:absolute;bottom:20px;left:50%;
+  transform:translateX(-50%);display:flex;gap:8px;
+  background:rgba(0,0,0,0.5);padding:6px 12px;border-radius:20px;
+}
+.lightbox-controls button{
+  width:32px;height:32px;border:none;background:rgba(255,255,255,0.15);
+  color:#fff;border-radius:50%;font-size:16px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background 0.2s;
+}
+.lightbox-controls button:hover{background:rgba(255,255,255,0.3)}
+
+/* Lightbox nav arrows */
+.lightbox-nav{
+  position:absolute;top:50%;transform:translateY(-50%);
+  width:44px;height:44px;border:none;background:rgba(0,0,0,0.4);
+  color:#fff;border-radius:50%;font-size:20px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background 0.2s;
+}
+.lightbox-nav:hover{background:rgba(0,0,0,0.7)}
+.lightbox-nav.prev{left:20px}
+.lightbox-nav.next{right:20px}
 
 /* ========== COPYWRITING PAGE ========== */
 .copy-layout{

@@ -1510,6 +1510,19 @@ async function handleCreateUser(event) {
     btn.textContent = '创建用户';
 }
 
+// ========== ADMIN LOGGING ==========
+async function logAdminAction(action, target, details) {
+    try {
+        await supabase.from('admin_logs').insert({
+            admin_id: currentUser?.id || null,
+            admin_name: userProfile?.display_name || currentUser?.email || '',
+            action: action,
+            target: target,
+            details: details || ''
+        });
+    } catch(e) { console.warn('记录操作日志失败:', e); }
+}
+
 // ========== DELETE USER (Admin) ==========
 async function deleteUserAccount(userId, userName) {
     if (!confirm(`确定删除用户「${userName}」？\n\n此操作不可恢复，该用户的所有数据将被清除。`)) return;
@@ -1528,6 +1541,7 @@ async function deleteUserAccount(userId, userName) {
         }
 
         showToast('✅ 用户已删除');
+        logAdminAction('删除用户', userName, 'user_id: ' + userId);
         loadUsersList();
     } catch(e) {
         alert('删除失败：' + e.message);
@@ -1686,6 +1700,7 @@ async function savePluginForm(id) {
         }
 
         showToast('✅ 保存成功');
+        logAdminAction(id ? '编辑插件' : '新增插件', payload.name, 'version: ' + payload.version);
         showPluginManagement();
     } catch(e) {
         alert('保存失败：' + e.message);
@@ -1698,6 +1713,7 @@ async function deletePlugin(id) {
     try {
         await supabase.from('plugins').delete().eq('id', id);
         showToast('已删除');
+        logAdminAction('删除插件', id);
         showPluginManagement();
     } catch(e) {
         alert('删除失败：' + e.message);
@@ -1849,6 +1865,7 @@ async function updateFeedbackStatus(id, status) {
         const { error } = await supabase.from('plugin_feedback').update({ status }).eq('id', id);
         if (error) throw error;
         showToast('状态已更新');
+        logAdminAction('更新反馈状态', id, 'status: ' + status);
     } catch(e) {
         console.error('更新反馈状态失败:', e);
         showToast('更新失败：' + (e.message || '请检查权限'));
@@ -1871,6 +1888,7 @@ async function deleteFeedback(id) {
             throw new Error(errText || `HTTP ${resp.status}`);
         }
         showToast('已删除');
+        logAdminAction('删除反馈', id);
         showFeedbackManagement();
     } catch(e) {
         console.error('删除反馈异常:', e);
