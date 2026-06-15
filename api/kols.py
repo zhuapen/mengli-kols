@@ -405,7 +405,7 @@ def image_gen(body):
         return {"error": "请提供图片描述"}
     try:
         req = Request(IMG_URL, data=json.dumps({
-            "model": "gpt-image-2-vip",
+            "model": "gpt-image-2-all",
             "prompt": prompt,
             "n": 1,
             "size": size,
