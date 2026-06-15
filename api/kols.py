@@ -767,10 +767,14 @@ def upload_plugin_file(body):
         file_b64 = file_b64.split(",", 1)[1]
 
     try:
-        import base64
+        import base64, re as _re
         file_data = base64.b64decode(file_b64)
         ext = filename.rsplit(".", 1)[-1] if "." in filename else "zip"
-        storage_path = f"{int(__import__('time').time()*1000)}_{filename.replace(' ', '_')}"
+        # 文件名只保留字母数字下划线，中文等非ASCII替换为plugin
+        safe_name = _re.sub(r'[^a-zA-Z0-9_\-]', '', filename.rsplit(".", 1)[0])
+        if not safe_name:
+            safe_name = "plugin"
+        storage_path = f"{int(__import__('time').time()*1000)}_{safe_name}.{ext}"
 
         # 用 service_role 上传到 Storage
         upload_url = f"{SUPABASE_URL}/storage/v1/object/plugins/{storage_path}"
