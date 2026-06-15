@@ -809,33 +809,44 @@ async function genImage(){
     });
     const data = await resp.json();
     if(data.image_url){
-      document.getElementById('imgLoading').style.display = 'none';
-      document.getElementById('imgResult').src = data.image_url;
-      document.getElementById('imgResult').style.display = 'block';
-      document.getElementById('imgToolbar').classList.add('show');
+      // 预加载图片，加载完成后瞬间显示
+      const preloader = new Image();
+      preloader.onload = () => {
+        document.getElementById('imgLoading').style.display = 'none';
+        document.getElementById('imgResult').src = data.image_url;
+        document.getElementById('imgResult').style.display = 'block';
+        document.getElementById('imgToolbar').classList.add('show');
+
+        // 图生图模式：显示对比滑块
+        if(imgMode === 'img2img' && img2imgFiles.length > 0){
+          showCompare(img2imgFiles[0], data.image_url);
+        } else {
+          document.getElementById('imgCompare').classList.remove('show');
+          document.getElementById('btnCompare').style.display = 'none';
+          compareActive = false;
+        }
+
+        // 显示评分
+        if(isLoggedIn()){
+          saveGenerationHistory('image_gen', {prompt, size:imgSize}, data.image_url).then(historyId => {
+            if(historyId) createStarRating('imgRating', historyId, prompt, 'image_gen');
+          });
+          savePreference('img_size', imgSize);
+        } else {
+          createStarRating('imgRating', null, prompt, 'image_gen');
+        }
+      };
+      preloader.onerror = () => {
+        document.getElementById('imgLoading').style.display = 'none';
+        document.getElementById('imgPlaceholder').style.display = 'block';
+        document.getElementById('imgPlaceholder').innerHTML = '<div class="icon">❌</div><p>图片加载失败，请重试</p>';
+      };
+      preloader.src = data.image_url;
+
+      // 不阻塞图片展示，并行保存
       saveAsset('image', prompt, data.image_url);
       saveRecentResult('image', {url: data.image_url, prompt});
-      resetMaskState(); // 生成成功后清空遮罩，避免下次误带
-
-      // 图生图模式：显示对比滑块
-      if(imgMode === 'img2img' && img2imgFiles.length > 0){
-        showCompare(img2imgFiles[0], data.image_url);
-      } else {
-        document.getElementById('imgCompare').classList.remove('show');
-        document.getElementById('btnCompare').style.display = 'none';
-        compareActive = false;
-      }
-
-      // 保存历史并显示评分
-      if(isLoggedIn()){
-        saveGenerationHistory('image_gen', {prompt, size:imgSize}, data.image_url).then(historyId => {
-          if(historyId) createStarRating('imgRating', historyId, prompt, 'image_gen');
-        });
-        savePreference('img_size', imgSize);
-      } else {
-        // 未登录也显示评分（但不保存）
-        createStarRating('imgRating', null, prompt, 'image_gen');
-      }
+      resetMaskState();
     } else {
       document.getElementById('imgLoading').style.display = 'none';
       document.getElementById('imgPlaceholder').style.display = 'block';
