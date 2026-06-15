@@ -805,9 +805,41 @@ async function genImage(){
     prompt = document.getElementById('img2imgPrompt').value.trim();
     if(!img2imgFiles.length){ alert('请上传参考图片'); return; }
     if(!prompt){ alert('请输入修改要求'); return; }
-    requestBody = { action:'image_edit', prompt, images:img2imgFiles, size:imgSize };
-    if (window._maskBase64) {
-      requestBody.mask = window._maskBase64;
+
+    // 图生图：先上传图片到 Storage，拿到 URL 后再发请求（避免请求体超限）
+    try {
+      const uploadPromises = img2imgFiles.map(async (b64, i) => {
+        const resp = await fetch('/api', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'upload_image_file', file_base64: b64, filename: `ref_${i}.png` })
+        });
+        const result = await resp.json();
+        if (result.error) throw new Error(result.error);
+        return result.url;
+      });
+      const imagesUrls = await Promise.all(uploadPromises);
+
+      let maskUrl = '';
+      if (window._maskBase64) {
+        const maskResp = await fetch('/api', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'upload_image_file', file_base64: window._maskBase64, filename: 'mask.png' })
+        });
+        const maskResult = await maskResp.json();
+        if (maskResult.error) throw new Error(maskResult.error);
+        maskUrl = maskResult.url;
+      }
+
+      requestBody = { action:'image_edit', prompt, images_urls: imagesUrls, size:imgSize };
+      if (maskUrl) requestBody.mask_url = maskUrl;
+    } catch(uploadErr) {
+      alert('图片上传失败：' + uploadErr.message);
+      document.getElementById('imgBtn').disabled = false;
+      document.getElementById('imgLoading').style.display = 'none';
+      document.getElementById('imgPlaceholder').style.display = 'block';
+      return;
     }
   }
 

@@ -487,57 +487,78 @@ def image_gen(body):
 
 
 def image_edit(body):
-    """图生图：传入参考图 + 修改要求，生成新图。支持传入 mask 进行局部重绘（Inpainting）"""
+    """图生图/局部重绘。支持两种模式：URL模式（images_urls/mask_url）和Base64模式（images/mask）"""
     prompt = body.get("prompt", "")
-    images = body.get("images", [])  # base64 数组，最多3张
-    mask = body.get("mask", "")       # base64 遮罩图片（可选，白色=重绘，黑色=保持）
     size = body.get("size", "1024x1024")
-    if not images:
+
+    # URL 模式：前端已上传到 Storage，传 URL 过来
+    images_urls = body.get("images_urls", [])
+    mask_url = body.get("mask_url", "")
+
+    # Base64 模式：直接传 base64 数据（兼容旧逻辑）
+    images_b64 = body.get("images", [])
+    mask_b64 = body.get("mask", "")
+
+    if not images_urls and not images_b64:
         return {"error": "请上传参考图片"}
     if not prompt:
         return {"error": "请输入修改要求"}
 
-    # 去掉 data:image/xxx;base64, 前缀，只保留纯 base64
-    clean_images = []
-    for img in images:
-        if "," in img:
-            img = img.split(",", 1)[1]
-        clean_images.append(img)
+    # 统一处理：把 URL 或 base64 都转为 bytes
+    def download_url(url):
+        try:
+            resp = urlopen(url, timeout=30)
+            return resp.read()
+        except Exception:
+            return None
 
-    # 清理 mask 的 base64 前缀
-    clean_mask = ""
-    if mask:
-        clean_mask = mask.split(",", 1)[1] if "," in mask else mask
+    def decode_b64(b64_str):
+        if "," in b64_str:
+            b64_str = b64_str.split(",", 1)[1]
+        import base64
+        return base64.b64decode(b64_str)
 
-    # 方式A：尝试 /images/edits 端点
+    # 获取图片数据
+    image_bytes_list = []
+    if images_urls:
+        for url in images_urls:
+            data = download_url(url)
+            if data:
+                image_bytes_list.append(data)
+    else:
+        for b64 in images_b64:
+            image_bytes_list.append(decode_b64(b64))
+
+    # 获取 mask 数据
+    mask_bytes = None
+    if mask_url:
+        mask_bytes = download_url(mask_url)
+    elif mask_b64:
+        mask_bytes = decode_b64(mask_b64)
+
+    if not image_bytes_list:
+        return {"error": "图片下载失败"}
+
+    # 方式A：/images/edits 端点
     edits_url = IMG_URL.replace("/images/generations", "/images/edits")
     try:
-        import base64, io, mimetypes
-        # 构造 multipart/form-data 请求
         boundary = "----FormBoundary" + str(hash(prompt))[:16]
         parts = []
 
         # 第一张图作为 image
-        img_data = base64.b64decode(clean_images[0])
-        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="image"; filename="ref.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + img_data)
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="image"; filename="ref.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + image_bytes_list[0])
 
-        # 如果有多张图，作为额外的 reference images
-        for i, img_b64 in enumerate(clean_images[1:], 1):
-            img_data = base64.b64decode(img_b64)
+        # 额外的参考图
+        for i, img_data in enumerate(image_bytes_list[1:], 1):
             parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="image{i}"; filename="ref{i}.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + img_data)
 
-        # mask 字段（局部重绘：白色=重绘区域，黑色=保持区域）
-        if clean_mask:
-            mask_data = base64.b64decode(clean_mask)
-            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="mask"; filename="mask.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + mask_data)
+        # mask
+        if mask_bytes:
+            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="mask"; filename="mask.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + mask_bytes)
 
-        # prompt 字段
         parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n{prompt}'.encode())
-        # model 字段
         parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\ngpt-image-2-vip'.encode())
-        # size 字段
         parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="size"\r\n\r\n{size}'.encode())
-        # n 字段
         parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="n"\r\n\r\n1'.encode())
 
         body_bytes = b"\r\n".join(parts) + f"\r\n--{boundary}--\r\n".encode()
@@ -551,30 +572,33 @@ def image_edit(body):
         return {"image_url": image_url, "method": "edits"}
     except Exception as e:
         # 传了 mask 时不做回退——回退端点不支持 mask，静默忽略遮罩会导致整图重绘
-        if clean_mask:
+        if mask_bytes:
             return {"error": f"局部重绘失败：{e}"}
 
-    # 方式B：回退到 /images/generations，在 prompt 中描述参考图（仅无 mask 时）
-    try:
-        enhanced_prompt = f"基于以下参考图片进行修改：{prompt}"
-        req = Request(IMG_URL, data=json.dumps({
-            "model": "gpt-image-2-vip",
-            "prompt": enhanced_prompt,
-            "n": 1,
-            "size": size,
-            "quality": "medium",
-            "image": clean_images[0],
-            "images": clean_images if len(clean_images) > 1 else None
-        }).encode(), headers={
-            "Authorization": f"Bearer {IMG_KEY}",
-            "Content-Type": "application/json"
-        })
-        resp = urlopen(req, timeout=120)
-        data = json.loads(resp.read())
-        image_url = data["data"][0]["url"] if data.get("data") else data.get("url", "")
-        return {"image_url": image_url, "method": "generations"}
-    except Exception as e:
-        return {"error": f"图生图失败：{e}"}
+    # 方式B：回退到 /images/generations（仅无 mask 时，且仅 base64 模式可用）
+    if not images_urls:
+        try:
+            import base64 as _b64
+            enhanced_prompt = f"基于以下参考图片进行修改：{prompt}"
+            req = Request(IMG_URL, data=json.dumps({
+                "model": "gpt-image-2-vip",
+                "prompt": enhanced_prompt,
+                "n": 1,
+                "size": size,
+                "quality": "medium",
+                "image": _b64.b64encode(image_bytes_list[0]).decode(),
+            }).encode(), headers={
+                "Authorization": f"Bearer {IMG_KEY}",
+                "Content-Type": "application/json"
+            })
+            resp = urlopen(req, timeout=120)
+            data = json.loads(resp.read())
+            image_url = data["data"][0]["url"] if data.get("data") else data.get("url", "")
+            return {"image_url": image_url, "method": "generations"}
+        except Exception as e:
+            return {"error": f"图生图失败：{e}"}
+
+    return {"error": "图生图失败，请重试"}
 
 
 def chat(body):
@@ -799,6 +823,48 @@ def upload_plugin_file(body):
         return {"error": f"文件上传失败：{err_detail or str(e)}"}
 
 
+def upload_image_file(body):
+    """上传图片到 Supabase Storage（用于图生图/遮罩，避免请求体超限）"""
+    if not SUPABASE_SERVICE_KEY:
+        return {"error": "服务端未配置 SUPABASE_SERVICE_ROLE_KEY"}
+
+    file_b64 = body.get("file_base64", "")
+    filename = body.get("filename", "image.png")
+
+    if not file_b64:
+        return {"error": "未提供文件数据"}
+
+    if "," in file_b64:
+        file_b64 = file_b64.split(",", 1)[1]
+
+    try:
+        import base64, re as _re, time
+        file_data = base64.b64decode(file_b64)
+        ext = filename.rsplit(".", 1)[-1] if "." in filename else "png"
+        safe_name = _re.sub(r'[^a-zA-Z0-9_\-]', '', filename.rsplit(".", 1)[0]) or "image"
+        storage_path = f"images/{int(time.time()*1000)}_{safe_name}.{ext}"
+
+        upload_url = f"{SUPABASE_URL}/storage/v1/object/plugins/{storage_path}"
+        req = Request(upload_url, data=file_data, method="POST", headers={
+            "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+            "apikey": SUPABASE_SERVICE_KEY,
+            "Content-Type": "image/png"
+        })
+        urlopen(req, timeout=60)
+
+        public_url = f"{SUPABASE_URL}/storage/v1/object/public/plugins/{storage_path}"
+        return {"success": True, "url": public_url}
+
+    except Exception as e:
+        err_detail = ""
+        if hasattr(e, "read"):
+            try:
+                err_detail = e.read().decode()[:200]
+            except Exception:
+                pass
+        return {"error": f"图片上传失败：{err_detail or str(e)}"}
+
+
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -842,6 +908,8 @@ class handler(BaseHTTPRequestHandler):
             result = delete_user(body)
         elif action == "upload_plugin_file":
             result = upload_plugin_file(body)
+        elif action == "upload_image_file":
+            result = upload_image_file(body)
         else:
             result = {"error": f"未知 action: {action}"}
 
