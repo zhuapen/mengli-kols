@@ -1660,15 +1660,29 @@ async function savePluginForm(id) {
     btn.disabled = true; btn.textContent = '保存中...';
 
     try {
+        // 诊断日志
+        const { data: userData } = await supabase.auth.getUser();
+        console.log('[pluginUpload] currentUser:', currentUser?.id, currentUser?.email);
+        console.log('[pluginUpload] auth.getUser:', userData?.user?.id, userData?.user?.email);
+        console.log('[pluginUpload] isAdmin:', typeof isAdmin === 'function' ? isAdmin() : 'N/A');
+        console.log('[pluginUpload] userProfile role:', userProfile?.role);
+
         // 上传文件到 Supabase Storage
         if (fileInput.files.length > 0) {
             const file = fileInput.files[0];
             const ext = file.name.split('.').pop();
             const filePath = `${Date.now()}_${payload.name.replace(/\s+/g,'_')}.${ext}`;
 
+            console.log('[pluginUpload] filePath:', filePath);
+            console.log('[pluginUpload] fileSize:', file.size, 'bytes');
+            console.log('[pluginUpload] fileType:', file.type);
+
             const { data: uploadData, error: uploadError } = await supabase.storage
                 .from('plugins')
                 .upload(filePath, file, { upsert: false });
+
+            console.log('[pluginUpload] uploadData:', uploadData);
+            console.log('[pluginUpload] uploadError:', JSON.stringify(uploadError));
 
             if (uploadError) throw new Error('文件上传失败：' + uploadError.message);
 
@@ -1676,6 +1690,7 @@ async function savePluginForm(id) {
                 .from('plugins')
                 .getPublicUrl(filePath);
 
+            console.log('[pluginUpload] publicUrl:', urlData?.publicUrl);
             payload.download_url = urlData.publicUrl;
         }
 
