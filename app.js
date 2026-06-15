@@ -844,6 +844,10 @@ async function genImage(){
       preloader.src = data.image_url;
 
       // 不阻塞图片展示，并行保存
+      console.log('[genImage] image_url:', data.image_url);
+      console.log('[genImage] image_url长度:', (data.image_url || '').length);
+      console.log('[genImage] prompt:', prompt);
+      console.log('[genImage] imgMode:', imgMode);
       saveAsset('image', prompt, data.image_url);
       saveRecentResult('image', {url: data.image_url, prompt});
       resetMaskState();

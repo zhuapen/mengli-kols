@@ -1973,22 +1973,31 @@ async function saveGenerationHistory(genType, inputParams, outputContent, rating
     if (!isLoggedIn() || !supabase) return null;
 
     try {
+        const payload = {
+            user_id: currentUser.id,
+            gen_type: genType,
+            input_params: inputParams,
+            output_content: outputContent,
+            rating: rating
+        };
+        console.log('[saveHistory] gen_type:', genType);
+        console.log('[saveHistory] input_params类型:', typeof inputParams, 'keys:', Object.keys(inputParams || {}));
+        console.log('[saveHistory] output_content长度:', (outputContent || '').length);
+        console.log('[saveHistory] output_content前100字:', (outputContent || '').substring(0, 100));
+
         const { data, error } = await supabase
             .from('generation_history')
-            .insert({
-                user_id: currentUser.id,
-                gen_type: genType,
-                input_params: inputParams,
-                output_content: outputContent,
-                rating: rating
-            })
+            .insert(payload)
             .select('id')
             .single();
 
-        if (error) throw error;
+        if (error) {
+            console.error('[saveHistory] Supabase error:', JSON.stringify(error));
+            throw error;
+        }
         return data?.id;
     } catch (e) {
-        console.warn('保存生成历史失败:', e);
+        console.error('[saveHistory] 捕获异常:', e);
         return null;
     }
 }
@@ -2127,22 +2136,31 @@ async function getGenerationHistoryList(genType = null, limit = 50) {
 async function saveUserAsset(asset) {
     if (!isLoggedIn() || !supabase) return null;
     try {
+        const payload = {
+            user_id: currentUser.id,
+            id: asset.id,
+            type: asset.type,
+            title: asset.title,
+            content: asset.content,
+            rating: asset.rating || null
+        };
+        console.log('[saveUserAsset] payload:', JSON.stringify(payload).substring(0, 500));
+        console.log('[saveUserAsset] content长度:', (payload.content || '').length);
+        console.log('[saveUserAsset] id类型:', typeof payload.id, '值:', payload.id);
+
         const { data, error } = await supabase
             .from('user_assets')
-            .insert({
-                user_id: currentUser.id,
-                id: asset.id,
-                type: asset.type,
-                title: asset.title,
-                content: asset.content,
-                rating: asset.rating || null
-            })
+            .insert(payload)
             .select('id')
             .single();
-        if (error) throw error;
+
+        if (error) {
+            console.error('[saveUserAsset] Supabase error:', JSON.stringify(error));
+            throw error;
+        }
         return data?.id;
     } catch (e) {
-        console.warn('保存素材失败:', e);
+        console.error('[saveUserAsset] 捕获异常:', e);
         return null;
     }
 }
