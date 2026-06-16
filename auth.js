@@ -778,6 +778,7 @@ function updateAuthUI() {
     } else {
         userSection.innerHTML = `
             <div class="user-info">
+                <button class="register-btn" onclick="showRegisterModal()">注册</button>
                 <button class="login-btn" onclick="showLoginModal()">登录</button>
             </div>
         `;
@@ -787,6 +788,22 @@ function updateAuthUI() {
             const style = document.createElement('style');
             style.id = 'loginBtnStyles';
             style.textContent = `
+                .register-btn {
+                    padding: 8px 16px;
+                    background: transparent;
+                    color: var(--accent, #F4845F);
+                    border: 1.5px solid var(--accent, #F4845F);
+                    border-radius: 8px;
+                    font-size: 13px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.3s;
+                    margin-right: 8px;
+                }
+                .register-btn:hover {
+                    background: var(--accent, #F4845F);
+                    color: white;
+                }
                 .login-btn {
                     padding: 8px 20px;
                     background: var(--accent, #F4845F);
