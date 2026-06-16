@@ -20,8 +20,8 @@ async function handleRegister(event){
   const errorEl = document.getElementById('registerError');
   const btn = document.getElementById('regSubmitBtn');
 
-  if(!email || !password || !name){
-    errorEl.textContent = '请填写邮箱、密码和姓名';
+  if(!email || !password || !name || !position){
+    errorEl.textContent = '请填写所有必填项（邮箱、密码、姓名、岗位）';
     return;
   }
   if(typeof validator !== 'undefined' && !validator.isEmail(email)){
@@ -35,7 +35,7 @@ async function handleRegister(event){
 
   // 净化输入
   const safeName = typeof validator !== 'undefined' ? validator.escape(name) : name;
-  const safePosition = typeof validator !== 'undefined' ? validator.escape(position || '') : (position || '');
+  const safePosition = typeof validator !== 'undefined' ? validator.escape(position) : position;
 
   errorEl.textContent = '';
   btn.disabled = true;
