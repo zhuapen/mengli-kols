@@ -24,10 +24,18 @@ async function handleRegister(event){
     errorEl.textContent = '请填写邮箱、密码和姓名';
     return;
   }
+  if(typeof validator !== 'undefined' && !validator.isEmail(email)){
+    errorEl.textContent = '请输入有效的邮箱地址';
+    return;
+  }
   if(password.length < 6){
     errorEl.textContent = '密码至少6位';
     return;
   }
+
+  // 净化输入
+  const safeName = typeof validator !== 'undefined' ? validator.escape(name) : name;
+  const safePosition = typeof validator !== 'undefined' ? validator.escape(position || '') : (position || '');
 
   errorEl.textContent = '';
   btn.disabled = true;
@@ -40,8 +48,8 @@ async function handleRegister(event){
       body: JSON.stringify({
         action: 'create_user',
         email, password,
-        display_name: name,
-        position: position || '',
+        display_name: safeName,
+        position: safePosition,
         status: 'pending'
       })
     });
@@ -50,7 +58,7 @@ async function handleRegister(event){
     if(result.error){
       errorEl.textContent = '注册失败：' + result.error;
     } else {
-      alert('注册申请已提交，请等待管理员审核。');
+      showToast('注册申请已提交，请等待管理员审核');
       closeRegisterModal();
     }
   } catch(e){
@@ -61,26 +69,33 @@ async function handleRegister(event){
   btn.textContent = '提交注册';
 }
 
-// ========== TOAST NOTIFICATION ==========
-function showToast(msg, duration){
-  duration = duration || 3000;
-  let container = document.getElementById('toastContainer');
-  if(!container){
-    container = document.createElement('div');
-    container.id = 'toastContainer';
-    container.style.cssText = 'position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px';
-    document.body.appendChild(container);
-  }
-  const toast = document.createElement('div');
-  toast.style.cssText = 'padding:12px 20px;background:#333;color:#fff;border-radius:8px;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.2);animation:fadeIn 0.3s ease;max-width:320px;word-break:break-all';
-  toast.textContent = msg;
-  container.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transition = 'opacity 0.3s';
-    setTimeout(() => toast.remove(), 300);
-  }, duration);
+// ========== TOAST NOTIFICATION (Notyf) ==========
+const notyf = new Notyf({
+  duration: 3000,
+  position: { x: 'right', y: 'top' },
+  types: [
+    { type: 'success', background: '#10B981', icon: { className: 'notyf__icon', tagName: 'span', text: '✓' } },
+    { type: 'error', background: '#EF4444', icon: { className: 'notyf__icon', tagName: 'span', text: '✗' } },
+    { type: 'warning', background: '#F59E0B', icon: { className: 'notyf__icon', tagName: 'span', text: '⚠' } }
+  ]
+});
+
+function showToast(msg, type){
+  if(type === 'error') notyf.error(msg);
+  else if(type === 'warning') notyf.open({ type:'warning', message:msg });
+  else notyf.success(msg);
 }
+
+// ========== MARKDOWN RENDERER ==========
+function renderMarkdown(text){
+  if(!text) return '';
+  const html = marked.parse(text, { breaks:true, gfm:true });
+  return DOMPurify.sanitize(html);
+}
+
+// 保存原始文本供复制使用
+let _lastCopyText = '';
+let _lastArticleText = '';
 
 // ========== SECURITY HELPERS ==========
 function escapeHtml(str){
@@ -189,7 +204,8 @@ function restoreRecentResults(){
     const copy = JSON.parse(sessionStorage.getItem('gen_copy') || 'null');
     if(copy && copy.text){
       const out = document.getElementById('copyOutput');
-      out.textContent = copy.text;
+      _lastCopyText = copy.text;
+      out.innerHTML = renderMarkdown(copy.text);
       out.className = 'copy-output';
       document.getElementById('copyRetry').style.display = 'inline-flex';
     }
@@ -199,7 +215,8 @@ function restoreRecentResults(){
     const article = JSON.parse(sessionStorage.getItem('gen_article') || 'null');
     if(article && article.text){
       const out = document.getElementById('articleOutput');
-      out.textContent = article.text;
+      _lastArticleText = article.text;
+      out.innerHTML = renderMarkdown(article.text);
       out.className = 'article-output';
       document.getElementById('articleRetry').style.display = 'inline-flex';
     }
@@ -401,8 +418,8 @@ function renderCartSidebar(){
 }
 
 function submitInquiry(){
-  if(cart.length===0) return alert('请先添加达人');
-  alert(`已向 ${cart.length} 位达人发起询单`);
+  if(cart.length===0) return showToast('请先添加达人', 'warning');
+  showToast(`已向 ${cart.length} 位达人发起询单`);
   cart = [];
   localStorage.setItem('kols_cart', JSON.stringify(cart));
   closeCart();
@@ -457,7 +474,7 @@ async function aiSearch(){
 
     const result = document.getElementById('aiResult');
     result.style.display = 'block';
-    result.textContent = data.explanation || 'AI 已帮你筛选好了';
+    result.innerHTML = renderMarkdown(data.explanation || 'AI 已帮你筛选好了');
     render();
   } catch(e){
     const result = document.getElementById('aiResult');
@@ -510,7 +527,7 @@ function processImgFiles(files){
   const imageFiles = files.filter(f => f.type.startsWith('image/'));
   if(!imageFiles.length) return;
   const remaining = 3 - img2imgFiles.length;
-  if(remaining <= 0){ alert('最多上传3张图片'); return; }
+  if(remaining <= 0){ showToast('最多上传3张图片', 'warning'); return; }
   const toAdd = imageFiles.slice(0, remaining);
   let loaded = 0;
   toAdd.forEach(file => {
@@ -569,7 +586,7 @@ function removeImg2img(index){
 // 顶层 maskCanvas:     遮罩层（透明底 + 红色笔触，橡皮擦直接 clearRect）
 
 function openMaskEditor(){
-  if(!img2imgFiles.length){ alert('请先上传参考图片'); return; }
+  if(!img2imgFiles.length){ showToast('请先上传参考图片', 'warning'); return; }
   const baseCanvas = document.getElementById('maskBaseCanvas');
   const baseCtx = baseCanvas.getContext('2d');
   maskCanvas = document.getElementById('maskCanvas');
@@ -770,7 +787,7 @@ function confirmMask(){
     if(!confirm('当前遮罩覆盖率超过 70%，建议直接使用图生图模式。是否继续？')) return;
   }
   if(coverage < 1){
-    alert('请至少涂抹一小块区域作为修改范围');
+    showToast('请至少涂抹一小块区域作为修改范围', 'warning');
     return;
   }
 
@@ -850,8 +867,144 @@ function stopImgTimer(){
   if(secEl) secEl.textContent = '';
 }
 
+// ========== IMAGE GENERATION WITH FULL STABILITY ==========
+const IMG_LOG = (msg) => console.log(`[img2img] ${msg}`);
+const IMG_ERR = (msg) => console.error(`[img2img] ${msg}`);
+
+// 状态文字更新
+function setImgStatus(text){
+  const tipEl = document.querySelector('#imgLoading .gen-loading-tip');
+  if(tipEl) tipEl.textContent = text;
+}
+
+// 通用重试函数
+async function withRetry(fn, maxRetries, delayMs, label){
+  for(let attempt = 1; attempt <= maxRetries; attempt++){
+    try {
+      return await fn(attempt);
+    } catch(e){
+      IMG_ERR(`${label} 第${attempt}次失败: ${e.message}`);
+      if(attempt >= maxRetries) throw e;
+      setImgStatus(`${label}失败，${delayMs/1000}秒后重试 (${attempt}/${maxRetries})...`);
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+}
+
+// 图片格式校验
+function validateImage(b64DataUrl, filename){
+  const validTypes = ['data:image/jpeg','data:image/png','data:image/webp'];
+  if(!validTypes.some(t => b64DataUrl.startsWith(t))){
+    throw new Error(`"${filename}" 格式不支持，请使用 JPG/PNG/WebP`);
+  }
+  // 估算 base64 大小
+  const sizeKB = Math.round(b64DataUrl.length * 3 / 4 / 1024);
+  if(sizeKB > 8 * 1024){
+    throw new Error(`"${filename}" 过大 (${Math.round(sizeKB/1024)}MB)，请压缩到 8MB 以内`);
+  }
+  return sizeKB;
+}
+
+// 智能压缩
+async function smartCompress(b64DataUrl, filename){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.naturalWidth, h = img.naturalHeight;
+      const origW = w, origH = h;
+
+      // 策略：最长边 > 2048 → 缩到 2048
+      const maxSide = 2048;
+      if(w > maxSide || h > maxSide){
+        const ratio = Math.min(maxSide / w, maxSide / h);
+        w = Math.round(w * ratio);
+        h = Math.round(h * ratio);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+
+      // 策略：根据大小选择质量
+      const sizeKB = Math.round(b64DataUrl.length * 3 / 4 / 1024);
+      let quality = 0.85;
+      if(sizeKB > 1024) quality = 0.7;
+      else if(sizeKB > 512) quality = 0.8;
+
+      const result = canvas.toDataURL('image/jpeg', quality);
+      const newKB = Math.round(result.length * 3 / 4 / 1024);
+      IMG_LOG(`压缩 ${filename}: ${origW}x${origH} ${sizeKB}KB → ${w}x${h} ${newKB}KB (quality=${quality})`);
+      setImgStatus(`压缩完成: ${sizeKB}KB → ${newKB}KB`);
+      resolve(result);
+    };
+    img.onerror = () => {
+      IMG_ERR(`压缩失败，使用原图: ${filename}`);
+      resolve(b64DataUrl);
+    };
+    img.src = b64DataUrl;
+  });
+}
+
+// 上传单张图片（带重试）
+async function uploadSingleImage(b64DataUrl, filename, index, total){
+  return withRetry(async (attempt) => {
+    setImgStatus(`上传图片 (${index+1}/${total})${attempt > 1 ? ` 重试${attempt}` : ''}...`);
+    IMG_LOG(`上传 ${filename} 第${attempt}次`);
+
+    const resp = await fetch('/api', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'upload_image_file', file_base64: b64DataUrl, filename })
+    });
+    if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const result = await resp.json();
+    if(result.error) throw new Error(result.error);
+    IMG_LOG(`上传成功: ${filename} → ${result.url?.substring(0,60)}...`);
+    return result.url;
+  }, 3, 2000, '图片上传');
+}
+
+// AI 生成（带重试）
+async function callImageEdit(requestBody){
+  return withRetry(async (attempt) => {
+    setImgStatus(`AI 生成中${attempt > 1 ? ` (重试${attempt}/3)` : ''}...`);
+    IMG_LOG(`调用 image_edit 第${attempt}次`);
+
+    const resp = await fetch('/api', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+    if(!resp.ok){
+      const text = await resp.text().catch(() => '');
+      if(resp.status === 429) throw new Error('限流');
+      if(resp.status === 504 || resp.status === 502) throw new Error('超时');
+      throw new Error(text.substring(0, 100) || `HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+    if(data.error) throw new Error(data.error);
+    if(!data.image_url) throw new Error('未返回图片URL');
+    return data;
+  }, 3, 3000, 'AI生成');
+}
+
+// 预加载图片（带重试）
+function preloadImage(url){
+  return withRetry(async (attempt) => {
+    setImgStatus(`加载结果图片${attempt > 1 ? ` (重试${attempt})` : ''}...`);
+    IMG_LOG(`预加载图片 第${attempt}次`);
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => { IMG_LOG('预加载成功'); resolve(url); };
+      img.onerror = () => reject(new Error('图片加载失败'));
+      img.src = url;
+      // 超时 30 秒
+      setTimeout(() => reject(new Error('图片加载超时')), 30000);
+    });
+  }, 2, 2000, '图片加载');
+}
+
 async function genImage(){
-  // 检查权限
   if (!hasPermission('image_gen')) {
     showUpgradePrompt('image_gen');
     return;
@@ -862,68 +1015,114 @@ async function genImage(){
 
   if(imgMode === 'text2img'){
     prompt = document.getElementById('imgPrompt').value.trim();
-    if(!prompt){ alert('请输入图片描述'); return; }
+    if(!prompt){ showToast('请输入图片描述', 'warning'); return; }
     requestBody = { action:'image_gen', prompt, size:imgSize };
   } else {
+    // ===== 图生图完整流程 =====
     prompt = document.getElementById('img2imgPrompt').value.trim();
-    if(!img2imgFiles.length){ alert('请上传参考图片'); return; }
-    if(!prompt){ alert('请输入修改要求'); return; }
+    if(!img2imgFiles.length){ showToast('请上传参考图片', 'warning'); return; }
+    if(!prompt){ showToast('请输入修改要求', 'warning'); return; }
 
-    // 图生图：压缩图片后上传到 Storage，拿到 URL 再发请求
+    // UI 初始化
+    document.getElementById('imgBtn').disabled = true;
+    document.getElementById('imgPlaceholder').style.display = 'none';
+    document.getElementById('imgLoading').style.display = 'block';
+    document.getElementById('imgResult').style.display = 'none';
+    document.getElementById('imgToolbar').classList.remove('show');
+    document.getElementById('imgCompare').classList.remove('show');
+    document.getElementById('btnCompare').style.display = 'none';
+    compareActive = false;
+    startImgTimer();
+
     try {
-      // 压缩图片到合理大小（最长边 1024px，质量 0.8）
-      async function compressImage(b64DataUrl, maxSide, quality) {
-        return new Promise((resolve) => {
-          const img = new Image();
-          img.onload = () => {
-            let w = img.width, h = img.height;
-            if (w > maxSide || h > maxSide) {
-              const ratio = Math.min(maxSide / w, maxSide / h);
-              w = Math.round(w * ratio);
-              h = Math.round(h * ratio);
-            }
-            const canvas = document.createElement('canvas');
-            canvas.width = w; canvas.height = h;
-            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-            resolve(canvas.toDataURL('image/png'));
-          };
-          img.onerror = () => resolve(b64DataUrl); // 压缩失败用原图
-          img.src = b64DataUrl;
-        });
+      // Step 1: 校验图片
+      IMG_LOG('=== 开始图生图流程 ===');
+      setImgStatus('校验图片...');
+      for(let i = 0; i < img2imgFiles.length; i++){
+        validateImage(img2imgFiles[i], `图片${i+1}`);
+      }
+      IMG_LOG(`校验通过，共 ${img2imgFiles.length} 张图`);
+
+      // Step 2: 压缩图片
+      setImgStatus('压缩图片...');
+      const compressedImages = [];
+      for(let i = 0; i < img2imgFiles.length; i++){
+        setImgStatus(`压缩图片 (${i+1}/${img2imgFiles.length})...`);
+        compressedImages.push(await smartCompress(img2imgFiles[i], `ref_${i}.png`));
       }
 
-      async function uploadToStorage(b64DataUrl, filename) {
-        const compressed = await compressImage(b64DataUrl, 1024, 0.85);
-        const resp = await fetch('/api', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'upload_image_file', file_base64: compressed, filename })
-        });
-        const result = await resp.json();
-        if (result.error) throw new Error(result.error);
-        return result.url;
+      // Step 3: 上传图片（带重试）
+      const imagesUrls = [];
+      for(let i = 0; i < compressedImages.length; i++){
+        const url = await uploadSingleImage(compressedImages[i], `ref_${i}.png`, i, compressedImages.length);
+        imagesUrls.push(url);
       }
 
-      const imagesUrls = await Promise.all(
-        img2imgFiles.map((b64, i) => uploadToStorage(b64, `ref_${i}.png`))
-      );
-
+      // Step 4: 上传遮罩（如有）
       let maskUrl = '';
-      if (window._maskBase64) {
-        maskUrl = await uploadToStorage(window._maskBase64, 'mask.png');
+      if(window._maskBase64){
+        setImgStatus('上传遮罩...');
+        IMG_LOG('上传遮罩');
+        maskUrl = await uploadSingleImage(window._maskBase64, 'mask.png', 0, 1);
       }
 
+      IMG_LOG(`全部上传完成，images=${imagesUrls.length}, mask=${maskUrl ? '有' : '无'}`);
+
+      // Step 5: AI 生成（带重试）
       requestBody = { action:'image_edit', prompt, images_urls: imagesUrls, size:imgSize };
-      if (maskUrl) requestBody.mask_url = maskUrl;
-    } catch(uploadErr) {
-      alert('图片上传失败：' + uploadErr.message);
-      document.getElementById('imgBtn').disabled = false;
+      if(maskUrl) requestBody.mask_url = maskUrl;
+
+      const data = await callImageEdit(requestBody);
+      IMG_LOG(`AI 返回: ${data.image_url?.substring(0,80)}...`);
+
+      // Step 6: 预加载结果图片（带重试）
+      try {
+        await preloadImage(data.image_url);
+      } catch(loadErr){
+        IMG_ERR('预加载失败，直接显示: ' + loadErr.message);
+      }
+
+      // Step 7: 显示结果
+      document.getElementById('imgLoading').style.display = 'none';
+      document.getElementById('imgResult').src = data.image_url;
+      document.getElementById('imgResult').style.display = 'block';
+      document.getElementById('imgToolbar').classList.add('show');
+
+      // 对比滑块
+      if(img2imgFiles.length > 0){
+        showCompare(img2imgFiles[0], data.image_url);
+      }
+
+      // 评分
+      if(isLoggedIn()){
+        saveGenerationHistory('image_gen', {prompt, size:imgSize}, data.image_url).then(historyId => {
+          if(historyId) createStarRating('imgRating', historyId, prompt, 'image_gen');
+        });
+        savePreference('img_size', imgSize);
+      } else {
+        createStarRating('imgRating', null, prompt, 'image_gen');
+      }
+
+      // 并行保存
+      saveAsset('image', prompt, data.image_url);
+      saveRecentResult('image', {url: data.image_url, prompt});
+      resetMaskState();
+
+      IMG_LOG('=== 图生图完成 ===');
+
+    } catch(e){
+      IMG_ERR('流程失败: ' + e.message);
       document.getElementById('imgLoading').style.display = 'none';
       document.getElementById('imgPlaceholder').style.display = 'block';
-      return;
+      document.getElementById('imgPlaceholder').innerHTML = `<div class="icon">❌</div><p>${e.message}</p>`;
+    } finally {
+      stopImgTimer();
+      document.getElementById('imgBtn').disabled = false;
     }
+    return; // 图生图流程结束，不走下面的文生图逻辑
   }
 
+  // ===== 文生图流程（保持不变） =====
   document.getElementById('imgBtn').disabled = true;
   document.getElementById('imgPlaceholder').style.display = 'none';
   document.getElementById('imgLoading').style.display = 'block';
@@ -942,7 +1141,6 @@ async function genImage(){
     });
     const data = await resp.json();
     if(data.image_url){
-      // 预加载图片，加载完成后瞬间显示
       const preloader = new Image();
       preloader.onload = () => {
         document.getElementById('imgLoading').style.display = 'none';
@@ -950,7 +1148,6 @@ async function genImage(){
         document.getElementById('imgResult').style.display = 'block';
         document.getElementById('imgToolbar').classList.add('show');
 
-        // 图生图模式：显示对比滑块
         if(imgMode === 'img2img' && img2imgFiles.length > 0){
           showCompare(img2imgFiles[0], data.image_url);
         } else {
@@ -959,7 +1156,6 @@ async function genImage(){
           compareActive = false;
         }
 
-        // 显示评分
         if(isLoggedIn()){
           saveGenerationHistory('image_gen', {prompt, size:imgSize}, data.image_url).then(historyId => {
             if(historyId) createStarRating('imgRating', historyId, prompt, 'image_gen');
@@ -976,11 +1172,6 @@ async function genImage(){
       };
       preloader.src = data.image_url;
 
-      // 不阻塞图片展示，并行保存
-      console.log('[genImage] image_url:', data.image_url);
-      console.log('[genImage] image_url长度:', (data.image_url || '').length);
-      console.log('[genImage] prompt:', prompt);
-      console.log('[genImage] imgMode:', imgMode);
       saveAsset('image', prompt, data.image_url);
       saveRecentResult('image', {url: data.image_url, prompt});
       resetMaskState();
@@ -1013,7 +1204,7 @@ async function genCopy(){
   const product = document.getElementById('copyProduct').value.trim();
   const extra = document.getElementById('copyExtra').value.trim();
 
-  if(!product && !extra){ alert('请至少填写产品名称或补充要求'); return; }
+  if(!product && !extra){ showToast('请至少填写产品名称或补充要求', 'warning'); return; }
 
   const btn = document.getElementById('copyBtn');
   const out = document.getElementById('copyOutput');
@@ -1035,7 +1226,9 @@ async function genCopy(){
       body: JSON.stringify({ action:'copywriting', type, brand, platform, product, prompt:extra, examples })
     });
     const data = await resp.json();
-    out.textContent = data.text || data.error || '生成失败';
+    const resultText = data.text || data.error || '生成失败';
+    _lastCopyText = data.text || '';
+    out.innerHTML = renderMarkdown(resultText);
     if(data.text) {
       saveAsset('copy', product || '文案', data.text);
       saveRecentResult('copy', {text: data.text});
@@ -1079,7 +1272,7 @@ async function copyToClipboard(text, btn, originalLabel){
 }
 
 function copyText(){
-  const text = document.getElementById('copyOutput').textContent;
+  const text = _lastCopyText || document.getElementById('copyOutput').textContent;
   if(text && !text.includes('未启动')){
     copyToClipboard(text, event.target, '复制文案');
   }
@@ -1173,14 +1366,16 @@ function closeAddBrandModal(){
   document.getElementById('brandModal').classList.remove('show');
 }
 function saveBrand(){
-  const name = document.getElementById('brandName').value.trim();
-  if(!name){ alert('请输入品牌名称'); return; }
+  const rawName = document.getElementById('brandName').value.trim();
+  if(!rawName){ showToast('请输入品牌名称', 'warning'); return; }
+  // 净化输入
+  const esc = typeof validator !== 'undefined' ? (s) => validator.escape(s || '') : (s) => s;
   const brand = {
     id: 'brand_' + Date.now(),
-    name: name,
-    desc: document.getElementById('brandDesc').value.trim(),
-    tone: document.getElementById('brandTone').value.trim(),
-    points: document.getElementById('brandPoints').value.trim()
+    name: esc(rawName),
+    desc: esc(document.getElementById('brandDesc').value.trim()),
+    tone: esc(document.getElementById('brandTone').value.trim()),
+    points: esc(document.getElementById('brandPoints').value.trim())
   };
   const brands = getCustomBrands();
   brands.push(brand);
@@ -1534,8 +1729,10 @@ function renderFeedbackImages(){
 }
 
 async function submitPluginFeedback(pluginId){
-  const content = document.getElementById('pluginFeedbackContent').value.trim();
-  if(!content){ alert('请输入反馈内容'); return; }
+  const rawContent = document.getElementById('pluginFeedbackContent').value.trim();
+  if(!rawContent){ showToast('请输入反馈内容', 'warning'); return; }
+  // 净化输入
+  const content = typeof validator !== 'undefined' ? validator.escape(rawContent) : rawContent;
 
   const btn = document.querySelector('.plugin-feedback-submit');
   if(!btn) return;
@@ -1571,7 +1768,7 @@ async function submitPluginFeedback(pluginId){
     const { error } = await supabase.from('plugin_feedback').insert(insertData);
     if(error) throw error;
 
-    alert('✅ 反馈已提交，感谢！');
+    showToast('✅ 反馈已提交，感谢！');
     try {
       document.getElementById('pluginFeedbackContent').value = '';
       feedbackImages = [];
@@ -1579,7 +1776,7 @@ async function submitPluginFeedback(pluginId){
     } catch(e2){ /* 清理失败不影响主流程 */ }
   } catch(e){
     console.error('反馈提交失败:', e);
-    alert('提交失败：' + (e.message || '未知错误'));
+    showToast('提交失败：' + (e.message || '未知错误'), 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = '提交反馈';
@@ -1663,7 +1860,7 @@ function initArticleDragDrop(){
 }
 
 function copyArticle(){
-  const text = document.getElementById('articleOutput').textContent;
+  const text = _lastArticleText || document.getElementById('articleOutput').textContent;
   if(text && !text.includes('未启动')){
     copyToClipboard(text, event.target, '复制全文');
   }
@@ -2108,7 +2305,7 @@ function openFeedbackFromRating(containerId) {
   const rating = document.querySelectorAll(`#${containerId}_stars .star.active`).length || null;
 
   if (!content) {
-    alert('没有可反馈的内容');
+    showToast('没有可反馈的内容', 'warning');
     return;
   }
 
@@ -2200,7 +2397,7 @@ function closeFeedbackModal() {
 async function submitFeedback() {
   const feedbackText = document.getElementById('feedbackText').value.trim();
   if (!feedbackText) {
-    alert('请描述不满意的地方');
+    showToast('请描述不满意的地方', 'warning');
     return;
   }
 
@@ -2223,7 +2420,7 @@ async function submitFeedback() {
     const data = await resp.json();
 
     if (data.error) {
-      alert('改进失败：' + data.error);
+      showToast('改进失败：' + data.error, 'error');
       btn.disabled = false;
       btn.textContent = '🚀 开始改进';
       return;
@@ -2268,7 +2465,7 @@ async function submitFeedback() {
     document.getElementById('feedbackSaveBtn').style.display = 'inline-block';
 
   } catch (e) {
-    alert('改进失败：' + e.message);
+    showToast('改进失败：' + e.message, 'error');
     btn.disabled = false;
     btn.textContent = '🚀 开始改进';
   }
@@ -2276,7 +2473,7 @@ async function submitFeedback() {
 
 // 保存反馈结果
 function saveFeedbackResult() {
-  alert('已保存到反馈库！');
+  showToast('已保存到反馈库！');
   closeFeedbackModal();
   // 如果在反馈库页面，刷新列表
   if (typeof loadFeedbackList === 'function') {
@@ -2512,7 +2709,7 @@ function applyTemplate(prompt, size){
 
 function saveCurrentAsTemplate(){
   const prompt = document.getElementById('imgPrompt').value.trim();
-  if(!prompt){ alert('请先输入图片描述'); return; }
+  if(!prompt){ showToast('请先输入图片描述', 'warning'); return; }
   const name = prompt.substring(0, 20) || '我的模板';
   const tpl = { id:'tpl_'+Date.now(), name, prompt, size:imgSize };
   const customs = getCustomTemplates();
@@ -2585,7 +2782,7 @@ function updateBatchCount(){
 }
 
 function deleteSelectedAssets(){
-  if(!selectedAssets.size){ alert('请先选择素材'); return; }
+  if(!selectedAssets.size){ showToast('请先选择素材', 'warning'); return; }
   if(!confirm(`确定删除选中的 ${selectedAssets.size} 个素材？`)) return;
   const ids = [...selectedAssets];
   assets = assets.filter(a => !selectedAssets.has(a.id));
@@ -2795,7 +2992,7 @@ async function genCopyStream(){
   const platform = document.getElementById('copyPlatform').value;
   const product = document.getElementById('copyProduct').value.trim();
   const extra = document.getElementById('copyExtra').value.trim();
-  if(!product && !extra){ alert('请至少填写产品名称或补充要求'); return; }
+  if(!product && !extra){ showToast('请至少填写产品名称或补充要求', 'warning'); return; }
 
   const btn = document.getElementById('copyBtn');
   const out = document.getElementById('copyOutput');
@@ -2816,7 +3013,8 @@ async function genCopyStream(){
     if(completed) return;
     completed = true;
     text = text.replace(/\*+/g, '');
-    out.textContent = text;
+    _lastCopyText = text;
+    out.innerHTML = renderMarkdown(text);
     if(text){ saveAsset('copy', product || '文案', text); saveRecentResult('copy', {text}); }
     const inputParams = {type, brand, platform, product, prompt:extra};
     if(isLoggedIn()){
@@ -2835,7 +3033,7 @@ async function genCopyStream(){
   fetchStream('/api', {
     action:'stream_copywriting', type, brand, platform, product, prompt:extra, examples
   },
-  (chunk) => { fullText += chunk; out.textContent = fullText; updateWordCount(out, fullText); },
+  (chunk) => { fullText += chunk; _lastCopyText = fullText; out.innerHTML = renderMarkdown(fullText); updateWordCount(out, fullText); },
   () => { finalizeCopy(fullText); },
   (e) => {
     console.warn('Stream failed:', e);
@@ -2869,7 +3067,8 @@ async function genArticleStream(){
     if(completed) return;
     completed = true;
     text = text.replace(/\*+/g, '');
-    out.textContent = text;
+    _lastArticleText = text;
+    out.innerHTML = renderMarkdown(text);
     const label = articleMode === 'outline' ? '大纲' : '初稿';
     if(text){ saveAsset('article', label + (file ? ' — '+file.name : ''), text); saveRecentResult('article', {text}); }
     const inputParams = {mode:articleMode, extra};
@@ -2890,7 +3089,7 @@ async function genArticleStream(){
   if(file) body.file = { name:file.name, base64:file.base64, type:file.type };
 
   fetchStream('/api', body,
-  (chunk) => { fullText += chunk; out.textContent = fullText; updateWordCount(out, fullText); },
+  (chunk) => { fullText += chunk; _lastArticleText = fullText; out.innerHTML = renderMarkdown(fullText); updateWordCount(out, fullText); },
   () => { finalizeArticle(fullText); },
   (e) => {
     console.warn('Stream failed:', e);
@@ -2900,7 +3099,7 @@ async function genArticleStream(){
     } else {
       // 非流式回退
       fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-        .then(r=>r.json()).then(d=>{ out.textContent=d.text||d.error||'生成失败'; finalizeArticle(d.text||''); })
+        .then(r=>r.json()).then(d=>{ _lastArticleText=d.text||''; out.innerHTML=renderMarkdown(d.text||d.error||'生成失败'); finalizeArticle(d.text||''); })
         .catch(()=>{ out.className='article-output empty'; out.textContent=getApiErrorMessage(e); });
     }
   });

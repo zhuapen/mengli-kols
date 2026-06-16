@@ -566,11 +566,20 @@ def image_edit(body):
             "Authorization": f"Bearer {IMG_KEY}",
             "Content-Type": f"multipart/form-data; boundary={boundary}"
         })
+        import sys
+        print(f"[image_edit] 请求 AI API: images={len(image_bytes_list)}, mask={'有' if mask_bytes else '无'}, size={size}", file=sys.stderr)
         resp = urlopen(req, timeout=120)
         data = json.loads(resp.read())
         image_url = data["data"][0]["url"] if data.get("data") else data.get("url", "")
+        print(f"[image_edit] 成功: {image_url[:80] if image_url else 'empty'}", file=sys.stderr)
         return {"image_url": image_url, "method": "edits"}
     except Exception as e:
+        import sys
+        err_detail = ""
+        if hasattr(e, "read"):
+            try: err_detail = e.read().decode()[:200]
+            except: pass
+        print(f"[image_edit] 方式A失败: {e} | {err_detail}", file=sys.stderr)
         # 传了 mask 时不做回退——回退端点不支持 mask，静默忽略遮罩会导致整图重绘
         if mask_bytes:
             return {"error": f"局部重绘失败：{e}"}

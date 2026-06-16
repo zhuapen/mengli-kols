@@ -2152,3 +2152,22 @@ tbody tr:hover{
   .mask-editor-footer{padding:10px 14px}
   .mask-footer-btn{padding:8px 18px;font-size:13px}
 }
+
+/* ========== MARKDOWN RENDERED CONTENT ========== */
+.copy-output h1, .article-output h1, .ai-result h1 { font-size:1.5em; font-weight:700; margin:0.8em 0 0.4em; color:var(--gray-800); }
+.copy-output h2, .article-output h2, .ai-result h2 { font-size:1.3em; font-weight:700; margin:0.7em 0 0.35em; color:var(--gray-800); }
+.copy-output h3, .article-output h3, .ai-result h3 { font-size:1.1em; font-weight:600; margin:0.6em 0 0.3em; color:var(--gray-700); }
+.copy-output p, .article-output p, .ai-result p { margin:0.5em 0; line-height:1.8; }
+.copy-output ul, .article-output ul, .ai-result ul,
+.copy-output ol, .article-output ol, .ai-result ol { margin:0.5em 0; padding-left:1.5em; }
+.copy-output li, .article-output li, .ai-result li { margin:0.3em 0; line-height:1.7; }
+.copy-output strong, .article-output strong, .ai-result strong { font-weight:700; color:var(--gray-800); }
+.copy-output em, .article-output em, .ai-result em { font-style:italic; }
+.copy-output code, .article-output code, .ai-result code { background:var(--gray-100); padding:2px 6px; border-radius:4px; font-size:0.9em; font-family:'SF Mono',Monaco,Consolas,monospace; }
+.copy-output pre, .article-output pre, .ai-result pre { background:var(--gray-800); color:#E5E7EB; padding:16px; border-radius:8px; overflow-x:auto; margin:0.8em 0; }
+.copy-output pre code, .article-output pre code, .ai-result pre code { background:none; padding:0; color:inherit; }
+.copy-output blockquote, .article-output blockquote, .ai-result blockquote { border-left:3px solid var(--accent); padding-left:12px; margin:0.8em 0; color:var(--gray-500); font-style:italic; }
+.copy-output hr, .article-output hr, .ai-result hr { border:none; border-top:1px solid var(--gray-200); margin:1em 0; }
+.copy-output table, .article-output table, .ai-result table { border-collapse:collapse; width:100%; margin:0.8em 0; }
+.copy-output th, .article-output th, .ai-result th { background:var(--gray-100); font-weight:600; text-align:left; padding:8px 12px; border:1px solid var(--gray-200); }
+.copy-output td, .article-output td, .ai-result td { padding:8px 12px; border:1px solid var(--gray-200); }
