@@ -1992,6 +1992,47 @@ tbody tr:hover{
   .history-text-preview { -webkit-line-clamp: 3; }
 }
 
+/* ========== REGISTER MODAL ========== */
+.register-modal{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,0.5);z-index:10001;
+  align-items:center;justify-content:center;
+}
+.register-modal.show{display:flex}
+.register-modal-content{
+  background:#fff;border-radius:12px;padding:32px;
+  width:400px;max-width:90vw;
+  box-shadow:0 20px 60px rgba(0,0,0,0.3);
+  animation:fadeIn 0.2s ease;
+}
+.register-modal-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:24px;
+}
+.register-modal-header h3{margin:0;font-size:20px;font-weight:700}
+.register-modal-close{
+  width:32px;height:32px;border:none;background:#f5f5f5;
+  border-radius:50%;font-size:20px;cursor:pointer;
+}
+.register-modal-close:hover{background:#e5e5e5}
+.register-field{margin-bottom:16px}
+.register-field label{display:block;font-size:13px;font-weight:600;color:#555;margin-bottom:6px}
+.register-field input{
+  width:100%;padding:10px 14px;border:2px solid #e5e5e5;
+  border-radius:8px;font-size:14px;font-family:var(--font);
+  outline:none;transition:border-color 0.2s;box-sizing:border-box;
+}
+.register-field input:focus{border-color:var(--accent)}
+.register-error{color:#EF4444;font-size:13px;min-height:20px;margin-bottom:8px}
+.register-submit-btn{
+  width:100%;padding:12px;background:var(--accent);color:#fff;
+  border:none;border-radius:8px;font-size:15px;font-weight:600;
+  cursor:pointer;font-family:var(--font);transition:background 0.2s;
+}
+.register-submit-btn:hover{background:#e06840}
+.register-submit-btn:disabled{background:#ccc;cursor:not-allowed}
+.register-hint{text-align:center;font-size:12px;color:#999;margin-top:12px}
+
 /* ========== MASK EDITOR ========== */
 .mask-editor{
   display:none;position:fixed;inset:0;

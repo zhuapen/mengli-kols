@@ -1,3 +1,66 @@
+// ========== REGISTER ==========
+function showRegisterModal(){
+  document.getElementById('registerModal').classList.add('show');
+}
+function closeRegisterModal(){
+  document.getElementById('registerModal').classList.remove('show');
+  document.getElementById('registerError').textContent = '';
+  document.getElementById('regEmail').value = '';
+  document.getElementById('regPassword').value = '';
+  document.getElementById('regName').value = '';
+  document.getElementById('regPosition').value = '';
+}
+
+async function handleRegister(event){
+  event.preventDefault();
+  const email = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const name = document.getElementById('regName').value.trim();
+  const position = document.getElementById('regPosition').value.trim();
+  const errorEl = document.getElementById('registerError');
+  const btn = document.getElementById('regSubmitBtn');
+
+  if(!email || !password || !name){
+    errorEl.textContent = '请填写邮箱、密码和姓名';
+    return;
+  }
+  if(password.length < 6){
+    errorEl.textContent = '密码至少6位';
+    return;
+  }
+
+  errorEl.textContent = '';
+  btn.disabled = true;
+  btn.textContent = '提交中...';
+
+  try {
+    const resp = await fetch('/api', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create_user',
+        email, password,
+        display_name: name,
+        position: position || '',
+        status: 'pending'
+      })
+    });
+    const result = await resp.json();
+
+    if(result.error){
+      errorEl.textContent = '注册失败：' + result.error;
+    } else {
+      alert('注册申请已提交，请等待管理员审核。');
+      closeRegisterModal();
+    }
+  } catch(e){
+    errorEl.textContent = '注册失败：' + e.message;
+  }
+
+  btn.disabled = false;
+  btn.textContent = '提交注册';
+}
+
 // ========== TOAST NOTIFICATION ==========
 function showToast(msg, duration){
   duration = duration || 3000;

@@ -156,6 +156,24 @@ async function handleLogin(user) {
     // 获取用户配置
     await loadUserProfile();
 
+    // 检查账号审批状态
+    const status = userProfile?.status || 'approved';
+    if (status === 'pending') {
+        await logout();
+        alert('您的账号正在审核中，请等待管理员审批后再登录。');
+        return;
+    }
+    if (status === 'rejected') {
+        await logout();
+        alert('您的注册申请未通过审核。如有疑问请联系管理员。');
+        return;
+    }
+    if (status === 'disabled') {
+        await logout();
+        alert('您的账号已被禁用。如有疑问请联系管理员。');
+        return;
+    }
+
     // 单设备登录：生成 token 并检查是否被踢
     await initSessionToken(user.id);
 
@@ -974,6 +992,7 @@ function showAdminPanel() {
                 <button class="admin-tab" onclick="switchAdminTab('create', this)">创建用户</button>
                 <button class="admin-tab" onclick="switchAdminTab('plugins', this)">插件管理</button>
                 <button class="admin-tab" onclick="switchAdminTab('feedback', this)">反馈管理</button>
+                <button class="admin-tab" onclick="switchAdminTab('approval', this)" id="approvalTab">待审批</button>
             </div>
             <div id="adminTabContent" class="admin-tab-content">
                 <div class="loading">加载中...</div>
@@ -1228,8 +1247,9 @@ function showAdminPanel() {
     document.head.appendChild(style);
     document.body.appendChild(modal);
 
-    // 加载用户列表
+    // 加载用户列表 + 待审批数量
     loadUsersList();
+    updateApprovalCount();
 }
 
 /**
@@ -1247,6 +1267,8 @@ function switchAdminTab(tab, btn) {
         showPluginManagement();
     } else if (tab === 'feedback') {
         showFeedbackManagement();
+    } else if (tab === 'approval') {
+        showApprovalPanel();
     }
 }
 
@@ -1805,6 +1827,125 @@ async function deleteChangelog(logId, pluginId, pluginName) {
     } catch(e) {
         alert('删除失败：' + e.message);
     }
+}
+
+// ========== APPROVAL PANEL (Admin) ==========
+async function showApprovalPanel() {
+    const content = document.getElementById('adminTabContent');
+    content.innerHTML = '<div style="text-align:center;padding:20px">加载中...</div>';
+
+    try {
+        const { data: pendingUsers, error } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // 更新待审批数量
+        const tab = document.getElementById('approvalTab');
+        if (tab) tab.textContent = pendingUsers.length ? `待审批（${pendingUsers.length}）` : '待审批';
+
+        // 加载所有功能权限
+        const { data: features } = await supabase.from('feature_permissions').select('*').order('id');
+
+        if (!pendingUsers.length) {
+            content.innerHTML = '<div style="text-align:center;padding:40px;color:#999"><div style="font-size:48px;margin-bottom:12px">✅</div><p>暂无待审批用户</p></div>';
+            return;
+        }
+
+        content.innerHTML = pendingUsers.map(u => `
+            <div style="padding:16px;border:1px solid #eee;border-radius:8px;margin-bottom:12px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                    <div>
+                        <div style="font-weight:600;font-size:15px">${u.display_name || '未设置'}</div>
+                        <div style="font-size:13px;color:#666">${u.email}</div>
+                        <div style="font-size:12px;color:#999;margin-top:4px">${u.position || '未设置岗位'} · 注册于 ${new Date(u.created_at).toLocaleDateString('zh-CN')}</div>
+                    </div>
+                </div>
+                <div id="approval-${u.id}" style="display:none;border-top:1px solid #eee;padding-top:12px;margin-top:8px">
+                    <div style="font-size:13px;font-weight:600;margin-bottom:8px">分配功能权限：</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+                        ${(features||[]).map(f => `
+                            <label style="display:flex;align-items:center;gap:4px;font-size:13px;padding:4px 10px;border:1px solid #e5e5e5;border-radius:4px;cursor:pointer">
+                                <input type="checkbox" value="${f.feature_key}" class="approval-perm-${u.id}">
+                                ${f.feature_name}
+                            </label>
+                        `).join('')}
+                    </div>
+                    <div style="display:flex;gap:8px">
+                        <button onclick="approveUser('${u.id}')" style="padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">确认通过</button>
+                        <button onclick="rejectUser('${u.id}')" style="padding:8px 20px;background:#fff;color:#DC2626;border:1px solid #FCA5A5;border-radius:6px;cursor:pointer;font-weight:600">拒绝</button>
+                        <button onclick="document.getElementById('approval-${u.id}').style.display='none'" style="padding:8px 20px;background:#f5f5f5;border:none;border-radius:6px;cursor:pointer">取消</button>
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:8px" id="approval-actions-${u.id}">
+                    <button onclick="document.getElementById('approval-${u.id}').style.display='block';document.getElementById('approval-actions-${u.id}').style.display='none'" style="padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">审批并分配权限</button>
+                    <button onclick="rejectUser('${u.id}')" style="padding:8px 16px;background:#fff;color:#DC2626;border:1px solid #FCA5A5;border-radius:6px;cursor:pointer;font-size:13px">直接拒绝</button>
+                </div>
+            </div>
+        `).join('');
+
+    } catch(e) {
+        content.innerHTML = `<p style="color:red">加载失败：${e.message}</p>`;
+    }
+}
+
+async function approveUser(userId) {
+    const checkboxes = document.querySelectorAll(`.approval-perm-${userId}:checked`);
+    const permissions = Array.from(checkboxes).map(cb => cb.value);
+
+    try {
+        // 更新 status 为 approved
+        const { error } = await supabase
+            .from('user_profiles')
+            .update({ status: 'approved', approved_at: new Date().toISOString(), approved_by: currentUser.id })
+            .eq('id', userId);
+        if (error) throw error;
+
+        // 分配权限
+        if (permissions.length) {
+            await supabase.from('user_feature_permissions').delete().eq('user_id', userId);
+            const permData = permissions.map(key => ({ user_id: userId, feature_key: key }));
+            await supabase.from('user_feature_permissions').insert(permData);
+        }
+
+        logAdminAction('审批通过', userId, '权限: ' + permissions.join(', '));
+        showToast('已通过审批');
+        showApprovalPanel();
+    } catch(e) {
+        alert('审批失败：' + e.message);
+    }
+}
+
+async function rejectUser(userId) {
+    if (!confirm('确定拒绝该用户的注册申请？')) return;
+    try {
+        const { error } = await supabase
+            .from('user_profiles')
+            .update({ status: 'rejected' })
+            .eq('id', userId);
+        if (error) throw error;
+
+        logAdminAction('拒绝注册', userId);
+        showToast('已拒绝');
+        showApprovalPanel();
+    } catch(e) {
+        alert('操作失败：' + e.message);
+    }
+}
+
+// 加载待审批数量（页面初始化时调用）
+async function updateApprovalCount() {
+    try {
+        const { count } = await supabase
+            .from('user_profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'pending');
+        const tab = document.getElementById('approvalTab');
+        if (tab && count > 0) tab.textContent = `待审批（${count}）`;
+    } catch(e) { /* 静默失败 */ }
 }
 
 // ========== FEEDBACK MANAGEMENT (Admin) ==========

@@ -43,6 +43,7 @@
   </div>
   <!-- 用户登录区域 -->
   <div id="userSection">
+    <button onclick="showRegisterModal()" style="padding:8px 16px;background:transparent;color:#F4845F;border:1.5px solid #F4845F;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;margin-right:8px;">注册</button>
     <button onclick="showLoginModal()" style="padding:8px 24px;background:#F4845F;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">登录</button>
   </div>
 </nav>
@@ -775,6 +776,37 @@
       <button class="brand-modal-cancel" onclick="closeAddBrandModal()">取消</button>
       <button class="brand-modal-save" onclick="saveBrand()">保存</button>
     </div>
+  </div>
+</div>
+
+<!-- Register Modal -->
+<div class="register-modal" id="registerModal">
+  <div class="register-modal-content">
+    <div class="register-modal-header">
+      <h3>注册账号</h3>
+      <button class="register-modal-close" onclick="closeRegisterModal()">×</button>
+    </div>
+    <form onsubmit="handleRegister(event)">
+      <div class="register-field">
+        <label>邮箱 *</label>
+        <input type="email" id="regEmail" placeholder="your@email.com" required>
+      </div>
+      <div class="register-field">
+        <label>密码 *</label>
+        <input type="password" id="regPassword" placeholder="至少6位" required minlength="6">
+      </div>
+      <div class="register-field">
+        <label>姓名 *</label>
+        <input type="text" id="regName" placeholder="你的姓名" required>
+      </div>
+      <div class="register-field">
+        <label>岗位</label>
+        <input type="text" id="regPosition" placeholder="如：文案、运营、设计...">
+      </div>
+      <div id="registerError" class="register-error"></div>
+      <button type="submit" class="register-submit-btn" id="regSubmitBtn">提交注册</button>
+      <p class="register-hint">注册后需管理员审批，审批通过后即可登录</p>
+    </form>
   </div>
 </div>
 

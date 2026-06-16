@@ -697,7 +697,7 @@ def feedback(body):
 
 
 def create_user(body):
-    """管理员创建用户（通过 Supabase Admin API）"""
+    """管理员创建用户或用户注册（通过 Supabase Admin API）"""
     if not SUPABASE_SERVICE_KEY:
         return {"error": "服务端未配置 SUPABASE_SERVICE_ROLE_KEY"}
 
@@ -705,6 +705,7 @@ def create_user(body):
     password = body.get("password", "")
     display_name = body.get("display_name", "")
     position = body.get("position", "")
+    status = body.get("status", "approved")  # 管理员创建默认 approved，注册默认 pending
 
     if not email:
         return {"error": "请输入邮箱"}
@@ -734,6 +735,25 @@ def create_user(body):
         resp = urlopen(req, timeout=30)
         data = json.loads(resp.read())
         user_id = data.get("id", "")
+
+        # 设置 user_profiles 的 status（注册用户为 pending）
+        if status != "approved" and user_id:
+            update_payload = json.dumps({"status": status}).encode()
+            update_req = Request(
+                f"{SUPABASE_URL}/rest/v1/user_profiles?id=eq.{user_id}",
+                data=update_payload,
+                method="PATCH",
+                headers={
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                    "apikey": SUPABASE_SERVICE_KEY,
+                    "Content-Type": "application/json"
+                }
+            )
+            try:
+                urlopen(update_req, timeout=30)
+            except Exception:
+                pass  # 不影响主流程
+
         return {"success": True, "user_id": user_id}
     except Exception as e:
         err_detail = ""
