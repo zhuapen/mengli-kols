@@ -746,7 +746,7 @@ def create_user(body):
 
 
 def delete_user(body):
-    """管理员删除用户（通过 Supabase Admin API）"""
+    """管理员删除用户（先删 user_profiles 再删 auth 用户）"""
     if not SUPABASE_SERVICE_KEY:
         return {"error": "服务端未配置 SUPABASE_SERVICE_ROLE_KEY"}
 
@@ -755,6 +755,18 @@ def delete_user(body):
         return {"error": "缺少 user_id"}
 
     try:
+        # 1. 先删除 user_profiles（解除外键约束）
+        req = Request(
+            f"{SUPABASE_URL}/rest/v1/user_profiles?id=eq.{user_id}",
+            method="DELETE",
+            headers={
+                "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                "apikey": SUPABASE_SERVICE_KEY
+            }
+        )
+        urlopen(req, timeout=30)
+
+        # 2. 再删除 auth 用户
         req = Request(
             f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
             method="DELETE",

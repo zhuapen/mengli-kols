@@ -806,30 +806,48 @@ async function genImage(){
     if(!img2imgFiles.length){ alert('请上传参考图片'); return; }
     if(!prompt){ alert('请输入修改要求'); return; }
 
-    // 图生图：先上传图片到 Storage，拿到 URL 后再发请求（避免请求体超限）
+    // 图生图：压缩图片后上传到 Storage，拿到 URL 再发请求
     try {
-      const uploadPromises = img2imgFiles.map(async (b64, i) => {
+      // 压缩图片到合理大小（最长边 1024px，质量 0.8）
+      async function compressImage(b64DataUrl, maxSide, quality) {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            let w = img.width, h = img.height;
+            if (w > maxSide || h > maxSide) {
+              const ratio = Math.min(maxSide / w, maxSide / h);
+              w = Math.round(w * ratio);
+              h = Math.round(h * ratio);
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/png'));
+          };
+          img.onerror = () => resolve(b64DataUrl); // 压缩失败用原图
+          img.src = b64DataUrl;
+        });
+      }
+
+      async function uploadToStorage(b64DataUrl, filename) {
+        const compressed = await compressImage(b64DataUrl, 1024, 0.85);
         const resp = await fetch('/api', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'upload_image_file', file_base64: b64, filename: `ref_${i}.png` })
+          body: JSON.stringify({ action: 'upload_image_file', file_base64: compressed, filename })
         });
         const result = await resp.json();
         if (result.error) throw new Error(result.error);
         return result.url;
-      });
-      const imagesUrls = await Promise.all(uploadPromises);
+      }
+
+      const imagesUrls = await Promise.all(
+        img2imgFiles.map((b64, i) => uploadToStorage(b64, `ref_${i}.png`))
+      );
 
       let maskUrl = '';
       if (window._maskBase64) {
-        const maskResp = await fetch('/api', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'upload_image_file', file_base64: window._maskBase64, filename: 'mask.png' })
-        });
-        const maskResult = await maskResp.json();
-        if (maskResult.error) throw new Error(maskResult.error);
-        maskUrl = maskResult.url;
+        maskUrl = await uploadToStorage(window._maskBase64, 'mask.png');
       }
 
       requestBody = { action:'image_edit', prompt, images_urls: imagesUrls, size:imgSize };
