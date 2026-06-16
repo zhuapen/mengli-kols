@@ -119,7 +119,8 @@ async function loadAllFeatures() {
             { feature_key: 'copywriting', feature_name: '文案撰写' },
             { feature_key: 'article', feature_name: '推文生成' },
             { feature_key: 'assets', feature_name: '素材库' },
-            { feature_key: 'knowledge', feature_name: '知识库' }
+            { feature_key: 'knowledge', feature_name: '知识库' },
+            { feature_key: 'plugin', feature_name: '插件中心' }
         ];
     }
 }
