@@ -486,6 +486,21 @@ def image_gen(body):
         return {"error": str(e)}
 
 
+def enhance_image_edit_prompt(prompt):
+    """增强图生图提示词，帮助模型更好地理解替换类需求"""
+    # 如果提示词包含"替换/换成/改成"等关键词，转换为描述最终画面的格式
+    replace_keywords = ["替换", "换成", "改成", "换成", "换做", "变成", "改为", "换上", "放上", "加上", "加上去"]
+    has_replace = any(kw in prompt for kw in replace_keywords)
+
+    if has_replace:
+        # 在用户提示词基础上，补充"保持原图构图"的指令
+        enhanced = f"Based on the reference image, modify it as follows: {prompt}. Keep the original composition, lighting, and background. Only change what is specifically requested. Maintain the same camera angle and style."
+    else:
+        enhanced = prompt
+
+    return enhanced
+
+
 def image_edit(body):
     """图生图/局部重绘。支持两种模式：URL模式（images_urls/mask_url）和Base64模式（images/mask）"""
     prompt = body.get("prompt", "")
@@ -556,7 +571,9 @@ def image_edit(body):
         if mask_bytes:
             parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="mask"; filename="mask.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + mask_bytes)
 
-        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n{prompt}'.encode())
+        # 增强提示词：帮助模型理解"替换"类需求
+        enhanced_prompt = enhance_image_edit_prompt(prompt)
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n{enhanced_prompt}'.encode())
         parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\ngpt-image-2-vip'.encode())
         parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="size"\r\n\r\n{size}'.encode())
         parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="n"\r\n\r\n1'.encode())
@@ -588,7 +605,7 @@ def image_edit(body):
     if not images_urls:
         try:
             import base64 as _b64
-            enhanced_prompt = f"基于以下参考图片进行修改：{prompt}"
+            enhanced_prompt = f"Based on the reference image, modify it: {enhance_image_edit_prompt(prompt)}"
             req = Request(IMG_URL, data=json.dumps({
                 "model": "gpt-image-2-vip",
                 "prompt": enhanced_prompt,
