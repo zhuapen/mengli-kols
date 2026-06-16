@@ -555,27 +555,26 @@ def image_edit(body):
     if not image_bytes_list:
         return {"error": "图片下载失败"}
 
+    num_images = len(image_bytes_list)
+
     # 方式A：/images/edits 端点
     edits_url = IMG_URL.replace("/images/generations", "/images/edits")
     try:
         boundary = "----FormBoundary" + str(hash(prompt))[:16]
         parts = []
 
-        # 第一张图作为 image
-        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="image"; filename="ref.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + image_bytes_list[0])
-
-        # 额外的参考图
-        for i, img_data in enumerate(image_bytes_list[1:], 1):
-            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="image{i}"; filename="ref{i}.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + img_data)
+        # 多图支持：API 的 image 字段支持多图，每张图都用 name="image"
+        for i, img_data in enumerate(image_bytes_list):
+            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="image"; filename="ref{i}.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + img_data)
 
         # mask
         if mask_bytes:
             parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="mask"; filename="mask.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + mask_bytes)
 
-        # 增强提示词：帮助模型理解"替换"类需求
-        enhanced_prompt = enhance_image_edit_prompt(prompt, len(image_bytes_list))
+        # 增强提示词：帮助模型理解"替换"类需求（用原始图片数量，不是合并后的）
+        enhanced_prompt = enhance_image_edit_prompt(prompt, num_images)
         parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n{enhanced_prompt}'.encode())
-        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\ngpt-image-2-vip'.encode())
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\ngpt-image-2-all'.encode())
         parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="size"\r\n\r\n{size}'.encode())
         parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="n"\r\n\r\n1'.encode())
 
@@ -585,7 +584,7 @@ def image_edit(body):
             "Content-Type": f"multipart/form-data; boundary={boundary}"
         })
         import sys
-        print(f"[image_edit] 请求 AI API: images={len(image_bytes_list)}, mask={'有' if mask_bytes else '无'}, size={size}", file=sys.stderr)
+        print(f"[image_edit] 请求 AI API: images={num_images}张, mask={'有' if mask_bytes else '无'}, size={size}", file=sys.stderr)
         resp = urlopen(req, timeout=120)
         data = json.loads(resp.read())
         image_url = data["data"][0]["url"] if data.get("data") else data.get("url", "")
@@ -606,9 +605,9 @@ def image_edit(body):
     if not images_urls:
         try:
             import base64 as _b64
-            enhanced_prompt = f"Based on the reference image, modify it: {enhance_image_edit_prompt(prompt)}"
+            enhanced_prompt = f"Based on the reference image, modify it: {enhance_image_edit_prompt(prompt, num_images)}"
             req = Request(IMG_URL, data=json.dumps({
-                "model": "gpt-image-2-vip",
+                "model": "gpt-image-2-all",
                 "prompt": enhanced_prompt,
                 "n": 1,
                 "size": size,
