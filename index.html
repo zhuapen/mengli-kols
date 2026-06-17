@@ -293,8 +293,29 @@
       <button class="gen-btn" id="copyBtn" onclick="genCopyStream()">生成文案</button>
     </div>
     <div class="copy-right">
-      <div class="gen-label">生成结果</div>
+      <div class="gen-label">
+        生成结果
+        <button class="edit-toggle-btn" id="copyEditBtn" onclick="toggleCopyEdit()" style="display:none">编辑</button>
+      </div>
       <div class="copy-output empty" id="copyOutput">点击「生成文案」开始创作</div>
+      <!-- 版本条 -->
+      <div class="version-bar" id="copyVersionBar" style="display:none"></div>
+      <!-- 继续优化 -->
+      <div class="follow-up-bar" id="copyFollowUp" style="display:none">
+        <div class="follow-up-actions">
+          <button class="quick-action-btn" onclick="quickRefine('更口语化')">更口语化</button>
+          <button class="quick-action-btn" onclick="quickRefine('更专业')">更专业</button>
+          <button class="quick-action-btn" onclick="quickRefine('增加种草感')">增加种草感</button>
+          <button class="quick-action-btn" onclick="quickRefine('增加3个标题')">增加3个标题</button>
+          <button class="quick-action-btn" onclick="quickRefine('缩短到300字以内')">缩短篇幅</button>
+          <button class="quick-action-btn" onclick="quickRefine('扩写内容')">扩写内容</button>
+          <button class="quick-action-btn" onclick="quickRefine('改成小红书风格')">小红书风格</button>
+        </div>
+        <div class="follow-up-input-row">
+          <input id="copyFollowUpInput" placeholder="输入修改要求，如：保留前半部分，把结尾改得更有种草感" onkeydown="if(event.key==='Enter')refineCopy()" />
+          <button class="gen-btn" id="copyRefineBtn" onclick="refineCopy()">继续优化</button>
+        </div>
+      </div>
       <div class="copy-actions">
         <button class="gen-btn" id="copyRetry" onclick="genCopyStream()" style="display:none">重新生成</button>
         <button class="gen-btn secondary" onclick="copyText()">复制文案</button>

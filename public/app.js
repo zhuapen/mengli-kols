@@ -2857,6 +2857,8 @@ function bindHistoryGridEvents(){
       }
     } else if(btn.dataset.action === 'reuse'){
       reuseHistoryInput(item.gen_type, inputPreview);
+    } else if(btn.dataset.action === 'delete'){
+      deleteHistoryItem(btn.dataset.id, card);
     }
   });
   // 图片点击也打开灯箱
@@ -2868,6 +2870,20 @@ function bindHistoryGridEvents(){
 }
 
 const typeLabels = { image_gen:'图片', copywriting:'文案', article:'写稿' };
+
+async function deleteHistoryItem(id, cardEl){
+  if(!id) return;
+  const ok = await softDeleteHistory(Number(id));
+  if(ok){
+    cardEl.style.opacity = '0';
+    cardEl.style.transform = 'translateX(20px)';
+    cardEl.style.transition = 'all 0.3s';
+    setTimeout(() => { cardEl.remove(); }, 300);
+    showToast('已删除');
+  } else {
+    showToast('删除失败', 'error');
+  }
+}
 
 async function renderHistory(){
   const container = document.getElementById('historyList');
@@ -2905,6 +2921,7 @@ async function renderHistory(){
             <div class="history-actions">
               <button data-action="view">查看大图</button>
               <button data-action="reuse">使用此输入</button>
+              <button data-action="delete" data-id="${item.id}" class="history-delete-btn" title="删除">🗑️</button>
             </div>
           </div>
         </div>`;
@@ -2917,6 +2934,7 @@ async function renderHistory(){
             <div class="history-actions">
               <button data-action="view">查看完整</button>
               <button data-action="reuse">使用此输入</button>
+              <button data-action="delete" data-id="${item.id}" class="history-delete-btn" title="删除">🗑️</button>
             </div>
           </div>
         </div>`;
@@ -2964,13 +2982,26 @@ async function renderHistoryFiltered(genType){
   container.innerHTML = '<div class="asset-empty"><div class="icon">⏳</div><h3>加载中...</h3></div>';
   try {
     const historyList = await getGenerationHistoryList(genType);
-    // 复用 renderHistory 的渲染逻辑
     if(!historyList || !historyList.length){
       container.innerHTML = '<div class="asset-empty"><div class="icon">📭</div><h3>暂无记录</h3></div>';
       return;
     }
-    // 触发完整渲染
-    renderHistory();
+    // 直接用过滤后的数据渲染，不重新获取
+    _historyData = historyList;
+    container.innerHTML = _historyData.map((item, idx) => {
+      const date = new Date(item.created_at).toLocaleString('zh-CN');
+      const typeLabel = typeLabels[item.gen_type] || escapeHtml(item.gen_type);
+      const ratingHtml = item.rating ? `<span class="history-rating">${'★'.repeat(item.rating)}${'☆'.repeat(5-item.rating)}</span>` : '';
+      const inputPreview = item.input_params ? (typeof item.input_params === 'string' ? JSON.parse(item.input_params) : item.input_params) : {};
+      const inputSummary = escapeHtml(inputPreview.prompt || inputPreview.product || inputPreview.topic || '-');
+      if(item.gen_type === 'image_gen'){
+        const safeSrc = isValidImageUrl(item.output_content) ? item.output_content : '';
+        return `<div class="history-card" data-idx="${idx}"><div class="history-preview"><img src="${safeSrc}" alt=""></div><div class="history-info"><div class="history-meta"><span class="history-type">${typeLabel}</span>${ratingHtml}<span class="history-date">${escapeHtml(date)}</span></div><div class="history-input">${inputSummary}</div><div class="history-actions"><button data-action="view">查看大图</button><button data-action="reuse">使用此输入</button><button data-action="delete" data-id="${item.id}" class="history-delete-btn" title="删除">🗑️</button></div></div></div>`;
+      } else {
+        return `<div class="history-card" data-idx="${idx}"><div class="history-text-preview">${escapeHtml((item.output_content||'').substring(0,120))}...</div><div class="history-info"><div class="history-meta"><span class="history-type">${typeLabel}</span>${ratingHtml}<span class="history-date">${escapeHtml(date)}</span></div><div class="history-input">输入：${inputSummary}</div><div class="history-actions"><button data-action="view">查看完整</button><button data-action="reuse">使用此输入</button><button data-action="delete" data-id="${item.id}" class="history-delete-btn" title="删除">🗑️</button></div></div></div>`;
+      }
+    }).join('');
+    bindHistoryGridEvents();
   } catch(e){
     container.innerHTML = '<div class="asset-empty"><div class="icon">❌</div><h3>加载失败</h3></div>';
   }
@@ -3029,10 +3060,18 @@ async function genCopyStream(){
   retry.disabled = true;
   out.className = 'copy-output'; out.textContent = '';
 
-  let examples = [];
-  if(isLoggedIn()){
-    try { const highRated = await getHighRatedExamples('copywriting'); examples = highRated.map(h => h.output_content).filter(Boolean); } catch(e){}
-  }
+  // 重置版本状态（新生成 = 新版本链）
+  _copyVersions = [];
+  _copyCurrentVersionIdx = 0;
+  _copyRootId = null;
+
+  // 隐藏编辑和优化 UI
+  const editBtn = document.getElementById('copyEditBtn');
+  const followUp = document.getElementById('copyFollowUp');
+  const versionBar = document.getElementById('copyVersionBar');
+  if(editBtn) editBtn.style.display = 'none';
+  if(followUp) followUp.style.display = 'none';
+  if(versionBar) versionBar.style.display = 'none';
 
   let fullText = '';
   let completed = false;
@@ -3046,20 +3085,31 @@ async function genCopyStream(){
     if(text){ saveAsset('copy', product || '文案', text); saveRecentResult('copy', {text}); }
     const inputParams = {type, brand, platform, product, prompt:extra};
     if(isLoggedIn()){
-      saveGenerationHistory('copywriting', inputParams, text).then(historyId => {
-        if(historyId) createStarRating('copyRating', historyId, text, 'copywriting');
+      saveGenerationHistory('copywriting', inputParams, text, null, {operation_type:'generate', version:1}).then(historyId => {
+        if(historyId){
+          _copyRootId = historyId;
+          _copyVersions = [{id:historyId, version:1, content:text, operation_type:'generate'}];
+          _copyCurrentVersionIdx = 0;
+          renderVersionBar();
+          createStarRating('copyRating', historyId, text, 'copywriting');
+        }
       });
     } else {
+      _copyVersions = [{id:null, version:1, content:text, operation_type:'generate'}];
+      renderVersionBar();
       createStarRating('copyRating', null, text, 'copywriting');
     }
     btn.disabled = false; btn.textContent = '生成文案';
     retry.style.display = 'inline-flex'; retry.disabled = false;
     const tplBtn = document.getElementById('copySaveTpl');
     if(tplBtn) tplBtn.style.display = 'inline-flex';
+    // 显示编辑和优化 UI
+    if(editBtn) editBtn.style.display = 'inline-block';
+    if(followUp) followUp.style.display = 'block';
   }
 
   fetchStream('/api', {
-    action:'stream_copywriting', type, brand, platform, product, prompt:extra, examples
+    action:'stream_copywriting', type, brand, platform, product, prompt:extra, examples:[]
   },
   (chunk) => { fullText += chunk; _lastCopyText = fullText; out.innerHTML = renderMarkdown(fullText); updateWordCount(out, fullText); },
   () => { finalizeCopy(fullText); },
@@ -3072,6 +3122,171 @@ async function genCopyStream(){
       genCopy();
     }
   });
+}
+
+// ===== 版本管理 + 编辑模式 + 继续优化 =====
+let _copyVersions = [];
+let _copyCurrentVersionIdx = 0;
+let _copyRootId = null;
+let _copyEditMode = false;
+
+function toggleCopyEdit(){
+  const out = document.getElementById('copyOutput');
+  const btn = document.getElementById('copyEditBtn');
+  if(!_copyEditMode){
+    // 进入编辑模式
+    _copyEditMode = true;
+    out.contentEditable = 'true';
+    out.focus();
+    btn.textContent = '完成编辑';
+    btn.classList.add('editing');
+  } else {
+    // 退出编辑模式，保存
+    _copyEditMode = false;
+    out.contentEditable = 'false';
+    btn.textContent = '编辑';
+    btn.classList.remove('editing');
+    finishEditCopy();
+  }
+}
+
+function finishEditCopy(){
+  const out = document.getElementById('copyOutput');
+  const editedText = out.innerText.trim();
+  if(!editedText || editedText === _lastCopyText) return;
+
+  _lastCopyText = editedText;
+  saveAsset('copy', '文案(编辑)', editedText);
+  saveRecentResult('copy', {text:editedText});
+
+  // 保存为新版本
+  const newVersion = _copyVersions.length + 1;
+  const inputParams = {
+    type: document.getElementById('copyType').value,
+    brand: document.getElementById('copyBrand').value,
+    platform: document.getElementById('copyPlatform').value,
+    product: document.getElementById('copyProduct').value.trim(),
+    prompt: document.getElementById('copyExtra').value.trim()
+  };
+
+  if(isLoggedIn()){
+    saveGenerationHistory('copywriting', inputParams, editedText, null, {
+      operation_type:'edit', version:newVersion, parent_id:_copyVersions.length ? _copyVersions[_copyVersions.length-1].id : null, root_id:_copyRootId
+    }).then(historyId => {
+      if(historyId){
+        _copyVersions.push({id:historyId, version:newVersion, content:editedText, operation_type:'edit'});
+        _copyCurrentVersionIdx = _copyVersions.length - 1;
+        renderVersionBar();
+      }
+    });
+  } else {
+    _copyVersions.push({id:null, version:newVersion, content:editedText, operation_type:'edit'});
+    _copyCurrentVersionIdx = _copyVersions.length - 1;
+    renderVersionBar();
+  }
+  showToast('编辑已保存');
+}
+
+async function refineCopy(){
+  const input = document.getElementById('copyFollowUpInput');
+  const instruction = input.value.trim();
+  if(!instruction){ showToast('请输入修改要求', 'warning'); return; }
+  if(!_lastCopyText){ showToast('没有可优化的文案', 'warning'); return; }
+
+  const btn = document.getElementById('copyRefineBtn');
+  const out = document.getElementById('copyOutput');
+  btn.disabled = true; btn.textContent = '优化中...';
+  out.className = 'copy-output'; // 移除 empty
+
+  const type = document.getElementById('copyType').value;
+  const brand = document.getElementById('copyBrand').value;
+  const platform = document.getElementById('copyPlatform').value;
+  const currentText = _lastCopyText;
+
+  let fullText = '';
+  let completed = false;
+
+  function finalizeRefine(text){
+    if(completed) return;
+    completed = true;
+    text = text.replace(/\*+/g, '');
+    _lastCopyText = text;
+    out.innerHTML = renderMarkdown(text);
+    saveAsset('copy', '文案(优化)', text);
+    saveRecentResult('copy', {text});
+
+    const newVersion = _copyVersions.length + 1;
+    const inputParams = {type, brand, platform, product:document.getElementById('copyProduct').value.trim(), prompt:instruction, operation_type:'refine'};
+
+    if(isLoggedIn()){
+      saveGenerationHistory('copywriting', inputParams, text, null, {
+        operation_type:'refine', version:newVersion, parent_id:_copyVersions.length ? _copyVersions[_copyVersions.length-1].id : null, root_id:_copyRootId
+      }).then(historyId => {
+        if(historyId){
+          _copyVersions.push({id:historyId, version:newVersion, content:text, operation_type:'refine'});
+          _copyCurrentVersionIdx = _copyVersions.length - 1;
+          renderVersionBar();
+          createStarRating('copyRating', historyId, text, 'copywriting');
+        }
+      });
+    } else {
+      _copyVersions.push({id:null, version:newVersion, content:text, operation_type:'refine'});
+      _copyCurrentVersionIdx = _copyVersions.length - 1;
+      renderVersionBar();
+    }
+
+    btn.disabled = false; btn.textContent = '继续优化';
+    input.value = '';
+  }
+
+  fetchStream('/api', {
+    action:'stream_refine', original:currentText, instruction, context:{type, brand, platform}
+  },
+  (chunk) => { fullText += chunk; _lastCopyText = fullText; out.innerHTML = renderMarkdown(fullText); },
+  () => { finalizeRefine(fullText); },
+  (e) => {
+    console.warn('Refine stream failed:', e);
+    if(fullText.trim().length >= 30){
+      showToast('⚠️ 流式中断，已保留已生成内容');
+      finalizeRefine(fullText);
+    } else {
+      showToast('优化失败，请重试', 'error');
+      btn.disabled = false; btn.textContent = '继续优化';
+    }
+  });
+}
+
+function quickRefine(instruction){
+  const input = document.getElementById('copyFollowUpInput');
+  input.value = instruction;
+  refineCopy();
+}
+
+function renderVersionBar(){
+  const bar = document.getElementById('copyVersionBar');
+  if(!bar || _copyVersions.length <= 1){ if(bar) bar.style.display = 'none'; return; }
+
+  const opLabels = {generate:'初稿', refine:'AI优化', edit:'用户修改', restore:'版本恢复'};
+  bar.style.display = 'flex';
+  bar.innerHTML = _copyVersions.map((v, i) => {
+    const label = `V${v.version}`;
+    const opLabel = opLabels[v.operation_type] || '';
+    const active = i === _copyCurrentVersionIdx ? ' active' : '';
+    const sep = i < _copyVersions.length - 1 ? '<span class="version-sep">›</span>' : '';
+    return `<span class="version-item${active}" onclick="switchCopyVersion(${i})" title="${opLabel}">${label}</span>${sep}`;
+  }).join('');
+}
+
+function switchCopyVersion(idx){
+  if(idx < 0 || idx >= _copyVersions.length) return;
+  _copyCurrentVersionIdx = idx;
+  _lastCopyText = _copyVersions[idx].content;
+  const out = document.getElementById('copyOutput');
+  out.innerHTML = renderMarkdown(_lastCopyText);
+  renderVersionBar();
+  if(idx < _copyVersions.length - 1){
+    showToast('当前查看的是历史版本，点击最新版本继续编辑');
+  }
 }
 
 // 流式写稿生成

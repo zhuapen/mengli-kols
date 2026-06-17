@@ -2141,7 +2141,7 @@ async function getUserPreferences(prefKey) {
 /**
  * 保存生成历史 + 评分
  */
-async function saveGenerationHistory(genType, inputParams, outputContent, rating = null) {
+async function saveGenerationHistory(genType, inputParams, outputContent, rating = null, extra = {}) {
     if (!isLoggedIn() || !supabase) return null;
 
     try {
@@ -2152,10 +2152,12 @@ async function saveGenerationHistory(genType, inputParams, outputContent, rating
             output_content: outputContent,
             rating: rating
         };
-        console.log('[saveHistory] gen_type:', genType);
-        console.log('[saveHistory] input_params类型:', typeof inputParams, 'keys:', Object.keys(inputParams || {}));
-        console.log('[saveHistory] output_content长度:', (outputContent || '').length);
-        console.log('[saveHistory] output_content前100字:', (outputContent || '').substring(0, 100));
+        // 版本管理字段
+        if(extra.version) payload.version = extra.version;
+        if(extra.parent_id) payload.parent_id = extra.parent_id;
+        if(extra.root_id) payload.root_id = extra.root_id;
+        if(extra.original_content) payload.original_content = extra.original_content;
+        if(extra.operation_type) payload.operation_type = extra.operation_type;
 
         const { data, error } = await supabase
             .from('generation_history')
@@ -2167,10 +2169,33 @@ async function saveGenerationHistory(genType, inputParams, outputContent, rating
             console.error('[saveHistory] Supabase error:', JSON.stringify(error));
             throw error;
         }
+        // 初次生成时，root_id 默认设为自身 ID
+        if(extra.version === 1 && !extra.root_id && data?.id){
+            await supabase.from('generation_history').update({root_id: data.id}).eq('id', data.id);
+        }
         return data?.id;
     } catch (e) {
         console.error('[saveHistory] 捕获异常:', e);
         return null;
+    }
+}
+
+/**
+ * 软删除历史记录
+ */
+async function softDeleteHistory(id) {
+    if (!isLoggedIn() || !supabase) return false;
+    try {
+        const { error } = await supabase
+            .from('generation_history')
+            .update({ deleted_at: new Date().toISOString() })
+            .eq('id', id)
+            .eq('user_id', currentUser.id);
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        console.error('[softDeleteHistory] error:', e);
+        return false;
     }
 }
 
@@ -2287,6 +2312,7 @@ async function getGenerationHistoryList(genType = null, limit = 50) {
             .from('generation_history')
             .select('*')
             .eq('user_id', currentUser.id)
+            .is('deleted_at', null)
             .order('created_at', { ascending: false })
             .limit(limit);
 

@@ -763,6 +763,60 @@ tbody tr:hover{
 }
 .copy-actions .secondary:hover{background:var(--black);color:var(--white)}
 
+/* 编辑模式 */
+.edit-toggle-btn{
+  font-size:12px;padding:2px 10px;margin-left:8px;
+  background:var(--gray-100);border:1px solid var(--gray-200);border-radius:4px;
+  cursor:pointer;color:var(--gray-500);vertical-align:middle;
+}
+.edit-toggle-btn:hover{background:var(--gray-200)}
+.edit-toggle-btn.editing{background:#e8f5e9;color:#2e7d32;border-color:#a5d6a7}
+.copy-output[contenteditable="true"]{
+  outline:2px solid #90caf9;outline-offset:2px;
+  cursor:text;
+}
+.copy-output[contenteditable="true"]:focus{
+  outline-color:#42a5f5;
+}
+
+/* 版本条 */
+.version-bar{
+  display:flex;align-items:center;gap:4px;flex-wrap:wrap;
+  padding:8px 0;margin-top:8px;font-size:13px;
+}
+.version-item{
+  padding:3px 10px;border-radius:12px;cursor:pointer;
+  background:var(--gray-100);color:var(--gray-500);border:1px solid var(--gray-200);
+  transition:all 0.15s;
+}
+.version-item:hover{background:var(--gray-200)}
+.version-item.active{background:var(--black);color:var(--white);border-color:var(--black)}
+.version-sep{color:var(--gray-300);margin:0 2px}
+
+/* 继续优化 */
+.follow-up-bar{margin-top:12px}
+.follow-up-actions{
+  display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;
+}
+.quick-action-btn{
+  font-size:12px;padding:4px 12px;border-radius:16px;
+  background:var(--gray-50);border:1px solid var(--gray-200);
+  cursor:pointer;color:var(--gray-600);transition:all 0.15s;
+  white-space:nowrap;
+}
+.quick-action-btn:hover{background:var(--gray-100);border-color:var(--gray-300);color:var(--black)}
+.follow-up-input-row{
+  display:flex;gap:8px;
+}
+.follow-up-input-row input{
+  flex:1;padding:10px 14px;border:2px solid var(--gray-200);border-radius:8px;
+  font-size:14px;outline:none;transition:border-color 0.2s;
+}
+.follow-up-input-row input:focus{border-color:var(--black)}
+.follow-up-input-row .gen-btn{
+  flex-shrink:0;padding:10px 20px;font-size:14px;margin-top:0;
+}
+
 /* ========== KNOWLEDGE PAGE ========== */
 .knowledge-layout{
   max-width:1400px;margin:0 auto;
@@ -1985,6 +2039,15 @@ tbody tr:hover{
 .history-actions button:hover {
   border-color: var(--accent);
   color: var(--accent);
+}
+.history-delete-btn {
+  padding: 6px 10px !important;
+  font-size: 14px !important;
+  border-color: transparent !important;
+}
+.history-delete-btn:hover {
+  border-color: #ef5350 !important;
+  color: #ef5350 !important;
 }
 @media (max-width: 768px) {
   .history-card { flex-direction: column; }

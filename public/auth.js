@@ -162,17 +162,17 @@ async function handleLogin(user) {
     const status = userProfile?.status || 'approved';
     if (status === 'pending') {
         await logout();
-        alert('您的账号正在审核中，请等待管理员审批后再登录。');
+        showToast('您的账号正在审核中，请等待管理员审批后再登录', 'error');
         return;
     }
     if (status === 'rejected') {
         await logout();
-        alert('您的注册申请未通过审核。如有疑问请联系管理员。');
+        showToast('您的注册申请未通过审核，如有疑问请联系管理员', 'error');
         return;
     }
     if (status === 'disabled') {
         await logout();
-        alert('您的账号已被禁用。如有疑问请联系管理员。');
+        showToast('您的账号已被禁用，如有疑问请联系管理员', 'error');
         return;
     }
 
@@ -992,7 +992,7 @@ async function handleLogoutClick() {
  */
 function showAdminPanel() {
     if (!isAdmin()) {
-        alert('权限不足');
+        showToast('权限不足', 'error');
         return;
     }
 
@@ -1577,7 +1577,7 @@ async function deleteUserAccount(userId, userName) {
         const result = await resp.json();
 
         if (result.error) {
-            alert('删除失败：' + result.error);
+            showToast('删除失败：' + result.error, 'error');
             return;
         }
 
@@ -1585,7 +1585,7 @@ async function deleteUserAccount(userId, userName) {
         logAdminAction('删除用户', userName, 'user_id: ' + userId);
         loadUsersList();
     } catch(e) {
-        alert('删除失败：' + e.message);
+        showToast('删除失败：' + e.message, 'error');
     }
 }
 
@@ -1689,11 +1689,11 @@ async function savePluginForm(id) {
     };
 
     if (!payload.name || !payload.version) {
-        alert('插件名称和版本号为必填');
+        showToast('插件名称和版本号为必填', 'warning');
         return;
     }
     if (!id && !changelogContent) {
-        alert('新增插件请填写更新日志');
+        showToast('新增插件请填写更新日志', 'warning');
         return;
     }
 
@@ -1756,7 +1756,7 @@ async function savePluginForm(id) {
         logAdminAction(id ? '编辑插件' : '新增插件', payload.name, 'version: ' + payload.version);
         showPluginManagement();
     } catch(e) {
-        alert('保存失败：' + e.message);
+        showToast('保存失败：' + e.message, 'error');
     }
     btn.disabled = false; btn.textContent = '保存';
 }
@@ -1769,7 +1769,7 @@ async function deletePlugin(id) {
         logAdminAction('删除插件', id);
         showPluginManagement();
     } catch(e) {
-        alert('删除失败：' + e.message);
+        showToast('删除失败：' + e.message, 'error');
     }
 }
 
@@ -1824,7 +1824,7 @@ function showChangelogForm(pluginId) {
 async function saveChangelog(pluginId) {
     const version = document.getElementById('cl_version').value.trim();
     const content = document.getElementById('cl_content').value.trim();
-    if (!version || !content) { alert('版本号和内容为必填'); return; }
+    if (!version || !content) { showToast('版本号和内容为必填', 'warning'); return; }
 
     try {
         await supabase.from('plugin_changelog').insert({ plugin_id: pluginId, version, content });
@@ -1833,7 +1833,7 @@ async function saveChangelog(pluginId) {
         const { data: plugin } = await supabase.from('plugins').select('name').eq('id', pluginId).single();
         showPluginChangelog(pluginId, plugin?.name || '');
     } catch(e) {
-        alert('保存失败：' + e.message);
+        showToast('保存失败：' + e.message, 'error');
     }
 }
 
@@ -1844,7 +1844,7 @@ async function deleteChangelog(logId, pluginId, pluginName) {
         showToast('已删除');
         showPluginChangelog(pluginId, pluginName);
     } catch(e) {
-        alert('删除失败：' + e.message);
+        showToast('删除失败：' + e.message, 'error');
     }
 }
 
@@ -1934,7 +1934,7 @@ async function approveUser(userId) {
         showToast('已通过审批');
         showApprovalPanel();
     } catch(e) {
-        alert('审批失败：' + e.message);
+        showToast('审批失败：' + e.message, 'error');
     }
 }
 
@@ -1951,7 +1951,7 @@ async function rejectUser(userId) {
         showToast('已拒绝');
         showApprovalPanel();
     } catch(e) {
-        alert('操作失败：' + e.message);
+        showToast('操作失败：' + e.message, 'error');
     }
 }
 
@@ -2064,7 +2064,7 @@ async function deleteFeedback(id) {
         showFeedbackManagement();
     } catch(e) {
         console.error('删除反馈异常:', e);
-        alert('删除失败：' + e.message);
+        showToast('删除失败：' + e.message, 'error');
     }
 }
 
@@ -2141,7 +2141,7 @@ async function getUserPreferences(prefKey) {
 /**
  * 保存生成历史 + 评分
  */
-async function saveGenerationHistory(genType, inputParams, outputContent, rating = null) {
+async function saveGenerationHistory(genType, inputParams, outputContent, rating = null, extra = {}) {
     if (!isLoggedIn() || !supabase) return null;
 
     try {
@@ -2152,10 +2152,12 @@ async function saveGenerationHistory(genType, inputParams, outputContent, rating
             output_content: outputContent,
             rating: rating
         };
-        console.log('[saveHistory] gen_type:', genType);
-        console.log('[saveHistory] input_params类型:', typeof inputParams, 'keys:', Object.keys(inputParams || {}));
-        console.log('[saveHistory] output_content长度:', (outputContent || '').length);
-        console.log('[saveHistory] output_content前100字:', (outputContent || '').substring(0, 100));
+        // 版本管理字段
+        if(extra.version) payload.version = extra.version;
+        if(extra.parent_id) payload.parent_id = extra.parent_id;
+        if(extra.root_id) payload.root_id = extra.root_id;
+        if(extra.original_content) payload.original_content = extra.original_content;
+        if(extra.operation_type) payload.operation_type = extra.operation_type;
 
         const { data, error } = await supabase
             .from('generation_history')
@@ -2167,10 +2169,33 @@ async function saveGenerationHistory(genType, inputParams, outputContent, rating
             console.error('[saveHistory] Supabase error:', JSON.stringify(error));
             throw error;
         }
+        // 初次生成时，root_id 默认设为自身 ID
+        if(extra.version === 1 && !extra.root_id && data?.id){
+            await supabase.from('generation_history').update({root_id: data.id}).eq('id', data.id);
+        }
         return data?.id;
     } catch (e) {
         console.error('[saveHistory] 捕获异常:', e);
         return null;
+    }
+}
+
+/**
+ * 软删除历史记录
+ */
+async function softDeleteHistory(id) {
+    if (!isLoggedIn() || !supabase) return false;
+    try {
+        const { error } = await supabase
+            .from('generation_history')
+            .update({ deleted_at: new Date().toISOString() })
+            .eq('id', id)
+            .eq('user_id', currentUser.id);
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        console.error('[softDeleteHistory] error:', e);
+        return false;
     }
 }
 
@@ -2287,6 +2312,7 @@ async function getGenerationHistoryList(genType = null, limit = 50) {
             .from('generation_history')
             .select('*')
             .eq('user_id', currentUser.id)
+            .is('deleted_at', null)
             .order('created_at', { ascending: false })
             .limit(limit);
 
