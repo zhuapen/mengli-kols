@@ -259,11 +259,15 @@ function showPage(page){
     return;
   }
 
+  // 子页面映射（plugin 和 analysis 都属于 datacenter 导航）
+  const navPage = (page === 'plugin' || page === 'analysis') ? 'datacenter' : page;
+
   currentPage = page;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page' + page.charAt(0).toUpperCase() + page.slice(1)).classList.add('active');
   document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-  document.querySelector(`.nav-link[data-page="${page}"]`).classList.add('active');
+  const navLink = document.querySelector(`.nav-link[data-page="${navPage}"]`);
+  if(navLink) navLink.classList.add('active');
 
   if(page === 'find'){
     initFilters();
@@ -275,8 +279,15 @@ function showPage(page){
   if(page === 'history'){
     renderHistory();
   }
+  if(page === 'datacenter'){
+    initDataCenter();
+    resetDataCenterState();
+  }
   if(page === 'plugin'){
     initPluginPage();
+  }
+  if(page === 'analysis'){
+    initDataCenter();
   }
 }
 
@@ -1516,6 +1527,198 @@ let pluginList = [];
 let currentPlugin = null;
 let currentPluginChangelog = [];
 let pluginFeedbackType = 'bug';
+
+// ========== DATA CENTER ==========
+function initDataCenter(){
+  // 事件绑定（只执行一次）
+  if(initDataCenter._bound) return;
+  initDataCenter._bound = true;
+
+  // 入口卡片点击
+  document.querySelectorAll('.dc-card[data-type]').forEach(card => {
+    card.addEventListener('click', () => {
+      const type = card.dataset.type;
+      if(type === 'plugin'){
+        showPage('plugin');
+      } else if(type === 'analysis'){
+        showPage('analysis');
+      }
+    });
+  });
+
+  // 插件中心返回按钮
+  const pluginBackBtn = document.getElementById('pluginBackBtn');
+  if(pluginBackBtn){
+    pluginBackBtn.addEventListener('click', () => showPage('datacenter'));
+  }
+
+  // KOL 分析返回按钮
+  const analysisBackBtn = document.getElementById('analysisBackBtn');
+  if(analysisBackBtn){
+    analysisBackBtn.addEventListener('click', () => showPage('datacenter'));
+  }
+
+  // KOL 分析上传区域
+  initAnalysisUpload();
+
+  // 开始分析按钮
+  const analyzeBtn = document.getElementById('daAnalyzeBtn');
+  if(analyzeBtn){
+    analyzeBtn.addEventListener('click', startAnalysis);
+  }
+
+  // 重新分析按钮
+  const resetBtn = document.getElementById('daResetBtn');
+  if(resetBtn){
+    resetBtn.addEventListener('click', resetAnalysis);
+  }
+
+  // 重新尝试按钮
+  const retryBtn = document.getElementById('daRetryBtn');
+  if(retryBtn){
+    retryBtn.addEventListener('click', resetAnalysis);
+  }
+
+  // 保存到素材库按钮
+  const saveBtn = document.getElementById('daSaveBtn');
+  if(saveBtn){
+    saveBtn.addEventListener('click', saveAnalysisResult);
+  }
+}
+
+function resetDataCenterState(){
+  // 重置 KOL 分析页面状态
+  resetAnalysis();
+  // 重置插件页面状态
+  showPluginList();
+}
+
+// ========== KOL ANALYSIS ==========
+let analysisFiles = [];
+let analysisResult = null;
+
+function showAnalysisState(state){
+  ['daStateEmpty','daStateLoading','daStateResult','daStateError'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.style.display = 'none';
+  });
+  const target = document.getElementById('daState' + state.charAt(0).toUpperCase() + state.slice(1));
+  if(target) target.style.display = 'block';
+}
+
+function resetAnalysis(){
+  analysisFiles = [];
+  analysisResult = null;
+  const fileList = document.getElementById('daFileList');
+  if(fileList) fileList.innerHTML = '';
+  const linkInput = document.getElementById('daLinkInput');
+  if(linkInput) linkInput.value = '';
+  showAnalysisState('empty');
+}
+
+function initAnalysisUpload(){
+  const zone = document.getElementById('daUploadZone');
+  const fileInput = document.getElementById('daFileInput');
+  if(!zone || !fileInput) return;
+
+  // 点击上传
+  zone.addEventListener('click', () => fileInput.click());
+
+  // 文件选择
+  fileInput.addEventListener('change', (e) => {
+    addAnalysisFiles(Array.from(e.target.files));
+    e.target.value = '';
+  });
+
+  // 拖拽上传
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', (e) => { e.preventDefault(); zone.classList.remove('drag-over'); });
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    addAnalysisFiles(Array.from(e.dataTransfer.files));
+  });
+}
+
+function addAnalysisFiles(files){
+  const remaining = 5 - analysisFiles.length;
+  if(remaining <= 0){ showToast('最多上传5个文件', 'warning'); return; }
+  files.slice(0, remaining).forEach(file => {
+    analysisFiles.push(file);
+  });
+  renderAnalysisFileList();
+}
+
+function removeAnalysisFile(index){
+  analysisFiles.splice(index, 1);
+  renderAnalysisFileList();
+}
+
+function renderAnalysisFileList(){
+  const list = document.getElementById('daFileList');
+  if(!list) return;
+  if(!analysisFiles.length){ list.innerHTML = ''; return; }
+  list.innerHTML = analysisFiles.map((f, i) => {
+    const sizeStr = f.size > 1024*1024 ? (f.size/1024/1024).toFixed(1)+'MB' : (f.size/1024).toFixed(0)+'KB';
+    const ext = f.name.split('.').pop().toLowerCase();
+    const icons = {jpg:'🖼',jpeg:'🖼',png:'🖼',gif:'🖼',csv:'📊',xlsx:'📊',xls:'📊'};
+    return `<div class="da-file-item">
+      <span class="file-icon">${icons[ext]||'📎'}</span>
+      <div class="file-info">
+        <div class="file-name">${f.name}</div>
+        <div class="file-size">${sizeStr}</div>
+      </div>
+      <button class="file-remove" data-index="${i}">×</button>
+    </div>`;
+  }).join('');
+
+  // 绑定删除事件
+  list.querySelectorAll('.file-remove').forEach(btn => {
+    btn.addEventListener('click', () => removeAnalysisFile(Number(btn.dataset.index)));
+  });
+}
+
+async function startAnalysis(){
+  const link = document.getElementById('daLinkInput')?.value.trim() || '';
+  if(!analysisFiles.length && !link){
+    showToast('请上传数据文件或粘贴达人链接', 'warning');
+    return;
+  }
+
+  showAnalysisState('loading');
+
+  // TODO: 后续接入 action: 'analyze_kol' API
+  // 模拟分析过程
+  setTimeout(() => {
+    analysisResult = {
+      profile: '暂无数据，等待接入 AI 分析接口',
+      engagement: '暂无数据，等待接入 AI 分析接口',
+      value: '暂无数据，等待接入 AI 分析接口'
+    };
+    renderAnalysisResult();
+  }, 1500);
+}
+
+function renderAnalysisResult(){
+  if(!analysisResult){
+    showAnalysisState('empty');
+    return;
+  }
+  const profileBody = document.getElementById('daProfileBody');
+  const engagementBody = document.getElementById('daEngagementBody');
+  const valueBody = document.getElementById('daValueBody');
+  if(profileBody) profileBody.innerHTML = renderMarkdown(analysisResult.profile);
+  if(engagementBody) engagementBody.innerHTML = renderMarkdown(analysisResult.engagement);
+  if(valueBody) valueBody.innerHTML = renderMarkdown(analysisResult.value);
+  showAnalysisState('result');
+}
+
+function saveAnalysisResult(){
+  if(!analysisResult) return;
+  const text = `## 粉丝画像\n${analysisResult.profile}\n\n## 互动趋势\n${analysisResult.engagement}\n\n## 商业价值评估\n${analysisResult.value}`;
+  saveAsset('copy', 'KOL 分析报告', text);
+  showToast('已保存到素材库');
+}
 
 async function initPluginPage(){
   await loadPluginList();

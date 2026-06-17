@@ -43,7 +43,7 @@
       <a href="#" class="nav-link" data-page="article" onclick="showPage('article')">公众号写稿</a>
       <a href="#" class="nav-link" data-page="knowledge" onclick="showPage('knowledge')">品牌知识库</a>
       <a href="#" class="nav-link" data-page="assets" onclick="showPage('assets')">素材库</a>
-      <a href="#" class="nav-link" data-page="plugin" onclick="showPage('plugin')">插件中心</a>
+      <a href="#" class="nav-link" data-page="datacenter" onclick="showPage('datacenter')">数据中心</a>
       <a href="#" class="nav-link" data-page="history" onclick="showPage('history')">历史记录</a>
     </div>
   </div>
@@ -693,8 +693,35 @@
   </div>
 </div>
 
-<!-- ========== PLUGIN PAGE ========== -->
+<!-- ========== DATA CENTER PAGE ========== -->
+<div class="page" id="pageDatacenter">
+  <div class="page-header">
+    <div class="page-header-inner">
+      <div>
+        <h1 class="page-title">数据中心</h1>
+        <p class="page-desc">插件工具 · 数据分析</p>
+      </div>
+    </div>
+  </div>
+  <div class="dc-grid">
+    <div class="dc-card" data-type="plugin">
+      <div class="dc-card-icon">🧩</div>
+      <div class="dc-card-title">插件中心</div>
+      <div class="dc-card-desc">运营工具、浏览器插件、自动化工具下载</div>
+    </div>
+    <div class="dc-card" data-type="analysis">
+      <div class="dc-card-icon">📊</div>
+      <div class="dc-card-title">KOL 分析</div>
+      <div class="dc-card-desc">达人数据分析、粉丝画像、互动趋势、商业价值评估</div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== PLUGIN PAGE (子页面，从数据中心进入) ========== -->
 <div class="page" id="pagePlugin">
+  <div class="dc-sub-header">
+    <button class="dc-back-btn" id="pluginBackBtn">← 返回数据中心</button>
+  </div>
   <div id="pluginListView">
     <div class="page-header">
       <div class="page-header-inner">
@@ -713,6 +740,85 @@
       <button class="plugin-back-btn" onclick="showPluginList()">← 返回列表</button>
     </div>
     <div id="pluginDetail"></div>
+  </div>
+</div>
+
+<!-- ========== KOL ANALYSIS PAGE (子页面，从数据中心进入) ========== -->
+<div class="page" id="pageAnalysis">
+  <div class="dc-sub-header">
+    <button class="dc-back-btn" id="analysisBackBtn">← 返回数据中心</button>
+  </div>
+  <div class="page-header">
+    <div class="page-header-inner">
+      <div>
+        <h1 class="page-title">KOL 分析</h1>
+        <p class="page-desc">达人数据分析 · 粉丝画像 · 互动趋势 · 商业价值评估</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 状态容器 -->
+  <div class="da-state" id="daStateEmpty">
+    <div class="da-upload-section">
+      <div class="gen-label">📎 上传 KOL 数据截图或表格</div>
+      <div class="da-upload" id="daUploadZone">
+        <input type="file" id="daFileInput" accept="image/*,.csv,.xlsx,.xls" multiple style="display:none">
+        <div class="da-upload-icon">📊</div>
+        <div class="da-upload-text">点击或拖拽上传数据</div>
+        <div class="da-upload-hint">支持图片（小红书/抖音截图）、CSV、Excel</div>
+      </div>
+      <div class="da-file-list" id="daFileList"></div>
+    </div>
+    <div class="da-input-section">
+      <div class="gen-label">🔗 或粘贴达人主页链接</div>
+      <input type="text" class="gen-textarea" id="daLinkInput" placeholder="粘贴小红书/抖音达人主页链接..." style="min-height:auto;padding:16px">
+      <button class="gen-btn" id="daAnalyzeBtn" style="margin-top:16px">开始分析</button>
+    </div>
+  </div>
+
+  <div class="da-state" id="daStateLoading" style="display:none">
+    <div class="da-loading">
+      <div class="spinner"></div>
+      <p>正在分析达人数据，请稍候...</p>
+    </div>
+  </div>
+
+  <div class="da-state" id="daStateResult" style="display:none">
+    <div class="da-report">
+      <div class="da-report-card" id="daCardProfile">
+        <div class="da-card-header">
+          <span class="da-card-icon">👤</span>
+          <span class="da-card-title">粉丝画像</span>
+        </div>
+        <div class="da-card-body" id="daProfileBody"></div>
+      </div>
+      <div class="da-report-card" id="daCardEngagement">
+        <div class="da-card-header">
+          <span class="da-card-icon">📈</span>
+          <span class="da-card-title">互动趋势</span>
+        </div>
+        <div class="da-card-body" id="daEngagementBody"></div>
+      </div>
+      <div class="da-report-card" id="daCardValue">
+        <div class="da-card-header">
+          <span class="da-card-icon">💰</span>
+          <span class="da-card-title">商业价值评估</span>
+        </div>
+        <div class="da-card-body" id="daValueBody"></div>
+      </div>
+    </div>
+    <div class="da-actions">
+      <button class="gen-btn secondary" id="daResetBtn">重新分析</button>
+      <button class="gen-btn" id="daSaveBtn">保存到素材库</button>
+    </div>
+  </div>
+
+  <div class="da-state" id="daStateError" style="display:none">
+    <div class="da-error">
+      <div class="da-error-icon">❌</div>
+      <p id="daErrorMsg">分析失败，请稍后重试</p>
+      <button class="gen-btn" id="daRetryBtn">重新尝试</button>
+    </div>
   </div>
 </div>
 
