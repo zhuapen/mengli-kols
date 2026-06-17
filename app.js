@@ -24,6 +24,7 @@ async function handleRegister(event){
     errorEl.textContent = '请填写所有必填项（邮箱、密码、姓名、岗位）';
     return;
   }
+  // 邮箱格式校验（兼容 validator 未加载的情况）
   if(typeof validator !== 'undefined' && !validator.isEmail(email)){
     errorEl.textContent = '请输入有效的邮箱地址';
     return;
@@ -33,9 +34,9 @@ async function handleRegister(event){
     return;
   }
 
-  // 净化输入
-  const safeName = typeof validator !== 'undefined' ? validator.escape(name) : name;
-  const safePosition = typeof validator !== 'undefined' ? validator.escape(position) : position;
+  // 净化输入（兼容 validator 未加载的情况）
+  const safeName = typeof validator !== 'undefined' ? validator.escape(name) : name.replace(/[<>&"']/g, '');
+  const safePosition = typeof validator !== 'undefined' ? validator.escape(position) : position.replace(/[<>&"']/g, '');
 
   errorEl.textContent = '';
   btn.disabled = true;
@@ -58,7 +59,7 @@ async function handleRegister(event){
     if(result.error){
       errorEl.textContent = '注册失败：' + result.error;
     } else {
-      showToast('注册申请已提交，请等待管理员审核');
+      try { showToast('注册申请已提交，请等待管理员审核'); } catch(e) { alert('注册申请已提交，请等待管理员审核'); }
       closeRegisterModal();
     }
   } catch(e){
@@ -70,27 +71,43 @@ async function handleRegister(event){
 }
 
 // ========== TOAST NOTIFICATION (Notyf) ==========
-const notyf = new Notyf({
-  duration: 3000,
-  position: { x: 'right', y: 'top' },
-  types: [
-    { type: 'success', background: '#10B981', icon: { className: 'notyf__icon', tagName: 'span', text: '✓' } },
-    { type: 'error', background: '#EF4444', icon: { className: 'notyf__icon', tagName: 'span', text: '✗' } },
-    { type: 'warning', background: '#F59E0B', icon: { className: 'notyf__icon', tagName: 'span', text: '⚠' } }
-  ]
-});
+let notyf = null;
+try {
+  notyf = new Notyf({
+    duration: 3000,
+    position: { x: 'right', y: 'top' },
+    types: [
+      { type: 'success', background: '#10B981', icon: { className: 'notyf__icon', tagName: 'span', text: '✓' } },
+      { type: 'error', background: '#EF4444', icon: { className: 'notyf__icon', tagName: 'span', text: '✗' } },
+      { type: 'warning', background: '#F59E0B', icon: { className: 'notyf__icon', tagName: 'span', text: '⚠' } }
+    ]
+  });
+} catch(e) { console.warn('Notyf 加载失败，使用 fallback:', e); }
 
 function showToast(msg, type){
-  if(type === 'error') notyf.error(msg);
-  else if(type === 'warning') notyf.open({ type:'warning', message:msg });
-  else notyf.success(msg);
+  if(notyf){
+    if(type === 'error') notyf.error(msg);
+    else if(type === 'warning') notyf.open({ type:'warning', message:msg });
+    else notyf.success(msg);
+  } else {
+    // fallback: 简单 alert
+    alert(msg);
+  }
 }
 
 // ========== MARKDOWN RENDERER ==========
 function renderMarkdown(text){
   if(!text) return '';
-  const html = marked.parse(text, { breaks:true, gfm:true });
-  return DOMPurify.sanitize(html);
+  try {
+    if(typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined'){
+      const html = marked.parse(text, { breaks:true, gfm:true });
+      return DOMPurify.sanitize(html);
+    }
+  } catch(e) { console.warn('Markdown 渲染失败，使用纯文本:', e); }
+  // fallback: 转义 HTML 后返回
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 // 保存原始文本供复制使用
