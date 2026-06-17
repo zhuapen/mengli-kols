@@ -27,7 +27,6 @@ JSON 格式：
   "tags": "匹配的标签, 用逗号分隔, 没有则空字符串",
   "maxPrice": 最高预算数字, 没有限制则 999999,
   "maxFollowers": 粉丝上限数字(单位:万), 没有限制则 999,
-  "minEngagement": 最低互动率数字(如 3.0 表示 3%), 没有则 0,
   "explanation": "一句话说明你用了什么筛选条件"
 }
 
@@ -154,9 +153,9 @@ class Handler(BaseHTTPRequestHandler):
             content = re.sub(r'\n?```$', '', content)
             return json.loads(content)
         except json.JSONDecodeError:
-            return {"search": query, "tags": "", "maxPrice": 999999, "maxFollowers": 999, "minEngagement": 0, "explanation": content[:100]}
+            return {"search": query, "tags": "", "maxPrice": 999999, "maxFollowers": 999, "explanation": content[:100]}
         except Exception as e:
-            return {"error": str(e), "search": query, "tags": "", "maxPrice": 999999, "maxFollowers": 999, "minEngagement": 0}
+            return {"error": str(e), "search": query, "tags": "", "maxPrice": 999999, "maxFollowers": 999}
 
     def _copywriting(self, body):
         copy_type = body.get("type", "通用文案")
