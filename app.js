@@ -57,7 +57,18 @@ async function handleRegister(event){
     const result = await resp.json();
 
     if(result.error){
-      errorEl.textContent = '注册失败：' + result.error;
+      // 翻译常见 Supabase 错误
+      let errMsg = result.error;
+      if(errMsg.includes('already been registered') || errMsg.includes('already registered')){
+        errMsg = '该邮箱已被注册，请直接登录或换一个邮箱';
+      } else if(errMsg.includes('valid email')){
+        errMsg = '请输入有效的邮箱地址';
+      } else if(errMsg.includes('password') && errMsg.includes('6')){
+        errMsg = '密码至少需要6位';
+      } else if(errMsg.includes('rate limit')){
+        errMsg = '注册请求过于频繁，请稍后再试';
+      }
+      errorEl.textContent = '注册失败：' + errMsg;
     } else {
       try { showToast('注册申请已提交，请等待管理员审核'); } catch(e) { alert('注册申请已提交，请等待管理员审核'); }
       closeRegisterModal();
