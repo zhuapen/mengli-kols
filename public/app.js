@@ -1546,7 +1546,7 @@ function initDataCenter(){
     });
   });
 
-  // 插件中心返回按钮
+  // 数据中心返回按钮
   const pluginBackBtn = document.getElementById('pluginBackBtn');
   if(pluginBackBtn){
     pluginBackBtn.addEventListener('click', () => showPage('datacenter'));
@@ -1746,7 +1746,7 @@ async function loadPluginList(){
   const latestDate = latest ? new Date(latest.updated_at).toLocaleDateString('zh-CN') : '—';
   banner.innerHTML = `
     <div class="plugin-banner-info">
-      <h2>🧩 插件中心</h2>
+      <h2>🧩 数据中心</h2>
       <p>持续更新 · 提供运营工具、浏览器插件、自动化工具下载</p>
     </div>
     <div class="plugin-banner-meta">

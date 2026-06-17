@@ -120,7 +120,7 @@ async function loadAllFeatures() {
             { feature_key: 'article', feature_name: '推文生成' },
             { feature_key: 'assets', feature_name: '素材库' },
             { feature_key: 'knowledge', feature_name: '知识库' },
-            { feature_key: 'plugin', feature_name: '插件中心' },
+            { feature_key: 'plugin', feature_name: '数据中心' },
             { feature_key: 'history', feature_name: '历史记录' }
         ];
     }
@@ -479,7 +479,9 @@ function isAdmin() {
 // 页面名 → 数据库 feature_key 映射（data-page 值和 feature_key 不一致时用）
 const PAGE_TO_FEATURE = {
     'image': 'image_gen',
-    'copy': 'copywriting'
+    'copy': 'copywriting',
+    'datacenter': 'plugin',
+    'analysis': 'plugin'
 };
 
 function hasPermission(featureKey) {
