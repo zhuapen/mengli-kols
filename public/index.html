@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css">
 <script src="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js"></script>
 </head>
 <body>
 
@@ -762,10 +763,10 @@
     <div class="da-upload-section">
       <div class="gen-label">📎 上传 KOL 数据截图或表格</div>
       <div class="da-upload" id="daUploadZone">
-        <input type="file" id="daFileInput" accept="image/*,.csv,.xlsx,.xls" multiple style="display:none">
+        <input type="file" id="daFileInput" accept="image/*,.zip" multiple style="display:none">
         <div class="da-upload-icon">📊</div>
         <div class="da-upload-text">点击或拖拽上传数据</div>
-        <div class="da-upload-hint">支持图片（小红书/抖音截图）、CSV、Excel</div>
+        <div class="da-upload-hint">支持图片截图、ZIP 压缩包</div>
       </div>
       <div class="da-file-list" id="daFileList"></div>
     </div>

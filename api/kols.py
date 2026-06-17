@@ -928,10 +928,10 @@ def delete_user(body):
 
 
 def analyze_kol(body):
-    """KOL 分析：从小红书数据截图中提取达人数据"""
+    """KOL 分析：从前端裁切的截图中提取达人数据"""
     import base64, re
 
-    images_b64 = body.get("images", [])  # [{name, base64}]
+    images_b64 = body.get("images", [])  # [{name, base64, type}]
     if not images_b64:
         return {"error": "请上传至少一张截图"}
 
@@ -939,7 +939,7 @@ def analyze_kol(body):
     ocr_key = IMG_KEY
     ocr_url = "https://ai.t8star.cn/v1/chat/completions"
 
-    def call_vision(b64_image, prompt, max_tokens=300):
+    def call_vision(b64_image, prompt, max_tokens=200):
         """调用 qwen3-vl-flash 进行图片识别"""
         payload = json.dumps({
             "model": "qwen3-vl-flash",
@@ -978,23 +978,63 @@ def analyze_kol(body):
         except (ValueError, TypeError):
             return 0
 
-    results = []
+    def strip_b64(b64):
+        """去掉 data:image/xxx;base64, 前缀"""
+        if "," in b64:
+            return b64.split(",", 1)[1]
+        return b64
 
-    for img_data in images_b64[:10]:  # 最多处理10张
-        b64 = img_data.get("base64", "")
-        name = img_data.get("name", "unknown.png")
+    # 按原始文件名分组（去掉 _nick/_kpi 后缀）
+    groups = {}  # original_name -> {nick_b64, kpi_b64}
+    for img in images_b64[:20]:  # 最多20张（10原图×2裁切）
+        name = img.get("name", "")
+        b64 = img.get("base64", "")
+        img_type = img.get("type", "")
         if not b64:
             continue
+        b64 = strip_b64(b64)
 
-        # 去掉 data:image/xxx;base64, 前缀
-        if "," in b64:
-            b64 = b64.split(",", 1)[1]
+        # 还原原始文件名
+        original = name
+        if original.endswith("_nick"):
+            original = original[:-5]
+        elif original.endswith("_kpi"):
+            original = original[:-4]
+
+        if original not in groups:
+            groups[original] = {"nick_b64": None, "kpi_b64": None}
+
+        if img_type == "nickname" or name.endswith("_nick"):
+            groups[original]["nick_b64"] = b64
+        elif img_type == "kpi" or name.endswith("_kpi"):
+            groups[original]["kpi_b64"] = b64
+        else:
+            # 未裁切的完整图片，同时用于两个识别
+            groups[original]["nick_b64"] = b64
+            groups[original]["kpi_b64"] = b64
+
+    results = []
+
+    for original_name, group in list(groups.items())[:10]:  # 最多处理10组
+        nickname = original_name
+        metrics = {}
 
         try:
-            # 一次性提取所有数据（不裁图，直接发完整截图）
-            extract_prompt = """这是小红书蒲公英数据仪表盘截图。请提取以下信息，逐行输出：
+            # 1. 昵称识别（裁切的顶部 8% 图片）
+            if group["nick_b64"]:
+                try:
+                    nick_result = call_vision(group["nick_b64"],
+                        '"笔记作者："后面紧跟的博主昵称是什么？只输出昵称，不要其他内容。',
+                        max_tokens=15)
+                    nick = nick_result.strip().replace('"', '').replace("'", "").replace("昵称=", "")
+                    if nick and len(nick) < 30:
+                        nickname = nick
+                except Exception:
+                    pass  # 昵称识别失败用文件名
 
-昵称=博主昵称
+            # 2. KPI 数据识别（裁切的 3%-30% 区域）
+            if group["kpi_b64"]:
+                kpi_prompt = """图片中有多行指标卡片。请逐个标签=数值输出，每行一个：
 曝光量=数字
 阅读量=数字
 CPM=数字
@@ -1006,26 +1046,14 @@ CPE=数字
 评论量=数字
 收藏量=数字
 
-规则：
-1. 数字去逗号，如 12,345 → 12345
-2. 找不到的标签输出"无"
-3. CPM/CPV/CPE 保留原始数值（含小数点）
-4. 互动率只输出数字，不含%号
-5. 只输出以上格式，不要其他内容"""
+数字去逗号。找不到的标签输出"无"。只输出以上格式。"""
+                kpi_result = call_vision(group["kpi_b64"], kpi_prompt, max_tokens=200)
 
-            ocr_result = call_vision(b64, extract_prompt, max_tokens=250)
-
-            # 解析结果
-            metrics = {}
-            nickname = name
-            for line in ocr_result.split("\n"):
-                if "=" in line:
-                    k, v = line.strip().split("=", 1)
-                    k, v = k.strip(), v.strip().replace(",", "")
-                    if v and v != "无":
-                        if k == "昵称":
-                            nickname = v.replace('"', '').replace("'", "")
-                        else:
+                for line in kpi_result.split("\n"):
+                    if "=" in line:
+                        k, v = line.strip().split("=", 1)
+                        k, v = k.strip(), v.strip().replace(",", "")
+                        if v and v != "无":
                             metrics[k] = v
 
             # 数据清洗
@@ -1034,7 +1062,7 @@ CPE=数字
             cpe = fix_decimal(metrics.get("CPE", "0"))
             eng_rate = metrics.get("互动率", "0")
 
-            # AI 分析报告
+            # 3. AI 分析报告
             analysis_prompt = f"""你是 KOL 数据分析专家。根据以下达人数据生成简要分析报告：
 
 达人昵称：{nickname}
@@ -1057,7 +1085,10 @@ CPE：{cpe}
 
             analysis_text = ""
             try:
-                analysis_text = call_vision(b64, analysis_prompt, max_tokens=500)
+                # 用 KPI 图片做分析（包含数据区域，分析更准确）
+                analysis_img = group["kpi_b64"] or group["nick_b64"]
+                if analysis_img:
+                    analysis_text = call_vision(analysis_img, analysis_prompt, max_tokens=400)
             except Exception:
                 analysis_text = "分析生成失败，请稍后重试"
 
@@ -1078,7 +1109,7 @@ CPE：{cpe}
 
             results.append({
                 "nickname": nickname,
-                "filename": name,
+                "filename": original_name,
                 "metrics": {
                     "exposure": parse_number(metrics.get("曝光量", "0")),
                     "read_count": parse_number(metrics.get("阅读量", "0")),
@@ -1100,8 +1131,8 @@ CPE：{cpe}
 
         except Exception as e:
             results.append({
-                "nickname": name,
-                "filename": name,
+                "nickname": nickname,
+                "filename": original_name,
                 "error": str(e),
                 "metrics": {},
                 "analysis": {

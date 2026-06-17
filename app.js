@@ -1688,26 +1688,40 @@ async function startAnalysis(){
   showAnalysisState('loading');
 
   try {
-    // 将图片转为 base64
-    const images = [];
+    // 1. 收集所有图片（从普通文件 + ZIP 中提取）
+    let allImages = [];
     for(const file of analysisFiles){
-      if(file.type.startsWith('image/')){
+      if(file.name.endsWith('.zip')){
+        const extracted = await extractImagesFromZip(file);
+        allImages.push(...extracted);
+      } else if(file.type.startsWith('image/')){
         const b64 = await readFileAsBase64(file);
-        images.push({ name: file.name, base64: b64 });
+        allImages.push({ name: file.name, base64: b64 });
       }
     }
 
-    if(!images.length){
-      showToast('请上传图片文件（支持 PNG/JPG）', 'warning');
+    if(!allImages.length){
+      showToast('未找到图片文件，请确认上传内容', 'warning');
       showAnalysisState('empty');
       return;
     }
 
-    // 调用后端 API
+    // 2. 前端裁图：每张图裁出两种区域
+    const croppedImages = [];
+    for(const img of allImages){
+      // 裁顶部 0-8% → 昵称
+      const nickCrop = await cropImageBase64(img.base64, 0, 0.08);
+      croppedImages.push({ name: img.name + '_nick', base64: nickCrop, type: 'nickname' });
+      // 裁 3%-30% → KPI 数据
+      const kpiCrop = await cropImageBase64(img.base64, 0.03, 0.30);
+      croppedImages.push({ name: img.name + '_kpi', base64: kpiCrop, type: 'kpi' });
+    }
+
+    // 3. 调用后端 API
     const resp = await fetch('/api', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'analyze_kol', images })
+      body: JSON.stringify({ action: 'analyze_kol', images: croppedImages })
     });
     const data = await resp.json();
 
@@ -1726,6 +1740,45 @@ async function startAnalysis(){
     document.getElementById('daErrorMsg').textContent = '分析失败：' + (e.message || '网络错误');
     showAnalysisState('error');
   }
+}
+
+// 前端裁图（Canvas API）
+function cropImageBase64(dataUrl, topPct, bottomPct){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const w = img.width;
+      const h = img.height;
+      canvas.width = w;
+      canvas.height = Math.round(h * (bottomPct - topPct));
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, -Math.round(h * topPct));
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => reject(new Error('图片加载失败'));
+    img.src = dataUrl;
+  });
+}
+
+// 从 ZIP 中提取图片
+async function extractImagesFromZip(file){
+  if(typeof JSZip === 'undefined'){
+    showToast('ZIP 解压库未加载，请刷新页面重试', 'error');
+    return [];
+  }
+  const zip = await JSZip.loadAsync(file);
+  const images = [];
+  for(const [path, entry] of Object.entries(zip.files)){
+    if(entry.dir) continue;
+    if(/\.(png|jpg|jpeg)$/i.test(path)){
+      const blob = await entry.async('blob');
+      const f = new File([blob], path.split('/').pop());
+      const dataUrl = await readFileAsBase64(f);
+      images.push({ name: f.name, base64: dataUrl });
+    }
+  }
+  return images;
 }
 
 function readFileAsBase64(file){
