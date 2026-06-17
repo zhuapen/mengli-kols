@@ -927,6 +927,196 @@ def delete_user(body):
         return {"error": err_detail or str(e)}
 
 
+def analyze_kol(body):
+    """KOL 分析：从小红书数据截图中提取达人数据"""
+    import base64, re
+
+    images_b64 = body.get("images", [])  # [{name, base64}]
+    if not images_b64:
+        return {"error": "请上传至少一张截图"}
+
+    # OCR API 配置（复用 qwen3-vl-flash 视觉模型）
+    ocr_key = IMG_KEY
+    ocr_url = "https://ai.t8star.cn/v1/chat/completions"
+
+    def call_vision(b64_image, prompt, max_tokens=300):
+        """调用 qwen3-vl-flash 进行图片识别"""
+        payload = json.dumps({
+            "model": "qwen3-vl-flash",
+            "messages": [{"role": "user", "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64_image}"}}
+            ]}],
+            "max_tokens": max_tokens
+        }).encode()
+        req = Request(ocr_url, data=payload, headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {ocr_key}"
+        })
+        resp = json.loads(urlopen(req, timeout=90).read())
+        return resp["choices"][0]["message"]["content"]
+
+    def fix_decimal(val_str):
+        """CPM/CPV/CPE 补两位小数"""
+        if not val_str:
+            return val_str
+        val_str = val_str.strip()
+        if val_str.replace(".", "").replace("-", "").isdigit():
+            num = float(val_str)
+            if num > 100 and "." not in val_str:
+                return round(num / 100, 2)
+            return num
+        return val_str
+
+    def parse_number(val):
+        """将字符串转为数字"""
+        if not val or val == "无" or val == "-":
+            return 0
+        val = str(val).replace(",", "").replace("万", "0000").strip()
+        try:
+            return int(float(val))
+        except (ValueError, TypeError):
+            return 0
+
+    results = []
+
+    for img_data in images_b64[:10]:  # 最多处理10张
+        b64 = img_data.get("base64", "")
+        name = img_data.get("name", "unknown.png")
+        if not b64:
+            continue
+
+        # 去掉 data:image/xxx;base64, 前缀
+        if "," in b64:
+            b64 = b64.split(",", 1)[1]
+
+        try:
+            # 一次性提取所有数据（不裁图，直接发完整截图）
+            extract_prompt = """这是小红书蒲公英数据仪表盘截图。请提取以下信息，逐行输出：
+
+昵称=博主昵称
+曝光量=数字
+阅读量=数字
+CPM=数字
+CPV=数字
+CPE=数字
+互动量=数字
+互动率=百分比数字（不含%号）
+点赞量=数字
+评论量=数字
+收藏量=数字
+
+规则：
+1. 数字去逗号，如 12,345 → 12345
+2. 找不到的标签输出"无"
+3. CPM/CPV/CPE 保留原始数值（含小数点）
+4. 互动率只输出数字，不含%号
+5. 只输出以上格式，不要其他内容"""
+
+            ocr_result = call_vision(b64, extract_prompt, max_tokens=250)
+
+            # 解析结果
+            metrics = {}
+            nickname = name
+            for line in ocr_result.split("\n"):
+                if "=" in line:
+                    k, v = line.strip().split("=", 1)
+                    k, v = k.strip(), v.strip().replace(",", "")
+                    if v and v != "无":
+                        if k == "昵称":
+                            nickname = v.replace('"', '').replace("'", "")
+                        else:
+                            metrics[k] = v
+
+            # 数据清洗
+            cpm = fix_decimal(metrics.get("CPM", "0"))
+            cpv = fix_decimal(metrics.get("CPV", "0"))
+            cpe = fix_decimal(metrics.get("CPE", "0"))
+            eng_rate = metrics.get("互动率", "0")
+
+            # AI 分析报告
+            analysis_prompt = f"""你是 KOL 数据分析专家。根据以下达人数据生成简要分析报告：
+
+达人昵称：{nickname}
+曝光量：{metrics.get('曝光量', '未知')}
+阅读量：{metrics.get('阅读量', '未知')}
+互动量：{metrics.get('互动量', '未知')}
+互动率：{eng_rate}%
+点赞量：{metrics.get('点赞量', '未知')}
+评论量：{metrics.get('评论量', '未知')}
+收藏量：{metrics.get('收藏量', '未知')}
+CPM：{cpm}
+CPV：{cpv}
+CPE：{cpe}
+
+请用中文输出三个维度的分析，每个维度2-3句话：
+
+【粉丝画像】根据互动率、点赞评论收藏比例判断粉丝活跃度和画像特征
+【互动趋势】根据互动率和各指标数据判断内容质量和互动健康度
+【商业价值】根据CPM/CPV/CPE判断投放性价比和商业合作价值"""
+
+            analysis_text = ""
+            try:
+                analysis_text = call_vision(b64, analysis_prompt, max_tokens=500)
+            except Exception:
+                analysis_text = "分析生成失败，请稍后重试"
+
+            # 解析分析报告
+            fans_profile = ""
+            interaction_trend = ""
+            commercial_score = ""
+            sections = re.split(r"【(粉丝画像|互动趋势|商业价值)】", analysis_text)
+            for i in range(1, len(sections), 2):
+                title = sections[i]
+                content = sections[i+1].strip() if i+1 < len(sections) else ""
+                if title == "粉丝画像":
+                    fans_profile = content
+                elif title == "互动趋势":
+                    interaction_trend = content
+                elif title == "商业价值":
+                    commercial_score = content
+
+            results.append({
+                "nickname": nickname,
+                "filename": name,
+                "metrics": {
+                    "exposure": parse_number(metrics.get("曝光量", "0")),
+                    "read_count": parse_number(metrics.get("阅读量", "0")),
+                    "cpm": float(cpm) if cpm else 0,
+                    "cpv": float(cpv) if cpv else 0,
+                    "cpe": float(cpe) if cpe else 0,
+                    "engagement": parse_number(metrics.get("互动量", "0")),
+                    "engagement_rate": eng_rate,
+                    "likes": parse_number(metrics.get("点赞量", "0")),
+                    "comments": parse_number(metrics.get("评论量", "0")),
+                    "favorites": parse_number(metrics.get("收藏量", "0"))
+                },
+                "analysis": {
+                    "fans_profile": fans_profile or "数据不足，暂无法分析",
+                    "interaction_trend": interaction_trend or "数据不足，暂无法分析",
+                    "commercial_score": commercial_score or "数据不足，暂无法分析"
+                }
+            })
+
+        except Exception as e:
+            results.append({
+                "nickname": name,
+                "filename": name,
+                "error": str(e),
+                "metrics": {},
+                "analysis": {
+                    "fans_profile": "识别失败",
+                    "interaction_trend": "识别失败",
+                    "commercial_score": "识别失败"
+                }
+            })
+
+    if not results:
+        return {"error": "未能识别任何数据，请确认截图是否为小红书蒲公英数据面板"}
+
+    return {"success": True, "count": len(results), "results": results}
+
+
 def upload_plugin_file(body):
     """管理员上传插件文件到 Supabase Storage（使用 service_role）"""
     if not SUPABASE_SERVICE_KEY:
@@ -1062,6 +1252,8 @@ class handler(BaseHTTPRequestHandler):
             result = upload_plugin_file(body)
         elif action == "upload_image_file":
             result = upload_image_file(body)
+        elif action == "analyze_kol":
+            result = analyze_kol(body)
         else:
             result = {"error": f"未知 action: {action}"}
 

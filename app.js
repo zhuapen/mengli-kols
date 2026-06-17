@@ -1687,36 +1687,140 @@ async function startAnalysis(){
 
   showAnalysisState('loading');
 
-  // TODO: 后续接入 action: 'analyze_kol' API
-  // 模拟分析过程
-  setTimeout(() => {
-    analysisResult = {
-      profile: '暂无数据，等待接入 AI 分析接口',
-      engagement: '暂无数据，等待接入 AI 分析接口',
-      value: '暂无数据，等待接入 AI 分析接口'
-    };
+  try {
+    // 将图片转为 base64
+    const images = [];
+    for(const file of analysisFiles){
+      if(file.type.startsWith('image/')){
+        const b64 = await readFileAsBase64(file);
+        images.push({ name: file.name, base64: b64 });
+      }
+    }
+
+    if(!images.length){
+      showToast('请上传图片文件（支持 PNG/JPG）', 'warning');
+      showAnalysisState('empty');
+      return;
+    }
+
+    // 调用后端 API
+    const resp = await fetch('/api', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'analyze_kol', images })
+    });
+    const data = await resp.json();
+
+    if(data.error){
+      document.getElementById('daErrorMsg').textContent = data.error;
+      showAnalysisState('error');
+      return;
+    }
+
+    // 保存结果
+    analysisResult = data.results;
     renderAnalysisResult();
-  }, 1500);
+
+  } catch(e){
+    console.error('KOL 分析失败:', e);
+    document.getElementById('daErrorMsg').textContent = '分析失败：' + (e.message || '网络错误');
+    showAnalysisState('error');
+  }
+}
+
+function readFileAsBase64(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 function renderAnalysisResult(){
-  if(!analysisResult){
+  if(!analysisResult || !analysisResult.length){
     showAnalysisState('empty');
     return;
   }
+
+  // 取第一个结果渲染（后续可支持多结果切换）
+  const r = analysisResult[0];
+  const m = r.metrics || {};
+  const a = r.analysis || {};
+
+  // 粉丝画像卡片
   const profileBody = document.getElementById('daProfileBody');
+  if(profileBody){
+    profileBody.innerHTML = `
+      <div style="margin-bottom:12px"><strong>达人昵称：</strong>${r.nickname || '未知'}</div>
+      <div style="margin-bottom:12px"><strong>互动率：</strong>${m.engagement_rate || '-'}%</div>
+      <div style="margin-bottom:12px"><strong>点赞/评论/收藏：</strong>${m.likes || 0} / ${m.comments || 0} / ${m.favorites || 0}</div>
+      <hr style="border:none;border-top:1px solid var(--gray-200);margin:12px 0">
+      <div>${renderMarkdown(a.fans_profile || '数据不足')}</div>
+    `;
+  }
+
+  // 互动趋势卡片
   const engagementBody = document.getElementById('daEngagementBody');
+  if(engagementBody){
+    engagementBody.innerHTML = `
+      <div style="margin-bottom:12px"><strong>曝光量：</strong>${(m.exposure || 0).toLocaleString()}</div>
+      <div style="margin-bottom:12px"><strong>阅读量：</strong>${(m.read_count || 0).toLocaleString()}</div>
+      <div style="margin-bottom:12px"><strong>互动量：</strong>${(m.engagement || 0).toLocaleString()}</div>
+      <hr style="border:none;border-top:1px solid var(--gray-200);margin:12px 0">
+      <div>${renderMarkdown(a.interaction_trend || '数据不足')}</div>
+    `;
+  }
+
+  // 商业价值卡片
   const valueBody = document.getElementById('daValueBody');
-  if(profileBody) profileBody.innerHTML = renderMarkdown(analysisResult.profile);
-  if(engagementBody) engagementBody.innerHTML = renderMarkdown(analysisResult.engagement);
-  if(valueBody) valueBody.innerHTML = renderMarkdown(analysisResult.value);
+  if(valueBody){
+    valueBody.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+        <div style="text-align:center;padding:12px;background:var(--gray-50);border-radius:8px">
+          <div style="font-size:12px;color:var(--gray-400)">CPM</div>
+          <div style="font-size:20px;font-weight:700;color:var(--gray-800)">¥${m.cpm || 0}</div>
+        </div>
+        <div style="text-align:center;padding:12px;background:var(--gray-50);border-radius:8px">
+          <div style="font-size:12px;color:var(--gray-400)">CPV</div>
+          <div style="font-size:20px;font-weight:700;color:var(--gray-800)">¥${m.cpv || 0}</div>
+        </div>
+        <div style="text-align:center;padding:12px;background:var(--gray-50);border-radius:8px">
+          <div style="font-size:12px;color:var(--gray-400)">CPE</div>
+          <div style="font-size:20px;font-weight:700;color:var(--gray-800)">¥${m.cpe || 0}</div>
+        </div>
+      </div>
+      <div>${renderMarkdown(a.commercial_score || '数据不足')}</div>
+    `;
+  }
+
   showAnalysisState('result');
 }
 
 function saveAnalysisResult(){
-  if(!analysisResult) return;
-  const text = `## 粉丝画像\n${analysisResult.profile}\n\n## 互动趋势\n${analysisResult.engagement}\n\n## 商业价值评估\n${analysisResult.value}`;
-  saveAsset('copy', 'KOL 分析报告', text);
+  if(!analysisResult || !analysisResult.length) return;
+  const r = analysisResult[0];
+  const m = r.metrics || {};
+  const a = r.analysis || {};
+  const text = `# KOL 分析报告 — ${r.nickname || '未知'}
+
+## 基础数据
+- 曝光量：${(m.exposure || 0).toLocaleString()}
+- 阅读量：${(m.read_count || 0).toLocaleString()}
+- 互动量：${(m.engagement || 0).toLocaleString()}
+- 互动率：${m.engagement_rate || '-'}%
+- 点赞/评论/收藏：${m.likes || 0} / ${m.comments || 0} / ${m.favorites || 0}
+- CPM：¥${m.cpm || 0} | CPV：¥${m.cpv || 0} | CPE：¥${m.cpe || 0}
+
+## 粉丝画像
+${a.fans_profile || '数据不足'}
+
+## 互动趋势
+${a.interaction_trend || '数据不足'}
+
+## 商业价值评估
+${a.commercial_score || '数据不足'}`;
+  saveAsset('copy', 'KOL 分析 — ' + (r.nickname || '报告'), text);
   showToast('已保存到素材库');
 }
 
