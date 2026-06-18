@@ -38,7 +38,7 @@
     </a>
     <div class="nav-links">
       <a href="#" class="nav-link active" data-page="home" onclick="showPage('home')">首页</a>
-      <a href="#" class="nav-link" data-page="find" onclick="showPage('find')">找号</a>
+      <a href="#" class="nav-link" data-page="find" onclick="showPage('find')">智能媒体库</a>
       <a href="#" class="nav-link" data-page="image" onclick="showPage('image')">图片生成</a>
       <a href="#" class="nav-link" data-page="copy" onclick="showPage('copy')">文案撰写</a>
       <a href="#" class="nav-link" data-page="article" onclick="showPage('article')">公众号写稿</a>
@@ -118,36 +118,226 @@
   <div class="page-header">
     <div class="page-header-inner">
       <div>
-        <h1 class="page-title">达人查找</h1>
-        <p class="page-desc">AI 智能匹配，快速找到最适合的达人</p>
-      </div>
-      <button class="cart-btn" onclick="openCart()">询单车 <span class="badge" id="cartBadge">0</span></button>
-    </div>
-  </div>
-
-  <div class="ai-search-bar">
-    <div class="ai-search-inner">
-      <input type="text" class="ai-search-input" id="aiInput" placeholder="用自然语言描述你想要的达人，如：找母婴类10万粉以下互动率高的..." onkeydown="if(event.key==='Enter')aiSearch()">
-      <button class="ai-search-btn" id="aiBtn" onclick="aiSearch()">AI 搜索</button>
-    </div>
-    <div class="ai-result" id="aiResult"></div>
-  </div>
-
-  <div class="filter-bar">
-    <div class="filter-inner" id="filterRow"></div>
-  </div>
-
-  <div class="table-container">
-    <div class="table-wrap">
-      <table>
-        <thead id="tableHead"></thead>
-        <tbody id="tableBody"></tbody>
-      </table>
-      <div class="empty-state" id="emptyState" style="display:none">
-        <div class="icon">🔍</div>
-        <h3>没有匹配的达人，试试调整筛选条件</h3>
+        <h1 class="page-title">智能媒体库</h1>
+        <p class="page-desc">先选媒体库或项目管理，再按 brief 确认需求、生成推荐结果</p>
       </div>
     </div>
+  </div>
+
+  <div class="workbench-shell">
+    <section class="find-view active" id="findHomeView">
+      <div class="entry-grid">
+        <button class="entry-card" onclick="openDatabaseView()">
+          <div class="entry-mark">DB</div>
+          <div class="entry-title">媒体库</div>
+          <div class="entry-desc">沉淀已选优质达人、导入账号，并支持标签、报价、返点筛选和人工修正。</div>
+        </button>
+        <button class="entry-card" onclick="openProjectManagementView()">
+          <div class="entry-mark">PM</div>
+          <div class="entry-title">项目管理</div>
+          <div class="entry-desc">新建 brief 找号，或回看过去项目的推荐名单、系统判断、反馈记录和导出结果。</div>
+        </button>
+      </div>
+    </section>
+
+    <section class="find-view" id="databaseView">
+      <div class="workbench-panel panel-pad">
+        <div class="view-topbar">
+          <div>
+            <div class="panel-kicker">Media Library</div>
+            <div class="view-title">媒体库</div>
+            <div class="view-desc">只展示已选优质达人和导入账号，普通采集候选不会自动进入媒体库。</div>
+          </div>
+          <div class="workbench-top-actions">
+            <input type="file" id="databaseImportInput" accept=".xlsx,.csv,.tsv,.txt,.xls,.html" style="display:none" onchange="handleDatabaseImport(event)">
+            <button class="ghost-btn" onclick="document.getElementById('databaseImportInput').click()">导入 Excel/CSV</button>
+            <button class="primary-btn" onclick="openProjectManagementView()">去项目管理</button>
+          </div>
+        </div>
+        <div class="toolbar-controls" style="margin-bottom:14px">
+          <select class="compact-select" id="databasePlatformFilter" onchange="handleDatabaseFilterChange()"></select>
+          <select class="compact-select" id="databaseIntakeFilter" onchange="handleDatabaseFilterChange()">
+            <option value="all">全部入库状态</option>
+            <option value="formal">正式入库</option>
+            <option value="repair">待修复</option>
+            <option value="resolved">已修复</option>
+          </select>
+          <input class="compact-input" id="databaseSearchInput" placeholder="搜索达人/标签/人设" oninput="handleDatabaseFilterChange()">
+          <input class="compact-input" id="databaseTagInput" placeholder="筛选标签" oninput="handleDatabaseFilterChange()">
+          <input class="compact-input" id="databaseFollowerMin" placeholder="粉丝数下限" type="number" onchange="handleDatabaseFilterChange()">
+          <input class="compact-input" id="databaseFollowerMax" placeholder="粉丝数上限" type="number" onchange="handleDatabaseFilterChange()">
+          <input class="compact-input" id="databasePriceMin" placeholder="报价下限" type="number" onchange="handleDatabaseFilterChange()">
+          <input class="compact-input" id="databasePriceMax" placeholder="报价上限" type="number" onchange="handleDatabaseFilterChange()">
+          <input class="compact-input" id="databaseRebateMin" placeholder="返点下限%" type="number" onchange="handleDatabaseFilterChange()">
+          <input class="compact-input" id="databaseRebateMax" placeholder="返点上限%" type="number" onchange="handleDatabaseFilterChange()">
+        </div>
+        <div class="simple-table-wrap media-db-wrap">
+          <table>
+            <thead>
+              <tr><th>达人昵称</th><th>入库状态</th><th>小红书号</th><th>蒲公英主页链接</th><th>图文报价</th><th>视频报价</th><th>数据中位数</th><th>标题状态</th><th>CPM</th><th>阅读单价</th><th>互动单价</th><th>返点</th><th>联系方式</th><th>标签</th><th>修复原因</th><th>来源</th><th>操作</th></tr>
+            </thead>
+            <tbody id="databaseTableBody"></tbody>
+          </table>
+          <div class="empty-state" id="databaseEmpty" style="display:none"><div class="icon">⌕</div><h3>媒体库里还没有匹配账号</h3></div>
+        </div>
+        <div class="database-pager" id="databasePager"></div>
+      </div>
+    </section>
+
+    <section class="find-view" id="projectManagementView">
+      <div class="workbench-panel panel-pad">
+        <div class="view-topbar">
+          <div>
+            <div class="panel-kicker">Project Management</div>
+            <div class="view-title">项目管理</div>
+            <div class="view-desc">新项目从 brief 开始，历史项目可以随时回看推荐结果。</div>
+          </div>
+          <button class="primary-btn" onclick="openNewProjectWizard()">新建项目</button>
+        </div>
+        <div class="project-list-grid" id="projectList"></div>
+      </div>
+    </section>
+
+    <section class="find-view" id="projectWizardView">
+      <div class="step-strip">
+        <div class="step-pill active">1 输入 brief</div>
+        <div class="step-pill active">2 确认需求</div>
+        <div class="step-pill active">3 选择平台</div>
+        <div class="step-pill active">4 生成结果</div>
+      </div>
+      <div class="wizard-grid">
+        <div class="workbench-panel panel-pad">
+          <div class="panel-title-row">
+            <div>
+              <div class="panel-kicker">Project Brief</div>
+              <div class="panel-title">输入 brief</div>
+            </div>
+            <button class="ghost-btn" onclick="openProjectManagementView()">返回项目</button>
+          </div>
+          <textarea class="brief-textarea" id="briefInput" placeholder="粘贴完整 brief，例如：品牌、背景档期、合作平台、合作形式、总预算、提报要求、单个预算、达人类型、TA、CPM/CPE。"></textarea>
+          <div class="brief-actions">
+            <button class="primary-btn" id="briefAnalyzeBtn" onclick="analyzeBrief()">AI 拆解需求</button>
+            <button class="ghost-btn" onclick="loadDemoBrief()">填入沃隆 brief</button>
+          </div>
+          <div class="assessment-note">拆解只是建议，必须在右侧确认后才会开始找号。</div>
+        </div>
+
+        <div class="workbench-panel panel-pad">
+          <div class="panel-title-row">
+            <div>
+              <div class="panel-kicker">Confirm Requirements</div>
+              <div class="panel-title">确认需求</div>
+            </div>
+            <span class="status-pill ok" id="analysisStatus">待确认</span>
+          </div>
+          <div class="form-grid">
+            <div class="form-field"><label>品牌</label><input id="confirmBrand" placeholder="品牌名称"></div>
+            <div class="form-field"><label>推荐数量</label><input id="confirmTargetCount" type="number" min="1" max="80" placeholder="例如 25"></div>
+            <div class="form-field"><label>总预算</label><input id="confirmTotalBudget" type="number" placeholder="例如 100000"></div>
+            <div class="form-field"><label>返点要求 %</label><input id="confirmRebate" type="number" step="0.1" placeholder="例如 22"></div>
+            <div class="form-field"><label>单个预算下限</label><input id="confirmBudgetMin" type="number" placeholder="例如 5000"></div>
+            <div class="form-field"><label>单个预算上限</label><input id="confirmBudgetMax" type="number" placeholder="例如 10000"></div>
+            <div class="form-field"><label>CPM 上限</label><input id="confirmCpm" type="number" step="0.1" placeholder="例如 70"></div>
+            <div class="form-field"><label>CPE 上限</label><input id="confirmCpe" type="number" step="0.1" placeholder="例如 8"></div>
+            <div class="form-field full"><label>达人类型</label><input id="confirmCreatorTypes" placeholder="美食种草类、美食开箱测评类"></div>
+            <div class="form-field full"><label>必须覆盖标签</label><input id="confirmAudienceTags" placeholder="上班族、学生党、养生党、精致妈妈"></div>
+            <div class="form-field full"><label>合作形式</label><input id="confirmForms" placeholder="报备图文、报备视频，优先视频"></div>
+            <div class="form-field full"><label>需求信息</label><label class="check-row"><input id="confirmLinkRequired" type="checkbox"> brief 提到需要配合站内产品链接挂链</label></div>
+          </div>
+
+          <div style="margin-top:18px">
+            <div class="analysis-label">选择平台</div>
+            <div class="platform-choice-grid" id="platformChoiceGrid"></div>
+          </div>
+
+          <div class="brief-actions">
+            <button class="ghost-btn" onclick="saveConfirmedAnalysis()">确认需求</button>
+            <button class="primary-btn" onclick="startFindFlow()">开始找号</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="find-view" id="projectResultsView">
+      <div class="workbench-panel panel-pad">
+        <div class="view-topbar">
+          <div>
+            <div class="panel-kicker">Recommendation Result</div>
+            <div class="view-title">推荐结果</div>
+            <div class="view-desc" id="resultProjectDesc">只展示最终推荐名单和整批系统判断。</div>
+          </div>
+          <div class="workbench-top-actions">
+            <button class="ghost-btn" onclick="openProjectWizard(currentProjectId)">调整需求</button>
+            <button class="primary-btn" onclick="toggleRecommendationExportMenu()">导出推荐 Excel</button>
+          </div>
+        </div>
+        <div id="resultAssessment"></div>
+        <div id="resultDiagnostics"></div>
+        <div id="collectorStatusPanel"></div>
+        <div class="export-menu" id="recommendationExportMenu" style="display:none;margin-top:12px">
+          <button class="ghost-btn" onclick="exportRecommendations('strict')">导出严格达标</button>
+          <button class="ghost-btn" onclick="exportRecommendations('backup')">导出可备选</button>
+          <button class="ghost-btn" onclick="exportRecommendations('all')">导出全部推荐</button>
+        </div>
+        <div class="simple-table-wrap" style="margin-top:16px">
+          <table>
+            <thead>
+              <tr><th>达人</th><th>平台</th><th>粉丝</th><th>报价</th><th>账号返点</th><th>标签</th><th>关键数据</th><th>命中要求</th><th>操作</th></tr>
+            </thead>
+            <tbody id="resultTableBody"></tbody>
+          </table>
+          <div class="empty-state" id="resultEmpty" style="display:none"><div class="icon">+</div><h3>还没有生成推荐结果</h3></div>
+        </div>
+      </div>
+
+      <div class="workbench-panel panel-pad" style="margin-top:18px">
+        <div class="panel-title-row">
+          <div>
+            <div class="panel-kicker">Feedback Center</div>
+            <div class="panel-title">反馈与记忆</div>
+          </div>
+          <span class="status-pill warn" id="feedbackStatus">导出后需记录</span>
+        </div>
+        <div class="feedback-grid">
+          <div class="feedback-field">
+            <label>推荐可用性</label>
+            <select id="feedbackUsability">
+              <option value="可用">可用</option>
+              <option value="部分可用">部分可用</option>
+              <option value="不可用">不可用</option>
+            </select>
+          </div>
+          <div class="feedback-field">
+            <label>客户是否通过</label>
+            <select id="feedbackPass">
+              <option value="待确认">待确认</option>
+              <option value="通过">通过</option>
+              <option value="未通过">未通过</option>
+            </select>
+          </div>
+          <div class="feedback-field">
+            <label>关键词精准度</label>
+            <select id="feedbackKeyword">
+              <option value="精准">精准</option>
+              <option value="需微调">需微调</option>
+              <option value="不精准">不精准</option>
+            </select>
+          </div>
+          <div class="feedback-field">
+            <label>替换原因</label>
+            <input id="feedbackReason" placeholder="如预算偏高/内容不垂直/客户避雷">
+          </div>
+          <div class="feedback-field full">
+            <label>补充记忆</label>
+            <textarea id="feedbackNote" placeholder="记录本次品牌、平台、关键词、达人选择经验，后续同类项目会引用。"></textarea>
+          </div>
+        </div>
+        <div class="brief-actions">
+          <button class="primary-btn" onclick="saveFeedbackMemory()">记录反馈</button>
+          <button class="ghost-btn" onclick="clearProjectMemory()">清空本项目临时记忆</button>
+        </div>
+      </div>
+    </section>
   </div>
 </div>
 
@@ -978,6 +1168,7 @@
 </div>
 
 <script src="app.js?v=20260615"></script>
+<script src="find-page.js?v=20260617"></script>
 <script src="auth.js?v=20260615"></script>
 </body>
 </html>

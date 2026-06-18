@@ -270,8 +270,7 @@ function showPage(page){
   if(navLink) navLink.classList.add('active');
 
   if(page === 'find'){
-    initFilters();
-    render();
+    if(typeof initFindWorkbench === 'function') initFindWorkbench();
   }
   if(page === 'assets'){
     loadAssets().then(() => renderAssets());
