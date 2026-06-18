@@ -3,94 +3,146 @@
 ## 架构
 
 ```
-Vercel (www.mengliai.cn)              自有服务器 (media-api.mengliai.cn)
+Vercel (www.mengliai.cn)              Railway (media-api.mengliai.cn)
 ┌─────────────────────┐              ┌─────────────────────────┐
 │ 前端 index.html      │   fetch     │ FastAPI (server.py)      │
-│ find-page.js         │ ─────────→  │ SQLite 数据库             │
-│ MEDIA_API_BASE 配置   │  跨域 HTTPS │ Playwright 爬虫           │
+│ find-page.js         │ ─────────→  │ SQLite / PostgreSQL      │
+│ MEDIA_API_BASE 配置   │  跨域 HTTPS │ Playwright 爬虫（本地）    │
 └─────────────────────┘              └─────────────────────────┘
 ```
 
-## 服务器要求
+---
 
-- Python 3.9+
-- 2GB+ RAM（Playwright 需要 Chromium）
-- 10GB+ 磁盘
-- Ubuntu 20.04+ / CentOS 7+ / Debian 10+
+## Railway 部署（推荐）
 
-## 快速部署
+### 部署步骤
 
-### 1. 上传代码
+1. **Fork 或连接仓库**
+   - 登录 [Railway](https://railway.app)
+   - New Project → Deploy from GitHub repo
+   - 选择 `mengli-kols` 仓库，分支 `feature/media-library`
+   - Root Directory 设置为 `creator-workbench`
 
-```bash
-scp -r creator-workbench/ user@your-server:/opt/mengli-media/
+2. **配置环境变量**
+   在 Railway Dashboard → Variables 中添加：
+
+   | 变量 | 值 | 说明 |
+   |---|---|---|
+   | `MENGLI_PUBLIC_URL` | `https://media-api.mengliai.cn` | 服务公网地址 |
+   | `DATABASE_URL` | 留空 | 留空=SQLite，设为 PG 连接串则走 PostgreSQL |
+
+3. **部署**
+   - Railway 自动检测 Dockerfile 并构建
+   - 部署完成后获得公网域名
+
+4. **配置自定义域名**
+   - Railway Dashboard → Settings → Domains
+   - 添加 `media-api.mengliai.cn`
+   - 在 DNS 添加 CNAME 记录指向 Railway 提供的地址
+
+5. **验证**
+   ```bash
+   curl https://media-api.mengliai.cn/api/health
+   # 返回: {"status": "ok", "version": "1.0.0"}
+   ```
+
+### 环境变量清单
+
+| 变量 | 必填 | 默认值 | 说明 |
+|---|---|---|---|
+| `PORT` | 否 | 8890 | Railway 自动注入 |
+| `MENGLI_HOST` | 否 | 0.0.0.0 | 监听地址 |
+| `MENGLI_PORT` | 否 | 8890 | 监听端口（Railway 用 $PORT） |
+| `MENGLI_PUBLIC_URL` | 是 | 空 | 服务公网地址，用于采集脚本回调 |
+| `DATABASE_URL` | 否 | 空 | PostgreSQL 连接串，留空用 SQLite |
+
+### 启动命令
+
+```
+uvicorn server:app --host 0.0.0.0 --port $PORT
 ```
 
-### 2. 安装依赖
+### 健康检查
+
+```
+GET https://media-api.mengliai.cn/api/health
+→ {"status": "ok", "version": "1.0.0"}
+```
+
+---
+
+## ⚠️ 风险说明
+
+### SQLite 持久化
+
+**Railway 使用 ephemeral 文件系统，每次部署/重启会丢失 SQLite 数据。**
+
+解决方案（按优先级）：
+
+1. **使用 Railway Volume**（推荐）
+   - Railway Dashboard → Settings → Add Volume
+   - 挂载路径：`/app/data`
+   - 数据持久化，重启不丢失
+
+2. **迁移到 Supabase PostgreSQL**
+   - 设置 `DATABASE_URL=postgresql://...`
+   - 修改 `server.py` 的 `db()` 函数启用 PG 连接
+   - 数据永不丢失，支持并发
+
+3. **定期导出备份**
+   - 使用 `POST /api/backup` 手动备份
+   - 使用 `GET /api/projects/{id}/export` 导出 Excel
+
+### Playwright 爬虫
+
+Playwright 爬虫（`run-pgy-task.mjs`）是 Node.js 脚本，**不能在 Railway 的 Python 容器中运行**。
+
+解决方案：
+- **本地运行**：在本地电脑执行 `node run-pgy-task.mjs <task_id>`
+- **单独部署**：在 Railway 创建第二个 Node.js 服务专门跑爬虫
+- **定时任务**：使用 GitHub Actions 或 cron 定时触发
+
+### 回滚方案
+
+1. Railway Dashboard → Deployments → 选择历史版本 → Redeploy
+2. 或在本地 `git revert` 后 push 触发重新部署
+
+---
+
+## 自有服务器部署（备选）
+
+### 快速部署
 
 ```bash
+# 上传代码
+scp -r creator-workbench/ user@server:/opt/mengli-media/
+
+# 安装依赖
 cd /opt/mengli-media
-pip3 install fastapi uvicorn openpyxl
-# Playwright（可选，用于蒲公英爬虫）
-pip3 install playwright
-playwright install chromium
-```
+pip3 install -r requirements.txt
 
-### 3. 配置环境变量
+# 配置环境变量
+cp .env.example .env
+vim .env  # 修改 MENGLI_PUBLIC_URL
 
-```bash
-cat > .env << 'EOF'
-MENGLI_HOST=0.0.0.0
-MENGLI_PORT=8890
-MENGLI_PUBLIC_URL=https://media-api.mengliai.cn
-DATABASE_URL=
-EOF
-```
-
-### 4. 启动服务
-
-```bash
-# 方式一：直接启动
+# 启动
 python3 server.py
-
-# 方式二：使用 systemd 守护（推荐）
-sudo cp mengli-media.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable mengli-media
-sudo systemctl start mengli-media
+# 或
+uvicorn server:app --host 0.0.0.0 --port 8890
 ```
 
-### 5. systemd 服务文件
+### systemd 守护
 
-创建 `/etc/systemd/system/mengli-media.service`：
-
-```ini
-[Unit]
-Description=萌力互动智能媒体库
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/mengli-media
-EnvironmentFile=/opt/mengli-media/.env
-ExecStart=/usr/bin/python3 server.py
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
+```bash
+cp mengli-media.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable mengli-media
+systemctl start mengli-media
 ```
 
-### 6. Nginx 反向代理 + HTTPS
+### Nginx + HTTPS
 
 ```nginx
-server {
-    listen 80;
-    server_name media-api.mengliai.cn;
-    return 301 https://$host$request_uri;
-}
-
 server {
     listen 443 ssl http2;
     server_name media-api.mengliai.cn;
@@ -102,20 +154,33 @@ server {
         proxy_pass http://127.0.0.1:8890;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 300s;
-        proxy_connect_timeout 10s;
     }
 }
 ```
 
-### 7. Let's Encrypt 证书
+---
+
+## 数据备份
+
+- **自动备份**：启动时 + 每小时自动备份到 `backups/` 目录
+- **手动备份**：`POST /api/backup`
+- **保留策略**：最近 30 个备份，自动清理旧的
+
+### 恢复
 
 ```bash
-apt install certbot python3-certbot-nginx
-certbot --nginx -d media-api.mengliai.cn
+# 停止服务
+systemctl stop mengli-media
+
+# 恢复
+cp backups/mengli_20240101_120000.sqlite3 data/mengli_creator_selection.sqlite3
+
+# 启动
+systemctl start mengli-media
 ```
+
+---
 
 ## 前端配置
 
@@ -125,47 +190,9 @@ certbot --nginx -d media-api.mengliai.cn
 const MEDIA_API_BASE = 'https://media-api.mengliai.cn';
 ```
 
-然后部署到 Vercel。
+---
 
-## 健康检查
-
-```bash
-curl https://media-api.mengliai.cn/api/health
-# 返回: {"status": "ok", "version": "1.0.0"}
-```
-
-## 数据备份
-
-- **自动备份**：启动时 + 每小时自动备份到 `backups/` 目录
-- **手动备份**：`POST /api/backup`
-- **备份路径**：`/opt/mengli-media/backups/mengli_YYYYMMDD_HHMMSS.sqlite3`
-- **保留策略**：最近 30 个备份，自动清理旧的
-
-### 恢复备份
-
-```bash
-# 停止服务
-sudo systemctl stop mengli-media
-
-# 恢复
-cp /opt/mengli-media/backups/mengli_20240101_120000.sqlite3 \
-   /opt/mengli-media/data/mengli_creator_selection.sqlite3
-
-# 启动
-sudo systemctl start mengli-media
-```
-
-## 迁移 PostgreSQL
-
-当数据量或并发上来后：
-
-1. 设置环境变量：`DATABASE_URL=postgresql://user:pass@host:5432/dbname`
-2. 安装：`pip3 install psycopg2-binary`
-3. 修改 `server.py` 的 `db()` 函数，启用 PG 连接
-4. 导入数据：使用 SQLite → PostgreSQL 迁移工具
-5. SQL 方言调整：`AUTOINCREMENT` → `SERIAL`，`?` → `%s`
-
-## API 端点一览
+## API 端点
 
 | 方法 | 路径 | 说明 |
 |---|---|---|

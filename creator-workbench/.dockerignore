@@ -1,0 +1,10 @@
+__pycache__
+*.pyc
+.git
+.env
+data/
+backups/
+exports/
+*.sqlite3
+node_modules/
+.DS_Store
