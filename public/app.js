@@ -270,8 +270,7 @@ function showPage(page){
   if(navLink) navLink.classList.add('active');
 
   if(page === 'find'){
-    initFilters();
-    render();
+    if(typeof initFindWorkbench === 'function') initFindWorkbench();
   }
   if(page === 'assets'){
     loadAssets().then(() => renderAssets());
@@ -2385,9 +2384,10 @@ function renderAssets(){
         </div>`;
       } else {
         const typeLabel = asset.type === 'article' ? '写稿' : '文案';
+        const contentPreview = asset.content ? escapeHtml(asset.content.substring(0,100)) : '无内容';
         return `<div class="asset-card ${selected ? 'selected' : ''}" data-id="${asset.id}">
           ${checkboxHtml}
-          <div class="asset-preview" style="padding:20px;font-size:14px;color:var(--gray-600);text-align:left;overflow:hidden">${escapeHtml(asset.content.substring(0,100))}...</div>
+          <div class="asset-preview" style="padding:20px;font-size:14px;color:var(--gray-600);text-align:left;overflow:hidden">${contentPreview}...</div>
           <div class="asset-info">
             <div class="asset-title">${safeTitle}</div>
             <div class="asset-meta">${typeLabel} · ${escapeHtml(asset.date)}</div>

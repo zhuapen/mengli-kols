@@ -1,0 +1,15 @@
+[Unit]
+Description=萌力互动智能媒体库
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mengli-media
+EnvironmentFile=/opt/mengli-media/.env
+ExecStart=/usr/bin/python3 server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
