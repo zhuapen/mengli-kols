@@ -614,87 +614,194 @@ def dedupe(items: list[str]) -> list[str]:
     return out
 
 
-def analyze_brief(brief: str) -> dict[str, Any]:
-    text = brief.strip()
-    compact = re.sub(r"\s+", "", text)
+BRIEF_TOP_LABELS = [
+    "品牌",
+    "背景&档期",
+    "背景",
+    "档期",
+    "推广时间",
+    "合作平台",
+    "推广平台",
+    "合作形式",
+    "内容形式",
+    "博主类型",
+    "达人类型",
+    "账号类型",
+    "KOL类型",
+    "核心要求",
+    "与上一轮投放的关联",
+    "计划推广数量",
+    "推广数量",
+    "投放数量",
+    "提报数量",
+    "推荐数量",
+    "各赛道账号分布",
+    "账号分布",
+    "粉丝量级",
+    "其他要求",
+    "提报要求",
+    "量级数量&单个预算",
+    "单个预算",
+    "单博主预算",
+    "单人预算",
+    "总预算",
+    "项目预算",
+    "预算总额",
+    "数据要求",
+    "TA",
+    "Brief",
+]
+REQUIRED_TAG_CONTEXT = re.compile(r"必须覆盖|每个标签都需要|每个标签都要|都需要合作|需要有[^。\n]*标签|每类都要")
 
-    brand = ""
-    brand_match = re.search(r"(?:【品牌】|品牌[：:])\s*([^\n【]+)", text)
-    if brand_match:
-        brand = brand_match.group(1).strip()
-    if not brand:
-        brand = "未命名品牌"
 
-    background = pick_between(text, ["【背景&档期】", "背景&档期", "背景：", "档期："], ["【合作平台】", "合作平台", "【合作形式】"])
-    launch_window = ""
-    window_match = re.search(r"(五月底到6月底前|5月底到6月底前|6月左右|[一二三四五六七八九十0-9]+月底?[到至\\-][一二三四五六七八九十0-9]+月底?前?)", text)
-    if window_match:
-        launch_window = window_match.group(1)
+def clean_brief_line(line: str) -> str:
+    text = str(line or "").strip()
+    text = re.sub(r"^[\s\-•*·]+", "", text)
+    text = re.sub(r"^[0-9]+[、.)）]\s*", "", text)
+    text = re.sub(r"^[❗️!！]+", "", text)
+    return text.strip()
 
-    platforms: list[str] = []
-    if "小红书" in text or "蒲公英" in text:
-        platforms.append("pgy" if re.search(r"报备|返点|挂链|产品链接|蒲公英", text) else "xhs")
-    if "星图" in text or "巨量" in text:
-        platforms.append("xingtu")
-    if "抖音" in text:
-        platforms.append("douyin")
-    if "腾讯互选" in text or "视频号" in text or "互选" in text:
-        platforms.append("huxuan")
-    if not platforms:
-        platforms = ["pgy"]
-    platforms = dedupe(platforms)
 
-    forms = []
-    if "图文" in text:
-        forms.append("报备图文")
-    if "视频" in text:
-        forms.append("报备视频")
-    preferred_form = "视频" if "优先视频" in text else (forms[0] if forms else "按 brief 确认")
+def starts_with_brief_label(line: str) -> bool:
+    clean = clean_brief_line(line)
+    if not clean:
+        return False
+    if re.match(r"Brief[：:]", clean, re.I):
+        return True
+    if re.match(r"^【[^】]+】", clean):
+        return True
+    return any(clean == label or clean.startswith(f"{label}：") or clean.startswith(f"{label}:") for label in BRIEF_TOP_LABELS)
 
-    total_budget = 0
-    budget_match = re.search(r"(?:总预算|预算)[^0-9一二三四五六七八九十]*(\d+(?:\.\d+)?\s*(?:w|万|k|千)?)", compact, re.I)
-    if budget_match:
-        total_budget = parse_money(budget_match.group(1))
 
-    budget_min = 0
-    budget_max = 0
-    single_match = re.search(
-        r"单个预算[^0-9]*(\d+(?:\.\d+)?(?:w|万|k|千)?)(?:-|－|—|~|到|至)(\d+(?:\.\d+)?(?:w|万|k|千)?)",
-        compact,
+def extract_brief_block(text: str, labels: list[str]) -> str:
+    lines = str(text or "").splitlines()
+    for index, line in enumerate(lines):
+        clean = clean_brief_line(line)
+        for label in labels:
+            patterns = [
+                rf"^【\s*{re.escape(label)}\s*】\s*(.*)$",
+                rf"^{re.escape(label)}\s*[：:]\s*(.*)$",
+                rf"^{re.escape(label)}\s*$",
+            ]
+            match = next((re.match(pattern, clean) for pattern in patterns if re.match(pattern, clean)), None)
+            if not match:
+                continue
+            out: list[str] = []
+            inline = (match.group(1) if match.lastindex else "").strip()
+            if inline:
+                out.append(inline)
+            for next_line in lines[index + 1 :]:
+                if not next_line.strip():
+                    continue
+                if starts_with_brief_label(next_line):
+                    break
+                out.append(next_line.strip())
+            return "\n".join(out).strip()
+    return ""
+
+
+def extract_brief_line(text: str, labels: list[str]) -> str:
+    block = extract_brief_block(text, labels)
+    return block.splitlines()[0].strip() if block else ""
+
+
+def parse_money_range_text(text: str) -> tuple[int, int] | None:
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*(w|万|k|千)?\s*(?:-|－|—|~|～|到|至)\s*(\d+(?:\.\d+)?)\s*(w|万|k|千)?",
+        text,
         re.I,
     )
-    if single_match:
-        budget_min = parse_money(single_match.group(1))
-        budget_max = parse_money(single_match.group(2))
+    if match:
+        unit = match.group(4) or match.group(2) or ""
+        return parse_money(match.group(1) + (match.group(2) or unit)), parse_money(match.group(3) + unit)
+    single = re.search(r"(\d+(?:\.\d+)?)\s*(w|万|k|千)?", text, re.I)
+    if single:
+        return 0, parse_money(single.group(1) + (single.group(2) or ""))
+    return None
 
-    report_count_min = 0
-    count_match = re.search(r"(?:提报数量|数量)[^0-9]*(?:不低于|不少于|至少|>=|＞=|≥)?(\d+)个?", compact)
-    if not count_match:
-        count_match = re.search(r"(?:不低于|不少于|至少|>=|＞=|≥)(\d+)个", compact)
-    if count_match:
-        report_count_min = int(count_match.group(1))
 
-    rebate_min_pct = 0.0
-    rebate_match = re.search(r"返点[^0-9]*(?:不低于|不少于|至少|>=|＞=|≥)?(\d+(?:\.\d+)?)%", compact)
-    if rebate_match:
-        rebate_min_pct = float(rebate_match.group(1))
+def parse_money_range_for_labels(text: str, labels: list[str]) -> tuple[int, int] | None:
+    for label in labels:
+        block = extract_brief_block(text, [label])
+        if not block:
+            continue
+        parsed = parse_money_range_text(block)
+        if parsed:
+            return parsed
+    return None
 
-    creator_block = pick_between(text, ["达人类型：", "达人类型:", "达人类型"], ["TA：", "TA:", "【数据要求】", "数据要求"])
-    creator_block_no_note = re.sub(r"（.*?）|\(.*?\)", "", creator_block)
-    creator_types = dedupe(
-        [part for part in re.split(r"[、,，/；;]+", creator_block_no_note) if "需要" not in part and "标签" not in part]
-    )
+
+def parse_percent_for_labels(text: str, labels: list[str]) -> float:
+    for label in labels:
+        block = extract_brief_block(text, [label])
+        if not block:
+            continue
+        match = re.search(r"(\d+(?:\.\d+)?)\s*%", block)
+        if match:
+            return float(match.group(1))
+    return 0.0
+
+
+def split_brief_parts(value: str) -> list[str]:
+    parts = []
+    for item in re.split(r"[、,，/；;\n|]+", str(value or "")):
+        clean = clean_brief_line(item).strip().rstrip("等").strip()
+        if clean:
+            parts.append(clean)
+    return dedupe(parts)
+
+
+def parse_report_count(text: str) -> int:
+    block = extract_brief_block(text, ["计划推广数量", "推广数量", "投放数量", "提报数量", "推荐数量"])
+    if block:
+        match = re.search(r"(?:共投放|不低于|不少于|至少)?\s*(\d+)\s*(?:位|个|名|人)?", block)
+        if match:
+            return int(match.group(1))
+    compact = re.sub(r"\s+", "", text)
+    match = re.search(r"(?:计划推广数量|推广数量|投放数量|提报数量|推荐数量)[^0-9]*(?:共投放|不低于|不少于|至少)?(\d+)(?:位|个|名|人)?", compact)
+    return int(match.group(1)) if match else 0
+
+
+def extract_creator_details(text: str) -> tuple[list[str], list[dict[str, Any]]]:
+    block = extract_brief_block(text, ["博主类型", "达人类型", "账号类型", "KOL类型"])
+    creator_types: list[str] = []
+    details: list[dict[str, Any]] = []
+    if block:
+        for raw_line in block.splitlines():
+            line = clean_brief_line(raw_line)
+            no_note = re.sub(r"（.*?）|\(.*?\)", "", line).strip()
+            colon_match = re.match(r"^((?:P\d+\s*)?[^：:]{2,28}?(?:类|博主|达人|KOL))\s*[：:]\s*(.+)$", no_note, re.I)
+            if colon_match:
+                category = colon_match.group(1).strip()
+                examples = split_brief_parts(colon_match.group(2))
+                creator_types.append(category)
+                details.append({"category": category, "examples": examples})
+                continue
+            for part in split_brief_parts(no_note):
+                if not re.search(r"需要|标签|TA|预算|CPM|CPE", part):
+                    creator_types.append(part)
     if not creator_types:
-        if "美食" in text:
-            creator_types.extend(["美食种草类", "美食开箱测评类"])
-        if "数码" in text:
-            creator_types.append("数码测评类")
-        if "母婴" in text:
-            creator_types.append("母婴种草类")
+        fallbacks = [
+            (r"种草", "种草类"),
+            (r"时尚|穿搭|优衣库", "时尚类"),
+            (r"设计|绘画|手工|拼豆", "设计类"),
+            (r"美食|零食|坚果", "美食种草类"),
+            (r"开箱|测评", "开箱测评类"),
+            (r"数码|科技|AI|电脑", "数码测评类"),
+            (r"母婴|育儿|宝妈", "母婴种草类"),
+        ]
+        for pattern, label in fallbacks:
+            if re.search(pattern, text):
+                creator_types.append(label)
+    return dedupe(creator_types)[:12], details
 
+
+def extract_required_audience_tags(text: str) -> list[str]:
     possible_tags = [
         "上班族",
         "学生党",
+        "学生",
+        "毕业学生",
         "养生党",
         "精致妈妈",
         "宝妈",
@@ -704,8 +811,137 @@ def analyze_brief(brief: str) -> dict[str, Any]:
         "健身党",
         "成分党",
         "数码党",
+        "宠物",
+        "家庭内容",
+        "乐迷",
+        "情侣",
+        "有梗",
     ]
-    required_audience_tags = [tag for tag in possible_tags if tag in text]
+    context = "\n".join(
+        filter(
+            None,
+            [
+                extract_brief_block(text, ["必须覆盖标签"]),
+                extract_brief_block(text, ["达人类型", "博主类型"]),
+                extract_brief_block(text, ["提报要求"]),
+                extract_brief_block(text, ["量级数量&单个预算"]),
+            ],
+        )
+    )
+    if not REQUIRED_TAG_CONTEXT.search(context):
+        return []
+    return [tag for tag in possible_tags if tag in context]
+
+
+def extract_content_angles(text: str) -> tuple[list[str], str]:
+    block = extract_brief_block(text, ["与上一轮投放的关联", "内容切入标签", "内容偏好", "人设标签"])
+    if not block:
+        return [], ""
+    normalized = block.replace("（毕业）学生", "毕业学生").replace("“", "").replace("”", "")
+    known = ["宠物", "家庭内容", "毕业学生", "学生", "乐迷", "情侣", "有梗", "新鲜事物", "购物分享", "开箱测评", "好物推荐", "穿搭", "绘画", "手工", "拼豆", "裸辞创业者"]
+    found = [tag for tag in known if tag in normalized]
+    for part in split_brief_parts(normalized):
+        clean = re.sub(r"^达人本身", "", part).strip()
+        clean = re.sub(r"^(拥有|愿意表达)", "", clean).strip()
+        if 1 < len(clean) <= 12 and not re.search(r"关联|切入|制作衣服|元素", clean):
+            if any(clean != tag and tag in clean for tag in found):
+                continue
+            found.append(clean)
+    found = dedupe(found)
+    if "毕业学生" in found:
+        found = [item for item in found if item != "学生"]
+    return found[:12], block
+
+
+def extract_account_distribution(text: str) -> list[str]:
+    block = extract_brief_block(text, ["各赛道账号分布", "账号分布", "粉丝量级", "量级数量"])
+    source = block or text
+    rows: list[str] = []
+    for raw_line in source.splitlines():
+        line = clean_brief_line(raw_line)
+        match = re.match(r"^(.{2,24}?)(\d+(?:\.\d+)?)%\s*[（(]?([^）)]*)[）)]?", line)
+        if match:
+            label = match.group(1).strip()
+            ratio = float(match.group(2))
+            ratio_text = f"{ratio:g}%"
+            followers = match.group(3).strip()
+            rows.append(f"{label}{ratio_text}{f'（{followers}）' if followers else ''}")
+    out: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        if row not in seen:
+            seen.add(row)
+            out.append(row)
+    return out
+
+
+def analyze_brief(brief: str) -> dict[str, Any]:
+    text = brief.strip()
+    compact = re.sub(r"\s+", "", text)
+
+    brand = ""
+    brand = extract_brief_line(text, ["品牌"])
+    if not brand:
+        brand = "未命名品牌"
+
+    background = extract_brief_block(text, ["背景&档期", "背景"])
+    launch_window = ""
+    launch_window = extract_brief_line(text, ["推广时间", "档期"])
+    window_match = re.search(r"(五月底到6月底前|5月底到6月底前|6月左右|\d+月\d+日\s*(?:-|－|—|~|～|到|至)\s*\d+月\d+日|[一二三四五六七八九十0-9]+月底?[到至\\-][一二三四五六七八九十0-9]+月底?前?)", text)
+    if window_match:
+        launch_window = window_match.group(1)
+
+    cooperation_platform = extract_brief_line(text, ["合作平台", "推广平台"])
+    cooperation_form = extract_brief_line(text, ["合作形式", "内容形式"])
+    content_form = extract_brief_line(text, ["内容形式"]) or cooperation_form
+    requirement_line = extract_brief_block(text, ["提报要求"])
+    core_requirements = extract_brief_block(text, ["核心要求"])
+    other_requirements = extract_brief_block(text, ["其他要求"])
+    content_angles, content_angle_note = extract_content_angles(text)
+    account_distribution = extract_account_distribution(text)
+
+    platforms: list[str] = []
+    platform_source = cooperation_platform or text
+    if "小红书" in platform_source or "蒲公英" in platform_source:
+        platforms.append("pgy")
+    if "星图" in platform_source or "巨量" in platform_source:
+        platforms.append("xingtu")
+    if "抖音" in platform_source:
+        platforms.append("douyin")
+    if "腾讯互选" in platform_source or "视频号" in platform_source or "互选" in platform_source:
+        platforms.append("huxuan")
+    if not platforms:
+        platforms = ["pgy"]
+    platforms = dedupe(platforms)
+
+    forms = []
+    form_source = content_form or text
+    if "不限" in form_source:
+        forms.append("不限")
+    if "图文" in form_source:
+        forms.append("报备图文" if "报备图文" in form_source else "图文")
+    if "视频" in form_source and "视频号" not in form_source:
+        forms.append("报备视频" if "报备视频" in form_source else "视频")
+    if "口播" in form_source:
+        forms.append("口播")
+    if "植入" in form_source:
+        forms.append("植入")
+    preferred_form = "视频优先" if re.search(r"优先视频|视频合作", text) else ("不限" if "不限" in form_source else (forms[0] if forms else "按 brief 确认"))
+
+    total_budget_range = parse_money_range_for_labels(text, ["总预算", "项目预算", "预算总额", "整体预算"])
+    total_budget = total_budget_range[1] if total_budget_range else 0
+    single_budget_range = parse_money_range_for_labels(text, ["单个预算", "单博主预算", "单人预算", "单个达人预算", "单账号预算", "单博主报价"])
+    budget_min = single_budget_range[0] if single_budget_range else 0
+    budget_max = single_budget_range[1] if single_budget_range else 0
+
+    report_count_min = parse_report_count(text)
+
+    rebate_min_pct = 0.0
+    if re.search(r"返点|返佣|佣金", text):
+        rebate_min_pct = parse_percent_for_labels(text, ["返点", "返佣", "佣金", "提报要求"])
+
+    creator_types, creator_type_details = extract_creator_details(text)
+    required_audience_tags = extract_required_audience_tags(text)
 
     ta = ""
     ta_match = re.search(r"TA[：:]\s*([^\n【]+)", text)
@@ -728,10 +964,15 @@ def analyze_brief(brief: str) -> dict[str, Any]:
     keywords = []
     keywords.extend(creator_types)
     keywords.extend(required_audience_tags)
+    keywords.extend(content_angles)
     if brand and brand != "未命名品牌":
         keywords.append(brand)
     if "美食" in text:
         keywords.extend(["美食", "零食", "坚果", "开箱", "测评", "办公室零食", "早餐", "轻食", "养生"])
+    if re.search(r"时尚|穿搭|优衣库", text):
+        keywords.extend(["时尚", "穿搭", "新鲜事物体验"])
+    if re.search(r"设计|绘画|手工|拼豆", text):
+        keywords.extend(["设计", "绘画", "手工", "拼豆"])
     if "新品" in text:
         keywords.append("新品")
     if "视频" in text:
@@ -741,13 +982,15 @@ def analyze_brief(brief: str) -> dict[str, Any]:
     hard_requirements = []
     if report_count_min:
         hard_requirements.append(f"提报数量不低于 {report_count_min} 个")
+    if account_distribution:
+        hard_requirements.append("粉丝量级分布：" + "、".join(account_distribution))
     if required_audience_tags:
         hard_requirements.append("必须覆盖标签：" + "、".join(required_audience_tags))
     if cpm_max is not None:
         hard_requirements.append(f"CPM < {cpm_max:g}")
     if cpe_max is not None:
         hard_requirements.append(f"CPE < {cpe_max:g}")
-    if preferred_form == "视频":
+    if preferred_form == "视频优先":
         hard_requirements.append("优先视频合作")
 
     budget_risk = ""
@@ -760,23 +1003,35 @@ def analyze_brief(brief: str) -> dict[str, Any]:
             )
         else:
             budget_risk = "数量和单价按最低值测算可以进入总预算。"
+    elif not total_budget:
+        budget_risk = "brief 未写明总预算，只能按单博主预算筛选。"
 
     return {
         "brand": brand,
         "background": background,
         "launchWindow": launch_window,
+        "cooperationPlatform": cooperation_platform,
         "platforms": platforms,
-        "platformStrategy": "首版仅跑小红书蒲公英，其他平台保留底层适配器入口。" if platforms == ["pgy"] else "本地首版优先蒲公英；其他平台任务暂不自动运行。",
+        "platformStrategy": "首版仅跑小红书蒲公英，其他平台保留底层适配器入口。" if platforms == ["pgy"] else "按 brief 保留多平台需求；本地首版优先蒲公英，视频号/星图暂作同步或人工补充。",
         "forms": forms or ["待确认"],
         "preferredForm": preferred_form,
         "totalBudget": total_budget,
         "budgetMin": budget_min,
         "budgetMax": budget_max,
         "reportCountMin": report_count_min,
-        "recommendationTarget": 10,
+        "targetCount": report_count_min,
+        "recommendationTarget": report_count_min or 10,
         "rebateMinPct": rebate_min_pct,
         "creatorTypes": creator_types,
+        "creatorTypeDetails": creator_type_details,
         "requiredAudienceTags": required_audience_tags,
+        "contentAngles": content_angles,
+        "contentAngleNote": content_angle_note,
+        "accountDistribution": account_distribution,
+        "coreRequirements": core_requirements,
+        "otherRequirements": other_requirements,
+        "syncRequirement": other_requirements if re.search(r"同步|分发", other_requirements) else "",
+        "contentQualityRequirement": content_form if re.search(r"好看|好玩|精致|有趣|创意", content_form) else "",
         "ta": ta,
         "metrics": {"cpmMax": cpm_max, "cpeMax": cpe_max},
         "linkRequired": link_required,
@@ -785,6 +1040,12 @@ def analyze_brief(brief: str) -> dict[str, Any]:
         "budgetRisk": budget_risk,
         "version": "local-rules-0.1",
     }
+
+
+def planned_collection_target(analysis: dict[str, Any], default: int = 30) -> int:
+    requested = int(analysis.get("reportCountMin") or analysis.get("targetCount") or analysis.get("recommendationTarget") or default)
+    requested = max(1, requested)
+    return requested + max(10, math.ceil(requested * 0.3))
 
 
 def insert_ai_log(conn: sqlite3.Connection, project_id: str, action: str, request: Any, response: Any) -> None:
@@ -1349,7 +1610,7 @@ async def create_collection_tasks(project_id: str) -> dict[str, Any]:
             raise HTTPException(status_code=404, detail="项目不存在")
         analysis = jload(project["analysis_json"], {})
         platforms = analysis.get("platforms") or ["pgy"]
-        target = max(200, int(analysis.get("reportCountMin") or 0) * 8 or 200)
+        target = planned_collection_target(analysis)
         conn.execute("delete from collection_tasks where project_id=?", (project_id,))
         for platform in platforms:
             status = "queued" if platform == "pgy" else "paused"
@@ -1843,15 +2104,16 @@ def insert_candidate_row(conn: sqlite3.Connection, project_id: str, row: dict[st
 
 
 @app.post("/api/projects/{project_id}/collect")
-async def run_local_collection(project_id: str, target_count: int = Query(200, ge=1, le=1000)) -> dict[str, Any]:
+async def run_local_collection(project_id: str, target_count: int = Query(0, ge=0, le=1000)) -> dict[str, Any]:
     with db() as conn:
         analysis = get_project_analysis(conn, project_id)
         task = conn.execute(
             "select * from collection_tasks where project_id=? and platform='pgy'",
             (project_id,),
         ).fetchone()
+        requested_target = target_count or planned_collection_target(analysis)
         if not task:
-            target = max(200, target_count)
+            target = requested_target
             conn.execute(
                 """
                 insert into collection_tasks(id,project_id,platform,status,target_count,collected_count,error,created_at,updated_at)
@@ -1860,7 +2122,7 @@ async def run_local_collection(project_id: str, target_count: int = Query(200, g
                 (make_id("task"), project_id, "pgy", "queued", target, 0, "", now(), now()),
             )
         else:
-            target = max(int(task["target_count"]), target_count)
+            target = max(int(task["target_count"]), requested_target)
 
         conn.execute("update collection_tasks set status='running', target_count=?, updated_at=? where project_id=? and platform='pgy'", (target, now(), project_id))
         clear_project_selection(conn, project_id)
@@ -1940,7 +2202,7 @@ async def collector_ingest(req: CollectorIngest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="未知平台")
     with db() as conn:
         analysis = get_project_analysis(conn, req.project_id)
-        target = max(50, int(analysis.get("reportCountMin") or 0) * 2 or 50)
+        target = planned_collection_target(analysis)
         if not req.rows:
             task = upsert_collection_task(conn, req.project_id, req.platform, "error", target, 0, "采集器没有从当前蒲公英页面识别到达人")
             return {"ingested": 0, "task": dict(task)}

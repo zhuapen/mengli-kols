@@ -1445,9 +1445,13 @@ tbody tr:hover{
             <div class="form-field"><label>单个预算上限</label><input id="confirmBudgetMax" type="number" placeholder="例如 10000"></div>
             <div class="form-field"><label>CPM 上限</label><input id="confirmCpm" type="number" step="0.1" placeholder="例如 70"></div>
             <div class="form-field"><label>CPE 上限</label><input id="confirmCpe" type="number" step="0.1" placeholder="例如 8"></div>
-            <div class="form-field full"><label>达人类型</label><input id="confirmCreatorTypes" placeholder="美食种草类、美食开箱测评类"></div>
-            <div class="form-field full"><label>必须覆盖标签</label><input id="confirmAudienceTags" placeholder="上班族、学生党、养生党、精致妈妈"></div>
-            <div class="form-field full"><label>合作形式</label><input id="confirmForms" placeholder="报备图文、报备视频，优先视频"></div>
+            <div class="form-field full"><label>达人类型 / 赛道</label><input id="confirmCreatorTypes" placeholder="P0种草类、P1时尚类、P1设计类"></div>
+            <div class="form-field full"><label>必须覆盖标签</label><input id="confirmAudienceTags" placeholder="仅填写 brief 明确要求每类都要覆盖的标签"></div>
+            <div class="form-field full"><label>粉丝量级分布</label><input id="confirmAccountDistribution" placeholder="中腰部10%（10万粉以上）、初级40%（5-10万粉）、微型50%（1-5万粉）"></div>
+            <div class="form-field full"><label>内容切入标签 / 偏好</label><input id="confirmContentAngles" placeholder="宠物、家庭内容、毕业学生、乐迷、情侣、有梗"></div>
+            <div class="form-field full"><label>合作形式</label><input id="confirmForms" placeholder="不限、图文、视频、报备图文、报备视频"></div>
+            <div class="form-field full"><label>核心要求</label><textarea id="confirmCoreRequirements" placeholder="种草力、粉丝信任、带货转化、内容风格等关键判断"></textarea></div>
+            <div class="form-field full"><label>同步 / 其他要求</label><textarea id="confirmOtherRequirements" placeholder="免费同步分发其他平台、付款口径、特殊提报要求等"></textarea></div>
             <div class="form-field full"><label>需求信息</label><label class="check-row"><input id="confirmLinkRequired" type="checkbox"> brief 提到需要配合站内产品链接挂链</label></div>
           </div>
 
@@ -2676,7 +2680,11 @@ function renderRequirementForm(){
   setValue('confirmCpe', a.metrics?.cpeMax || '');
   setValue('confirmCreatorTypes', (a.creatorTypes || []).join('、'));
   setValue('confirmAudienceTags', (a.requiredAudienceTags || []).join('、'));
+  setValue('confirmAccountDistribution', (a.accountDistribution || []).join('、'));
+  setValue('confirmContentAngles', (a.contentAngles || []).join('、'));
   setValue('confirmForms', (a.forms || []).join('、'));
+  setValue('confirmCoreRequirements', a.coreRequirements || '');
+  setValue('confirmOtherRequirements', [...new Set([a.syncRequirement, a.otherRequirements].filter(Boolean))].join('\n'));
   const link = document.getElementById('confirmLinkRequired');
   if(link) link.checked = !!a.linkRequired;
   const status = document.getElementById('analysisStatus');
@@ -2705,7 +2713,12 @@ function saveConfirmedAnalysis(){
     rebateMinPct: getNumber('confirmRebate') || 0,
     creatorTypes: splitTags(getValue('confirmCreatorTypes')),
     requiredAudienceTags: splitTags(getValue('confirmAudienceTags')),
+    accountDistribution: splitTags(getValue('confirmAccountDistribution')),
+    contentAngles: splitTags(getValue('confirmContentAngles')),
     forms: splitTags(getValue('confirmForms')),
+    coreRequirements: getValue('confirmCoreRequirements'),
+    otherRequirements: getValue('confirmOtherRequirements'),
+    syncRequirement: /同步|分发/.test(getValue('confirmOtherRequirements')) ? getValue('confirmOtherRequirements') : base.syncRequirement || '',
     metrics: {
       ...(base.metrics || {}),
       cpmMax: getNumber('confirmCpm') || 0,
@@ -2717,6 +2730,8 @@ function saveConfirmedAnalysis(){
   if(!next.platforms.includes('pgy')) next.platforms = ['pgy'];
   next.hardRequirements = [];
   if(next.reportCountMin) next.hardRequirements.push(`推荐数量 ${next.reportCountMin} 个`);
+  if(next.accountDistribution?.length) next.hardRequirements.push(`粉丝量级分布：${next.accountDistribution.join('、')}`);
+  if(next.requiredAudienceTags?.length) next.hardRequirements.push(`必须覆盖标签：${next.requiredAudienceTags.join('、')}`);
   if(next.metrics.cpmMax) next.hardRequirements.push(`CPM < ${next.metrics.cpmMax}`);
   if(next.metrics.cpeMax) next.hardRequirements.push(`CPE < ${next.metrics.cpeMax}`);
   project.brand = next.brand;
@@ -2799,10 +2814,62 @@ async function analyzeBrief(){
   if(btn){ btn.disabled = false; btn.textContent = 'AI 拆解需求'; }
 }
 
+const BRIEF_TOP_LABELS = [
+  '品牌','背景&档期','背景','档期','推广时间','合作平台','推广平台','合作形式','内容形式',
+  '博主类型','达人类型','账号类型','KOL类型','核心要求','与上一轮投放的关联',
+  '计划推广数量','推广数量','投放数量','提报数量','推荐数量','各赛道账号分布','账号分布','粉丝量级',
+  '其他要求','提报要求','量级数量&单个预算','单个预算','单博主预算','单人预算','总预算','项目预算','预算总额',
+  '数据要求','TA','Brief'
+];
+const REQUIRED_TAG_CONTEXT = /必须覆盖|每个标签都需要|每个标签都要|都需要合作|需要有[^。\n]*标签|每类都要/;
+
+function cleanBriefLinePrefix(line){
+  return String(line || '')
+    .trim()
+    .replace(/^[\s\-•*·]+/, '')
+    .replace(/^[0-9]+[、.)）]\s*/, '')
+    .replace(/^[❗️!！]+/, '')
+    .trim();
+}
+
+function startsWithBriefLabel(line){
+  const clean = cleanBriefLinePrefix(line);
+  if(!clean) return false;
+  if(/^Brief[：:]/i.test(clean)) return true;
+  if(/^【[^】]+】/.test(clean)) return true;
+  return BRIEF_TOP_LABELS.some(label => clean === label || clean.startsWith(`${label}：`) || clean.startsWith(`${label}:`));
+}
+
+function extractBriefBlock(text, labels){
+  const lines = String(text || '').split(/\r?\n/);
+  for(let i=0;i<lines.length;i++){
+    const clean = cleanBriefLinePrefix(lines[i]);
+    for(const label of labels){
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const patterns = [
+        new RegExp(`^【\\s*${escaped}\\s*】\\s*(.*)$`),
+        new RegExp(`^${escaped}\\s*[：:]\\s*(.*)$`),
+        new RegExp(`^${escaped}\\s*$`)
+      ];
+      const matched = patterns.map(pattern => clean.match(pattern)).find(Boolean);
+      if(!matched) continue;
+      const out = [];
+      const inlineValue = (matched[1] || '').trim();
+      if(inlineValue) out.push(inlineValue);
+      for(let j=i+1;j<lines.length;j++){
+        const next = lines[j].trim();
+        if(!next) continue;
+        if(startsWithBriefLabel(next)) break;
+        out.push(next);
+      }
+      return out.join('\n').trim();
+    }
+  }
+  return '';
+}
+
 function extractBriefLine(text, label){
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = text.match(new RegExp(`【${escaped}】([^【\\n]*)|${escaped}[：:]([^\\n]*)`));
-  return (match?.[1] || match?.[2] || '').trim();
+  return (extractBriefBlock(text, [label]).split(/\r?\n/)[0] || '').trim();
 }
 
 function parseMoneyToken(token){
@@ -2815,9 +2882,8 @@ function parseMoneyToken(token){
   return Math.round(num);
 }
 
-function parseMoneyRange(text, label){
-  const line = extractBriefLine(text, label) || text;
-  const range = line.match(/(\d+(?:\.\d+)?)\s*([万wWkK千]?)\s*[-到至~]\s*(\d+(?:\.\d+)?)\s*([万wWkK千]?)/);
+function parseMoneyRangeFromText(line){
+  const range = line.match(/(\d+(?:\.\d+)?)\s*([万wWkK千]?)\s*(?:-|－|—|~|～|到|至)\s*(\d+(?:\.\d+)?)\s*([万wWkK千]?)/);
   if(range){
     const unit = range[4] || range[2];
     return {
@@ -2829,10 +2895,32 @@ function parseMoneyRange(text, label){
   return single ? {min: 0, max: parseMoneyToken(single[1] + single[2])} : null;
 }
 
+function parseMoneyRange(text, label){
+  const line = extractBriefBlock(text, [label]);
+  return line ? parseMoneyRangeFromText(line) : null;
+}
+
+function parseMoneyRangeForLabels(text, labels){
+  for(const label of labels){
+    const range = parseMoneyRange(text, label);
+    if(range) return range;
+  }
+  return null;
+}
+
 function parsePercent(text, label){
-  const line = extractBriefLine(text, label) || text;
+  const line = extractBriefBlock(text, [label]);
+  if(!line) return 0;
   const match = line.match(/(\d+(?:\.\d+)?)\s*%/);
   return match ? Number(match[1]) : 0;
+}
+
+function parsePercentForLabels(text, labels){
+  for(const label of labels){
+    const value = parsePercent(text, label);
+    if(value) return value;
+  }
+  return 0;
 }
 
 function parseMetricLimit(text, key){
@@ -2840,72 +2928,186 @@ function parseMetricLimit(text, key){
   return match ? Number(match[1]) : 0;
 }
 
+function parseReportCount(text, project){
+  const countBlock = extractBriefBlock(text, ['计划推广数量','推广数量','投放数量','提报数量','推荐数量']);
+  const blockMatch = countBlock.match(/(?:共投放|不低于|不少于|至少)?\s*(\d+)\s*(?:位|个|名|人)?/);
+  if(blockMatch) return Number(blockMatch[1]);
+  const compact = String(text || '').replace(/\s+/g, '');
+  const match = compact.match(/(?:计划推广数量|推广数量|投放数量|提报数量|推荐数量)[^0-9]*(?:共投放|不低于|不少于|至少)?(\d+)(?:位|个|名|人)?/);
+  return Number(match?.[1] || project?.targetCount || 8);
+}
+
+function splitBriefParts(value){
+  return String(value || '')
+    .split(/[、,，/；;\n|]+/)
+    .map(item => cleanBriefLinePrefix(item).replace(/等$/,'').trim())
+    .filter(Boolean);
+}
+
+function extractCreatorDetails(text){
+  const block = extractBriefBlock(text, ['博主类型','达人类型','账号类型','KOL类型']);
+  const details = [];
+  const types = [];
+  if(block){
+    const lines = block.split(/\r?\n/).map(cleanBriefLinePrefix).filter(Boolean);
+    lines.forEach(line => {
+      const noNote = line.replace(/（.*?）|\(.*?\)/g, '').trim();
+      const colonMatch = noNote.match(/^((?:P\d+\s*)?[^：:]{2,28}?(?:类|博主|达人|KOL))\s*[：:]\s*(.+)$/i);
+      if(colonMatch){
+        const category = colonMatch[1].trim();
+        const examples = splitBriefParts(colonMatch[2]);
+        types.push(category);
+        details.push({category, examples});
+        return;
+      }
+      splitBriefParts(noNote).forEach(part => {
+        if(!/需要|标签|TA|预算|CPM|CPE/.test(part)) types.push(part);
+      });
+    });
+  }
+  const fallbackMap = [
+    [/种草/, '种草类'],
+    [/时尚|穿搭|优衣库/, '时尚类'],
+    [/设计|绘画|手工|拼豆/, '设计类'],
+    [/美食|零食|坚果/, '美食种草类'],
+    [/开箱|测评/, '开箱测评类'],
+    [/数码|科技|AI|电脑/, '数码测评类'],
+    [/母婴|育儿|宝妈/, '母婴种草类']
+  ];
+  if(!types.length){
+    fallbackMap.forEach(([pattern, label]) => {
+      if(pattern.test(text)) types.push(label);
+    });
+  }
+  return {types:[...new Set(types)].slice(0, 12), details};
+}
+
+function extractRequiredAudienceTags(text){
+  const possibleTags = [
+    '上班族','学生党','学生','毕业学生','养生党','精致妈妈','宝妈','新手妈妈','白领','职场人',
+    '健身党','成分党','数码党','宠物','家庭内容','乐迷','情侣','有梗'
+  ];
+  const context = [
+    extractBriefBlock(text, ['必须覆盖标签']),
+    extractBriefBlock(text, ['达人类型','博主类型']),
+    extractBriefBlock(text, ['提报要求']),
+    extractBriefBlock(text, ['量级数量&单个预算'])
+  ].filter(Boolean).join('\n');
+  if(!REQUIRED_TAG_CONTEXT.test(context)) return [];
+  return possibleTags.filter(tag => context.includes(tag));
+}
+
+function extractContentAngles(text){
+  const block = extractBriefBlock(text, ['与上一轮投放的关联','内容切入标签','内容偏好','人设标签']);
+  const source = block || '';
+  if(!source) return [];
+  const normalized = source.replace(/（毕业）学生/g, '毕业学生').replace(/[“”]/g, '');
+  const known = ['宠物','家庭内容','毕业学生','学生','乐迷','情侣','有梗','新鲜事物','购物分享','开箱测评','好物推荐','穿搭','绘画','手工','拼豆','裸辞创业者'];
+  const fromKnown = known.filter(tag => normalized.includes(tag));
+  const fromSlash = splitBriefParts(normalized)
+    .map(item => item.replace(/^达人本身/, '').replace(/^拥有/, '').replace(/^愿意表达/, '').trim())
+    .filter(item => item.length <= 12 && !/关联|切入|制作衣服|元素/.test(item))
+    .filter(item => !fromKnown.some(tag => item !== tag && item.includes(tag)));
+  const combined = [...new Set([...fromKnown, ...fromSlash])];
+  if(combined.includes('毕业学生')){
+    return combined.filter(item => item !== '学生').slice(0, 12);
+  }
+  return combined.slice(0, 12);
+}
+
+function extractAccountDistribution(text){
+  const block = extractBriefBlock(text, ['各赛道账号分布','账号分布','粉丝量级','量级数量']);
+  const source = block || text;
+  const lines = source.split(/\r?\n/).map(cleanBriefLinePrefix).filter(Boolean);
+  const rows = [];
+  lines.forEach(line => {
+    const match = line.match(/^(.{2,24}?)(\d+(?:\.\d+)?)%\s*[（(]?([^）)]*)[）)]?/);
+    if(match){
+      const label = match[1].trim();
+      const ratio = Number(match[2]);
+      const followers = (match[3] || '').trim();
+      rows.push(`${label}${ratio}%${followers ? `（${followers}）` : ''}`);
+    }
+  });
+  return [...new Set(rows)];
+}
+
 function localAnalyzeBrief(brief, projectOverride){
   const text = String(brief || '');
   const project = projectOverride || getCurrentProject();
   const brand = extractBriefLine(text, '品牌') || project?.brand || '';
   const background = extractBriefLine(text, '背景&档期') || extractBriefLine(text, '背景') || '';
-  const launchWindow = background || (text.match(/(\d+月底?到\d+月底?前?|\d+月左右|五月底到6月底前)/)?.[0] || '');
-  const cooperationPlatform = extractBriefLine(text, '合作平台') || '';
-  const cooperationForm = extractBriefLine(text, '合作形式') || '';
+  const launchWindow = extractBriefLine(text, '推广时间') || extractBriefLine(text, '档期') || background || (text.match(/(\d+月\d+日\s*(?:-|－|—|~|～|到|至)\s*\d+月\d+日|\d+月底?到\d+月底?前?|\d+月左右|五月底到6月底前)/)?.[0] || '');
+  const cooperationPlatform = extractBriefLine(text, '合作平台') || extractBriefLine(text, '推广平台') || '';
+  const cooperationForm = extractBriefLine(text, '合作形式') || extractBriefLine(text, '内容形式') || '';
+  const contentForm = extractBriefLine(text, '内容形式') || cooperationForm;
   const requirementLine = extractBriefLine(text, '提报要求') || '';
+  const coreRequirements = extractBriefBlock(text, ['核心要求']);
+  const contentAngleNote = extractBriefBlock(text, ['与上一轮投放的关联']);
+  const otherRequirements = extractBriefBlock(text, ['其他要求']);
   const dataLine = extractBriefLine(text, '数据要求') || '';
 
   let platforms = [];
-  const hasXhsOnly = /小红书/.test(cooperationPlatform || text) && !/抖音|星图|视频号|互选/.test(cooperationPlatform);
+  const platformSource = cooperationPlatform || text;
+  const hasXhsOnly = /小红书/.test(platformSource) && !/抖音|星图|视频号|互选/.test(platformSource);
   if(hasXhsOnly && /报备|挂链|返点|产品链接|蒲公英/.test(text)) platforms = ['pgy'];
   else {
-    if(/小红书|蒲公英/.test(text)) platforms.push('pgy');
-    if(/站内/.test(text) && !/产品链接/.test(text)) platforms.push('xhs');
-    if(/星图|巨量|抖音/.test(text)) platforms.push('xingtu');
-    if(/腾讯互选|视频号|互选/.test(text)) platforms.push('huxuan');
+    if(/小红书|蒲公英/.test(platformSource)) platforms.push('pgy');
+    if(/站内/.test(platformSource) && !/产品链接/.test(platformSource)) platforms.push('xhs');
+    if(/星图|巨量|抖音/.test(platformSource)) platforms.push('xingtu');
+    if(/腾讯互选|视频号|互选/.test(platformSource)) platforms.push('huxuan');
   }
   if(!platforms.length) platforms = ['pgy'];
   platforms = [...new Set(platforms)];
 
-  const tagBank = ['母婴','育儿','美妆','护肤','测评','开箱','数码','科技','职场','效率','AI','电脑','学生','学生党','上班族','养生党','精致妈妈','美食','种草','零食','坚果','健身','宠物','旅游','知识','科普'];
+  const tagBank = ['母婴','育儿','美妆','护肤','测评','开箱','数码','科技','职场','效率','AI','电脑','学生','学生党','上班族','养生党','精致妈妈','美食','种草','零食','坚果','健身','宠物','家庭内容','乐迷','情侣','有梗','旅游','知识','科普','时尚','穿搭','设计','绘画','手工','拼豆','购物分享','好物推荐','带货转化','新鲜事物'];
   const keywords = [...new Set(tagBank.filter(tag => text.toLowerCase().includes(tag.toLowerCase())))];
   if(!keywords.length) keywords.push('内容相关', '预算匹配');
 
-  const totalBudgetRange = parseMoneyRange(text, '总预算');
-  const singleBudgetRange = parseMoneyRange(text, '单个预算');
-  const totalBudget = totalBudgetRange?.max || project?.totalBudget || 0;
-  const budgetMin = singleBudgetRange?.min || project?.budgetMin || 3000;
-  const budgetMax = singleBudgetRange?.max || project?.budgetMax || 20000;
-
-  const countMatch = text.match(/(?:提报数量|推荐数量|提报).*?(?:不低于|不少于|至少)?\s*(\d+)\s*个|(\d+)\s*[-到至~]\s*(\d+)\s*位|推荐\s*(\d+)/);
-  const targetCount = Number(countMatch?.[1] || countMatch?.[3] || countMatch?.[4] || project?.targetCount || 8);
-  const rebateMinPct = parsePercent(text, '返点') || parsePercent(requirementLine, '返点');
+  const totalBudgetRange = parseMoneyRangeForLabels(text, ['总预算','项目预算','预算总额','整体预算']);
+  const singleBudgetRange = parseMoneyRangeForLabels(text, ['单个预算','单博主预算','单人预算','单个达人预算','单账号预算','单博主报价']);
+  const totalBudget = totalBudgetRange?.max || 0;
+  const budgetMin = singleBudgetRange?.min || 0;
+  const budgetMax = singleBudgetRange?.max || 0;
+  const targetCount = parseReportCount(text, project);
+  const rebateMinPct = /返点|返佣|佣金/.test(text) ? parsePercentForLabels(text, ['返点','返佣','佣金','提报要求']) : 0;
 
   const forms = [];
-  if(/报备图文|图文/.test(text)) forms.push('报备图文');
-  if(/报备视频|视频/.test(text)) forms.push('报备视频');
-  if(/口播/.test(text)) forms.push('口播');
-  if(/植入/.test(text)) forms.push('植入');
-  const preferredForm = /优先视频|视频合作/.test(text) ? '视频优先' : (forms[0] || '待确认');
-  if(!forms.length) forms.push('图文', '视频');
+  const formSource = contentForm || text;
+  if(/不限/.test(formSource)) forms.push('不限');
+  if(/报备图文|图文/.test(formSource)) forms.push(/报备图文/.test(formSource) ? '报备图文' : '图文');
+  if(/报备视频|视频/.test(formSource) && !/视频号/.test(formSource)) forms.push(/报备视频/.test(formSource) ? '报备视频' : '视频');
+  if(/口播/.test(formSource)) forms.push('口播');
+  if(/植入/.test(formSource)) forms.push('植入');
+  const preferredForm = /优先视频|视频合作/.test(text) ? '视频优先' : (/不限/.test(formSource) ? '不限' : (forms[0] || '待确认'));
+  if(!forms.length) forms.push('待确认');
 
-  const creatorTypes = [];
-  if(/美食种草/.test(text)) creatorTypes.push('美食种草类');
-  if(/开箱测评|美食开箱/.test(text)) creatorTypes.push('美食开箱测评类');
-  if(!creatorTypes.length) creatorTypes.push(...keywords.filter(k => !['学生党','上班族','养生党','精致妈妈'].includes(k)).slice(0, 3));
-
-  const requiredAudienceTags = ['上班族','学生党','养生党','精致妈妈'].filter(tag => text.includes(tag));
+  const creatorInfo = extractCreatorDetails(text);
+  const creatorTypes = creatorInfo.types;
+  const requiredAudienceTags = extractRequiredAudienceTags(text);
+  const contentAngles = extractContentAngles(text);
+  const accountDistribution = extractAccountDistribution(text);
   const ta = extractBriefLine(text, 'TA') || (text.match(/TA[：:]?\s*([^\n]+)/)?.[1] || '');
   const cpmMax = parseMetricLimit(text, 'CPM') || parseMetricLimit(dataLine, 'CPM');
   const cpeMax = parseMetricLimit(text, 'CPE') || parseMetricLimit(dataLine, 'CPE');
   const linkRequired = /挂链|产品链接/.test(text);
   const hardRequirements = [];
   if(targetCount) hardRequirements.push(`提报数量不低于 ${targetCount} 个`);
+  if(accountDistribution.length) hardRequirements.push(`粉丝量级分布：${accountDistribution.join('、')}`);
+  if(requiredAudienceTags.length) hardRequirements.push(`必须覆盖标签：${requiredAudienceTags.join('、')}`);
   if(cpmMax) hardRequirements.push(`CPM < ${cpmMax}`);
   if(cpeMax) hardRequirements.push(`CPE < ${cpeMax}`);
 
   const minGrossCost = budgetMin * targetCount;
-  const budgetRisk = totalBudget && minGrossCost > totalBudget ? {
-    level: 'high',
-    message: `按最低单价和提报数量估算至少 ${money(minGrossCost)}，超过总预算 ${money(totalBudget)}。`,
-    minGrossCost
-  } : {level:'ok', message:'预算、单价和提报数量暂未发现硬冲突。', minGrossCost};
+  let budgetRisk = {level:'ok', message:'预算、单价和提报数量暂未发现硬冲突。', minGrossCost};
+  if(!totalBudget) budgetRisk = {level:'info', message:'brief 未写明总预算，只能按单博主预算筛选。', minGrossCost};
+  else if(budgetMin && targetCount && minGrossCost > totalBudget){
+    budgetRisk = {
+      level: 'high',
+      message: `按最低单价和提报数量估算至少 ${money(minGrossCost)}，超过总预算 ${money(totalBudget)}。`,
+      minGrossCost
+    };
+  }
 
   return {
     projectId: currentProjectId,
@@ -2914,8 +3116,8 @@ function localAnalyzeBrief(brief, projectOverride){
     launchWindow,
     cooperationPlatform,
     platforms,
-    platformStrategy: platforms.length === 1 && platforms[0] === 'pgy' ? '仅筛小红书蒲公英，不混入抖音/星图/视频号。' : '按 brief 建议平台混合候选，但每个平台独立采集。',
-    keywords,
+    platformStrategy: platforms.length === 1 && platforms[0] === 'pgy' ? '仅筛小红书蒲公英，不混入抖音/星图/视频号。' : '按 brief 保留多平台需求；本地首版优先小红书蒲公英，视频号/星图暂作同步或人工补充。',
+    keywords: [...new Set([...keywords, ...creatorTypes, ...contentAngles])],
     totalBudget,
     budgetMin,
     budgetMax,
@@ -2925,7 +3127,15 @@ function localAnalyzeBrief(brief, projectOverride){
     forms,
     preferredForm,
     creatorTypes,
+    creatorTypeDetails: creatorInfo.details,
     requiredAudienceTags,
+    contentAngles,
+    contentAngleNote,
+    accountDistribution,
+    coreRequirements,
+    otherRequirements,
+    syncRequirement: /同步|分发/.test(otherRequirements) ? otherRequirements : '',
+    contentQualityRequirement: /好看|好玩|精致|有趣|创意/.test(contentForm) ? contentForm : '',
     ta,
     metrics: {cpmMax, cpeMax},
     linkRequired,
@@ -2938,18 +3148,35 @@ function localAnalyzeBrief(brief, projectOverride){
 }
 
 function normalizeBriefAnalysis(data, brief){
+  data = data || {};
   const local = localAnalyzeBrief(brief);
+  const text = String(brief || '');
+  const keepLocalCreatorTypes = (local.creatorTypes || []).length;
+  const keepLocalRequiredTags = (local.requiredAudienceTags || []).length || !REQUIRED_TAG_CONTEXT.test(text);
+  const safeCreatorTypes = keepLocalCreatorTypes ? local.creatorTypes : (data.creatorTypes || local.creatorTypes);
+  const safeRequiredTags = keepLocalRequiredTags ? local.requiredAudienceTags : (data.requiredAudienceTags || local.requiredAudienceTags);
+  const budgetRisk = typeof data.budgetRisk === 'string'
+    ? {level:'info', message:data.budgetRisk}
+    : (data.budgetRisk || local.budgetRisk);
   const merged = {
     ...local,
     ...data,
     metrics: {...local.metrics, ...(data.metrics || {})},
-    budgetRisk: data.budgetRisk || local.budgetRisk,
+    budgetRisk,
     platforms: (Array.isArray(data.platforms) ? data.platforms : local.platforms).filter(key => PLATFORM_CONFIG[key]) || local.platforms,
-    keywords: data.keywords || local.keywords,
-    hardRequirements: data.hardRequirements || local.hardRequirements,
-    creatorTypes: data.creatorTypes || local.creatorTypes,
-    requiredAudienceTags: data.requiredAudienceTags || local.requiredAudienceTags,
-    forms: data.forms || local.forms,
+    keywords: [...new Set([...(local.keywords || []), ...((data.keywords || []).filter(item => text.includes(item) || (local.keywords || []).includes(item)) || [])])],
+    hardRequirements: local.hardRequirements || data.hardRequirements || [],
+    creatorTypes: safeCreatorTypes,
+    creatorTypeDetails: local.creatorTypeDetails || data.creatorTypeDetails || [],
+    requiredAudienceTags: safeRequiredTags,
+    contentAngles: local.contentAngles || data.contentAngles || [],
+    contentAngleNote: local.contentAngleNote || data.contentAngleNote || '',
+    accountDistribution: local.accountDistribution || data.accountDistribution || [],
+    coreRequirements: local.coreRequirements || data.coreRequirements || '',
+    otherRequirements: local.otherRequirements || data.otherRequirements || '',
+    syncRequirement: local.syncRequirement || data.syncRequirement || '',
+    contentQualityRequirement: local.contentQualityRequirement || data.contentQualityRequirement || '',
+    forms: local.forms || data.forms || [],
     scoringFocus: data.scoringFocus || local.scoringFocus,
     exclusions: data.exclusions || local.exclusions,
     explanation: data.explanation || local.explanation
@@ -2957,12 +3184,12 @@ function normalizeBriefAnalysis(data, brief){
   if(!merged.platforms.length) merged.platforms = local.platforms;
   return {
     ...merged,
-    totalBudget: Number(merged.totalBudget || local.totalBudget || 0),
-    budgetMin: Number(merged.budgetMin || local.budgetMin),
-    budgetMax: Number(merged.budgetMax || local.budgetMax),
+    totalBudget: Number(local.totalBudget || 0),
+    budgetMin: Number(local.budgetMin || merged.budgetMin || 0),
+    budgetMax: Number(local.budgetMax || merged.budgetMax || 0),
     targetCount: Number(merged.targetCount || merged.reportCountMin || local.targetCount),
     reportCountMin: Number(merged.reportCountMin || merged.targetCount || local.reportCountMin),
-    rebateMinPct: Number(merged.rebateMinPct || local.rebateMinPct || 0)
+    rebateMinPct: Number(local.rebateMinPct || 0)
   };
 }
 
@@ -2977,27 +3204,38 @@ function renderBriefAnalysis(){
   ].filter(Boolean).join(' / ') || '未写明';
   const hardRules = (a.hardRequirements || []).map(rule => `<div class="rule-line">${escapeHtml(rule)}</div>`).join('') || '<div class="rule-line">未写明硬性排除项</div>';
   const coverTags = (a.requiredAudienceTags || []).length ? a.requiredAudienceTags.map(escapeHtml).join(' / ') : '未写明';
+  const accountDistribution = (a.accountDistribution || []).length ? a.accountDistribution.map(escapeHtml).join(' / ') : '未写明';
+  const contentAngles = (a.contentAngles || []).length ? a.contentAngles.map(escapeHtml).join(' / ') : '未写明';
+  const coreText = a.coreRequirements || a.contentQualityRequirement || '未写明';
+  const otherText = a.syncRequirement || a.otherRequirements || '未写明';
   el.innerHTML = `
     <div class="analysis-item"><div class="analysis-label">品牌 / 档期</div><div class="analysis-value">${escapeHtml(a.brand || '未写明')}</div><div class="analysis-value small">${escapeHtml(a.launchWindow || '档期待二核')}</div></div>
     <div class="analysis-item"><div class="analysis-label">平台策略</div><div class="analysis-value platform-suggestion">${platformBadges}</div><div class="analysis-value small">${escapeHtml(a.platformStrategy || '')}</div></div>
-    <div class="analysis-item"><div class="analysis-label">预算 / 数量 / 返点</div><div class="analysis-value">总预算 ${a.totalBudget ? money(a.totalBudget) : '未写明'} · 单个 ${money(a.budgetMin)}-${money(a.budgetMax)} · ${a.reportCountMin || a.targetCount} 个</div><div class="analysis-value small">返点不低于 ${a.rebateMinPct || '-'}%</div>${a.budgetRisk ? `<div class="risk-text">${escapeHtml(a.budgetRisk.message)}</div>` : ''}</div>
+    <div class="analysis-item"><div class="analysis-label">预算 / 数量 / 返点</div><div class="analysis-value">总预算 ${a.totalBudget ? money(a.totalBudget) : '未写明'} · 单个 ${a.budgetMin || a.budgetMax ? `${money(a.budgetMin)}-${money(a.budgetMax)}` : '未写明'} · ${a.reportCountMin || a.targetCount} 个</div><div class="analysis-value small">返点要求：${a.rebateMinPct ? `不低于 ${a.rebateMinPct}%` : '未写明'}</div>${a.budgetRisk ? `<div class="risk-text">${escapeHtml(a.budgetRisk.message)}</div>` : ''}</div>
     <div class="analysis-item"><div class="analysis-label">合作形式</div><div class="analysis-value">${(a.forms || []).map(escapeHtml).join(' / ')}</div><div class="analysis-value small">优先：${escapeHtml(a.preferredForm || '待确认')}</div></div>
     <div class="analysis-item"><div class="analysis-label">达人类型</div><div class="analysis-value">${(a.creatorTypes || []).map(escapeHtml).join(' / ') || '未写明'}</div></div>
+    <div class="analysis-item"><div class="analysis-label">粉丝量级分布</div><div class="analysis-value">${accountDistribution}</div></div>
     <div class="analysis-item"><div class="analysis-label">必须覆盖标签</div><div class="analysis-value">${coverTags}</div><div class="analysis-value small">TA：${escapeHtml(a.ta || '未写明')}</div></div>
+    <div class="analysis-item"><div class="analysis-label">内容切入标签</div><div class="analysis-value">${contentAngles}</div><div class="analysis-value small">${escapeHtml(a.contentAngleNote || '')}</div></div>
     <div class="analysis-item"><div class="analysis-label">数据门槛</div><div class="analysis-value">${metricText}</div></div>
-    <div class="analysis-item"><div class="analysis-label">内容关键词</div><div class="analysis-value">${a.keywords.map(escapeHtml).join(' / ')}</div></div>
+    <div class="analysis-item"><div class="analysis-label">内容关键词</div><div class="analysis-value">${(a.keywords || []).map(escapeHtml).join(' / ')}</div></div>
+    <div class="analysis-item full"><div class="analysis-label">核心要求</div><div class="analysis-value small">${escapeHtml(coreText)}</div></div>
+    <div class="analysis-item full"><div class="analysis-label">同步 / 其他要求</div><div class="analysis-value small">${escapeHtml(otherText)}</div></div>
     <div class="analysis-item full"><div class="analysis-label">硬性提报规则</div><div class="rule-list">${hardRules}</div></div>
   `;
 }
 
 function createDefaultTasks(){
+  const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
+  const requested = Number(a.reportCountMin || a.targetCount || 30);
+  const firstRoundTarget = requested + Math.max(10, Math.ceil(requested * 0.3));
   collectionTasks = Object.keys(PLATFORM_CONFIG).map(platform => ({
     id: platform + '-' + currentProjectId,
     projectId: currentProjectId,
     platform,
     status: platform === 'pgy' ? 'queued' : 'paused',
     collected: platform === 'pgy' ? XHS_DATA.length : 0,
-    target: platform === 'pgy' ? 200 : 0,
+    target: platform === 'pgy' ? firstRoundTarget : 0,
     error: ''
   }));
   localStorage.setItem('mengli_collection_tasks', JSON.stringify(collectionTasks));
@@ -3007,13 +3245,15 @@ function createCollectionTasks(showAlert=true){
   const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
   collectionTasks = Object.keys(PLATFORM_CONFIG).map(platform => {
     const enabled = a.platforms.includes(platform);
+    const requested = Number(a.reportCountMin || a.targetCount || 30);
+    const firstRoundTarget = requested + Math.max(10, Math.ceil(requested * 0.3));
     return {
       id: platform + '-' + currentProjectId,
       projectId: currentProjectId,
       platform,
       status: enabled ? (platform === 'pgy' ? 'running' : 'queued') : 'paused',
       collected: enabled ? getRawCandidateCount(platform) : 0,
-      target: enabled ? 200 : 0,
+      target: enabled ? firstRoundTarget : 0,
       error: enabled && platform !== 'pgy' ? '等待采集节点登录态接入' : ''
     };
   });
@@ -3086,7 +3326,9 @@ function refreshTaskStatus(){
 function simulateCollection(){
   const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
   const platforms = a.platforms.length ? a.platforms : ['pgy'];
-  const needed = Math.max(0, 200 - getFilteredRawCandidates(platforms).length);
+  const requested = Number(a.reportCountMin || a.targetCount || 30);
+  const firstRoundTarget = requested + Math.max(10, Math.ceil(requested * 0.3));
+  const needed = Math.max(0, firstRoundTarget - getFilteredRawCandidates(platforms).length);
   const generated = Array.from({length: needed}, (_, index) => makeSyntheticCandidate(platforms[index % platforms.length], index));
   syntheticCandidates = [...syntheticCandidates, ...generated];
   localStorage.setItem('mengli_synthetic_candidates', JSON.stringify(syntheticCandidates));
@@ -4154,7 +4396,8 @@ function candidateMatchesTag(candidate, tag){
 function ensureCollectionForAnalysis(){
   const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
   const platforms = ['pgy'];
-  const targetPool = Math.max(200, Number(a.reportCountMin || a.targetCount || 8) * 8);
+  const requested = Number(a.reportCountMin || a.targetCount || 30);
+  const targetPool = requested + Math.max(10, Math.ceil(requested * 0.3));
   const current = getFilteredRawCandidates(platforms).filter(row => String(row.id || '').includes(currentProjectId)).length;
   const needed = Math.max(0, targetPool - current);
   if(needed){
