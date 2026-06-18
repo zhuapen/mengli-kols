@@ -84,8 +84,13 @@ function normalizeKeywords(task) {
     if (text && !compact.includes(text)) compact.push(text);
   }
   const haystack = compact.join(" ");
+  const explicitFootwear = /拖鞋|鞋履|凉拖|凉鞋|鞋子|鞋款|运动鞋|单鞋|靴/.test(haystack);
   const domainRules = [
-    {test: /拖鞋|鞋履|鞋|凉拖|凉鞋|穿搭|潮流|白领|单品/, terms: ["拖鞋", "鞋履", "穿搭", "潮流穿搭", "家居拖鞋", "夏季拖鞋", "凉拖"]},
+    {test: /拖鞋|鞋履|凉拖|凉鞋|鞋子|鞋款|运动鞋|单鞋|靴/, terms: ["拖鞋", "鞋履", "家居拖鞋", "夏季拖鞋", "凉拖"]},
+    {test: /穿搭|时尚|服装|衣服|优衣库|搭配|OOTD|潮流/, terms: ["时尚穿搭", "穿搭", "精致日常", "购物分享", "好物推荐"]},
+    {test: /设计|绘画|手工|拼豆|定制|创意|裸辞创业/, terms: ["设计", "创意手作", "绘画", "手工", "拼豆"]},
+    {test: /AI|美图|Mitoto|新鲜事物|好看|好玩|体验/, terms: ["AI体验", "新鲜事物体验", "好看好物", "好玩好物"]},
+    {test: /宠物|家庭|学生|毕业|乐迷|情侣|有梗|日常/, terms: ["宠物生活", "家庭日常", "学生日常", "乐迷生活", "情侣日常", "精致日常"]},
     {test: /美食|零食|坚果|早餐|轻食|养生/, terms: ["美食", "零食", "坚果", "养生"]},
     {test: /护肤|美妆|彩妆|防晒|身体护理|头发/, terms: ["护肤", "美妆", "防晒", "身体护理"]},
     {test: /家居|日用|收纳|清洁|好物/, terms: ["家居", "日用", "家居好物", "生活好物"]},
@@ -95,7 +100,13 @@ function normalizeKeywords(task) {
   for (const rule of domainRules) {
     if (rule.test.test(haystack)) domains.push(...rule.terms);
   }
-  const knownTerms = ["拖鞋", "鞋履", "穿搭", "潮流穿搭", "家居拖鞋", "凉拖", "美食", "零食", "坚果", "养生", "护肤", "美妆", "家居", "日用"];
+  const knownTerms = [
+    ...(explicitFootwear ? ["拖鞋", "鞋履", "家居拖鞋", "凉拖"] : []),
+    "时尚穿搭", "穿搭", "精致日常", "购物分享", "好物推荐",
+    "设计", "创意手作", "绘画", "手工", "拼豆",
+    "AI体验", "新鲜事物体验", "宠物生活", "家庭日常", "学生日常", "乐迷生活", "情侣日常",
+    "美食", "零食", "坚果", "养生", "护肤", "美妆", "家居", "日用"
+  ];
   domains.push(...knownTerms.filter(term => compact.some(item => item.includes(term))));
   domains = [...new Set(domains)].slice(0, 8);
   const audiences = [
@@ -103,7 +114,7 @@ function normalizeKeywords(task) {
     ...(haystack.includes("白领") ? ["白领", "通勤"] : []),
     ...(haystack.includes("小镇中年") ? ["小镇中年", "中年"] : [])
   ].map(item => String(item || "").trim()).filter(Boolean);
-  const actions = ["种草", "开箱", "测评", "直推"].filter(term => compact.some(item => item.includes(term)) || haystack.includes(term));
+  const actions = ["种草", "开箱", "测评", "分享", "体验", "推荐", "直推"].filter(term => compact.some(item => item.includes(term)) || haystack.includes(term));
   const combos = [];
   for (const audience of audiences) {
     for (const domain of domains.length ? domains.slice(0, 4) : compact.slice(0, 3)) {
@@ -117,8 +128,16 @@ function normalizeKeywords(task) {
       if (!combos.includes(text)) combos.push(text);
     }
   }
-  for (const text of ["白领穿搭", "通勤穿搭", "小镇中年穿搭", "拖鞋开箱", "拖鞋种草", "鞋履种草", "鞋履开箱", "夏季拖鞋", "家居拖鞋", "潮流穿搭种草", "单品直推", "办公室零食", "早餐轻食", "低脂轻食", "坚果测评", "零食开箱", "美食开箱测评"]) {
-    if (compact.some(item => item.includes(text.slice(0, 2))) && !combos.includes(text)) combos.push(text);
+  const specialCombos = [
+    ...(explicitFootwear ? ["拖鞋开箱", "拖鞋种草", "鞋履种草", "鞋履开箱", "夏季拖鞋", "家居拖鞋"] : []),
+    ...(/穿搭|时尚|服装|衣服|优衣库|搭配|OOTD|潮流/.test(haystack) ? ["时尚穿搭", "穿搭种草", "购物分享", "精致日常", "好物推荐"] : []),
+    ...(/设计|绘画|手工|拼豆|定制|创意|裸辞创业/.test(haystack) ? ["设计博主", "手工博主", "绘画博主", "拼豆手作", "创意手作"] : []),
+    ...(/AI|美图|Mitoto|新鲜事物|好看|好玩|体验/.test(haystack) ? ["AI体验", "AI修图", "美图体验", "新鲜事物体验", "好看好物", "好玩好物"] : []),
+    ...(/宠物|家庭|学生|毕业|乐迷|情侣|有梗|日常/.test(haystack) ? ["宠物生活", "家庭日常", "学生日常", "乐迷日常", "情侣日常", "有梗生活"] : []),
+    ...(/美食|零食|坚果|早餐|轻食|养生/.test(haystack) ? ["办公室零食", "早餐轻食", "低脂轻食", "坚果测评", "零食开箱", "美食开箱测评"] : []),
+  ];
+  for (const text of specialCombos) {
+    if (!combos.includes(text)) combos.push(text);
   }
   const merged = [...combos, ...compact];
   return merged.slice(0, 24).length ? merged.slice(0, 24) : ["美食种草", "美食开箱测评", "坚果", "零食"];
