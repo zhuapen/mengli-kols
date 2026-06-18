@@ -1420,7 +1420,7 @@ tbody tr:hover{
             </div>
             <button class="ghost-btn" onclick="openProjectManagementView()">返回项目</button>
           </div>
-          <textarea class="brief-textarea" id="briefInput" placeholder="粘贴完整 brief，例如：品牌、背景档期、合作平台、合作形式、总预算、提报要求、单个预算、达人类型、TA、CPM/CPE。"></textarea>
+          <textarea class="brief-textarea" id="briefInput" placeholder="粘贴完整 brief，系统会提取品牌、平台、数量、单个预算、合作形式、达人类型/标签、粉丝量级、内容偏好、CPM/CPE 等条件。"></textarea>
           <div class="brief-actions">
             <button class="primary-btn" id="briefAnalyzeBtn" onclick="analyzeBrief()">AI 拆解需求</button>
             <button class="ghost-btn" onclick="loadDemoBrief()">填入沃隆 brief</button>
@@ -1439,19 +1439,15 @@ tbody tr:hover{
           <div class="form-grid">
             <div class="form-field"><label>品牌</label><input id="confirmBrand" placeholder="品牌名称"></div>
             <div class="form-field"><label>推荐数量</label><input id="confirmTargetCount" type="number" min="1" max="80" placeholder="例如 25"></div>
-            <div class="form-field"><label>总预算</label><input id="confirmTotalBudget" type="number" placeholder="例如 100000"></div>
-            <div class="form-field"><label>返点要求 %</label><input id="confirmRebate" type="number" step="0.1" placeholder="例如 22"></div>
             <div class="form-field"><label>单个预算下限</label><input id="confirmBudgetMin" type="number" placeholder="例如 5000"></div>
             <div class="form-field"><label>单个预算上限</label><input id="confirmBudgetMax" type="number" placeholder="例如 10000"></div>
-            <div class="form-field"><label>CPM 上限</label><input id="confirmCpm" type="number" step="0.1" placeholder="例如 70"></div>
-            <div class="form-field"><label>CPE 上限</label><input id="confirmCpe" type="number" step="0.1" placeholder="例如 8"></div>
-            <div class="form-field full"><label>达人类型 / 赛道</label><input id="confirmCreatorTypes" placeholder="P0种草类、P1时尚类、P1设计类"></div>
-            <div class="form-field full"><label>必须覆盖标签</label><input id="confirmAudienceTags" placeholder="仅填写 brief 明确要求每类都要覆盖的标签"></div>
+            <div class="form-field"><label>CPM 上限（选填）</label><input id="confirmCpm" type="number" step="0.1" placeholder="例如 70"></div>
+            <div class="form-field"><label>CPE 上限（选填）</label><input id="confirmCpe" type="number" step="0.1" placeholder="例如 8"></div>
+            <div class="form-field full"><label>合作形式</label><input id="confirmForms" placeholder="视频、图文、图文/视频、不限"></div>
+            <div class="form-field full"><label>达人类型 / 标签要求</label><textarea id="confirmCreatorRequirement" placeholder="例如：P0种草类：精致日常、购物分享、开箱测评；P1时尚类：穿搭、新鲜事物体验。若客户明确每类都要覆盖，也写在这里。"></textarea></div>
             <div class="form-field full"><label>粉丝量级分布</label><input id="confirmAccountDistribution" placeholder="中腰部10%（10万粉以上）、初级40%（5-10万粉）、微型50%（1-5万粉）"></div>
-            <div class="form-field full"><label>内容切入标签 / 偏好</label><input id="confirmContentAngles" placeholder="宠物、家庭内容、毕业学生、乐迷、情侣、有梗"></div>
-            <div class="form-field full"><label>合作形式</label><input id="confirmForms" placeholder="不限、图文、视频、报备图文、报备视频"></div>
-            <div class="form-field full"><label>核心要求</label><textarea id="confirmCoreRequirements" placeholder="种草力、粉丝信任、带货转化、内容风格等关键判断"></textarea></div>
-            <div class="form-field full"><label>同步 / 其他要求</label><textarea id="confirmOtherRequirements" placeholder="免费同步分发其他平台、付款口径、特殊提报要求等"></textarea></div>
+            <div class="form-field full"><label>内容切入标签 / 偏好（选填）</label><input id="confirmContentAngles" placeholder="宠物、家庭内容、毕业学生、乐迷、情侣、有梗"></div>
+            <div class="form-field full"><label>备注 / 其他规则（选填）</label><textarea id="confirmRequirementNote" placeholder="不适合直接作为筛选条件、但媒介复核时需要看的要求，例如内容必须好看/好玩、免费同步其他平台等。"></textarea></div>
             <div class="form-field full"><label>需求信息</label><label class="check-row"><input id="confirmLinkRequired" type="checkbox"> brief 提到需要配合站内产品链接挂链</label></div>
           </div>
 
@@ -2662,6 +2658,76 @@ function splitTags(value){
   return String(value || '').split(/[、,，/；;\n]+/).map(item => item.trim()).filter(Boolean);
 }
 
+function formatCreatorRequirement(a){
+  const details = Array.isArray(a.creatorTypeDetails) ? a.creatorTypeDetails : [];
+  if(details.length){
+    return details.map(item => {
+      const examples = Array.isArray(item.examples) && item.examples.length ? `：${item.examples.join('、')}` : '';
+      return `${item.category || ''}${examples}`;
+    }).filter(Boolean).join('\n');
+  }
+  const parts = [];
+  if((a.creatorTypes || []).length) parts.push((a.creatorTypes || []).join('、'));
+  if((a.requiredAudienceTags || []).length) parts.push(`必须覆盖：${(a.requiredAudienceTags || []).join('、')}`);
+  return parts.join('\n');
+}
+
+function parseCreatorRequirementText(value){
+  const text = String(value || '').trim();
+  const creatorTypes = [];
+  const requiredAudienceTags = [];
+  text.split(/\n+/).forEach(line => {
+    const clean = line.trim();
+    if(!clean) return;
+    const category = clean.match(/^([^：:]{2,32}?(?:类|博主|达人|KOL))\s*[：:]/i)?.[1];
+    if(category) creatorTypes.push(category.trim());
+    else if(/必须|每类|每个|覆盖|需要/.test(clean)) requiredAudienceTags.push(...splitTags(clean.replace(/^.*?[：:]/, '')));
+    else creatorTypes.push(...splitTags(clean));
+  });
+  return {
+    creatorTypes: [...new Set(creatorTypes)].slice(0, 16),
+    requiredAudienceTags: [...new Set(requiredAudienceTags)].slice(0, 16)
+  };
+}
+
+function formatRequirementNote(a){
+  return [...new Set([
+    a.contentQualityRequirement,
+    a.coreRequirements,
+    a.syncRequirement,
+    a.otherRequirements
+  ].filter(Boolean))].join('\n');
+}
+
+function formRequirementMode(a){
+  const formText = `${a?.preferredForm || ''} ${(a?.forms || []).join(' ')}`.trim();
+  if(!formText || /不限|待确认/.test(formText)) return 'any';
+  if(/优先视频|视频合作|报备视频/.test(formText)) return 'video';
+  const hasVideo = /视频/.test(formText);
+  const hasImage = /图文/.test(formText);
+  if(hasVideo && !hasImage) return 'video';
+  if(hasImage && !hasVideo) return 'image';
+  return 'any';
+}
+
+function formQuoteRuleText(a){
+  const mode = formRequirementMode(a);
+  if(mode === 'video') return '视频合作：必须有视频报价才参与推荐';
+  if(mode === 'image') return '图文合作：必须有图文报价才参与推荐';
+  return '形式不限：图文或视频任一报价可参与推荐';
+}
+
+function candidateFormQuote(candidate, a){
+  const mode = formRequirementMode(a);
+  if(candidate.platform === 'pgy'){
+    if(mode === 'video') return {quote:Number(candidate.videoQuote || 0), label:'视频报价', missing:!Number(candidate.videoQuote || 0)};
+    if(mode === 'image') return {quote:Number(candidate.imageQuote || 0), label:'图文报价', missing:!Number(candidate.imageQuote || 0)};
+    const quote = Number(candidate.quote || candidate.videoQuote || candidate.imageQuote || 0);
+    return {quote, label: candidate.videoQuote ? '视频报价' : '图文报价', missing:!quote};
+  }
+  return {quote:Number(candidate.quote || 0), label:'报价', missing:!Number(candidate.quote || 0)};
+}
+
 function renderRequirementForm(){
   const project = getCurrentProject();
   if(!project) return;
@@ -2672,19 +2738,15 @@ function renderRequirementForm(){
   };
   setValue('confirmBrand', a.brand || project.brand || '');
   setValue('confirmTargetCount', a.reportCountMin || a.targetCount || project.targetCount || 8);
-  setValue('confirmTotalBudget', a.totalBudget || '');
-  setValue('confirmRebate', a.rebateMinPct || '');
   setValue('confirmBudgetMin', a.budgetMin || project.budgetMin || '');
   setValue('confirmBudgetMax', a.budgetMax || project.budgetMax || '');
   setValue('confirmCpm', a.metrics?.cpmMax || '');
   setValue('confirmCpe', a.metrics?.cpeMax || '');
-  setValue('confirmCreatorTypes', (a.creatorTypes || []).join('、'));
-  setValue('confirmAudienceTags', (a.requiredAudienceTags || []).join('、'));
+  setValue('confirmForms', (a.forms || []).join('、'));
+  setValue('confirmCreatorRequirement', a.creatorRequirementText || formatCreatorRequirement(a));
   setValue('confirmAccountDistribution', (a.accountDistribution || []).join('、'));
   setValue('confirmContentAngles', (a.contentAngles || []).join('、'));
-  setValue('confirmForms', (a.forms || []).join('、'));
-  setValue('confirmCoreRequirements', a.coreRequirements || '');
-  setValue('confirmOtherRequirements', [...new Set([a.syncRequirement, a.otherRequirements].filter(Boolean))].join('\n'));
+  setValue('confirmRequirementNote', a.requirementNote || formatRequirementNote(a));
   const link = document.getElementById('confirmLinkRequired');
   if(link) link.checked = !!a.linkRequired;
   const status = document.getElementById('analysisStatus');
@@ -2701,24 +2763,28 @@ function saveConfirmedAnalysis(){
   const getValue = id => document.getElementById(id)?.value?.trim() || '';
   const getNumber = id => Number(getValue(id) || 0);
   const platforms = (base.platforms || ['pgy']).filter(key => ['pgy','xingtu','huxuan'].includes(key));
+  const creatorRequirementText = getValue('confirmCreatorRequirement');
+  const parsedCreatorRequirement = parseCreatorRequirementText(creatorRequirementText);
   const next = {
     ...base,
     projectId: currentProjectId,
     brand: getValue('confirmBrand') || base.brand || project.brand || '',
-    totalBudget: getNumber('confirmTotalBudget'),
+    totalBudget: base.totalBudget || 0,
     budgetMin: getNumber('confirmBudgetMin') || base.budgetMin || 0,
     budgetMax: getNumber('confirmBudgetMax') || base.budgetMax || 0,
     targetCount: Math.max(1, getNumber('confirmTargetCount') || base.targetCount || 8),
     reportCountMin: Math.max(1, getNumber('confirmTargetCount') || base.reportCountMin || base.targetCount || 8),
-    rebateMinPct: getNumber('confirmRebate') || 0,
-    creatorTypes: splitTags(getValue('confirmCreatorTypes')),
-    requiredAudienceTags: splitTags(getValue('confirmAudienceTags')),
+    rebateMinPct: base.rebateMinPct || 0,
+    creatorRequirementText,
+    creatorTypes: parsedCreatorRequirement.creatorTypes.length ? parsedCreatorRequirement.creatorTypes : (base.creatorTypes || []),
+    requiredAudienceTags: parsedCreatorRequirement.requiredAudienceTags.length ? parsedCreatorRequirement.requiredAudienceTags : (base.requiredAudienceTags || []),
     accountDistribution: splitTags(getValue('confirmAccountDistribution')),
     contentAngles: splitTags(getValue('confirmContentAngles')),
     forms: splitTags(getValue('confirmForms')),
-    coreRequirements: getValue('confirmCoreRequirements'),
-    otherRequirements: getValue('confirmOtherRequirements'),
-    syncRequirement: /同步|分发/.test(getValue('confirmOtherRequirements')) ? getValue('confirmOtherRequirements') : base.syncRequirement || '',
+    requirementNote: getValue('confirmRequirementNote'),
+    coreRequirements: base.coreRequirements || '',
+    otherRequirements: base.otherRequirements || '',
+    syncRequirement: base.syncRequirement || '',
     metrics: {
       ...(base.metrics || {}),
       cpmMax: getNumber('confirmCpm') || 0,
@@ -3087,6 +3153,10 @@ function localAnalyzeBrief(brief, projectOverride){
   const requiredAudienceTags = extractRequiredAudienceTags(text);
   const contentAngles = extractContentAngles(text);
   const accountDistribution = extractAccountDistribution(text);
+  const creatorRequirementText = creatorInfo.details.length
+    ? creatorInfo.details.map(item => `${item.category}${item.examples?.length ? `：${item.examples.join('、')}` : ''}`).join('\n')
+    : [creatorTypes.join('、'), requiredAudienceTags.length ? `必须覆盖：${requiredAudienceTags.join('、')}` : ''].filter(Boolean).join('\n');
+  const requirementNote = [...new Set([contentForm && /好看|好玩|精致|有趣|创意/.test(contentForm) ? contentForm : '', coreRequirements, otherRequirements].filter(Boolean))].join('\n');
   const ta = extractBriefLine(text, 'TA') || (text.match(/TA[：:]?\s*([^\n]+)/)?.[1] || '');
   const cpmMax = parseMetricLimit(text, 'CPM') || parseMetricLimit(dataLine, 'CPM');
   const cpeMax = parseMetricLimit(text, 'CPE') || parseMetricLimit(dataLine, 'CPE');
@@ -3128,6 +3198,7 @@ function localAnalyzeBrief(brief, projectOverride){
     preferredForm,
     creatorTypes,
     creatorTypeDetails: creatorInfo.details,
+    creatorRequirementText,
     requiredAudienceTags,
     contentAngles,
     contentAngleNote,
@@ -3136,6 +3207,7 @@ function localAnalyzeBrief(brief, projectOverride){
     otherRequirements,
     syncRequirement: /同步|分发/.test(otherRequirements) ? otherRequirements : '',
     contentQualityRequirement: /好看|好玩|精致|有趣|创意/.test(contentForm) ? contentForm : '',
+    requirementNote,
     ta,
     metrics: {cpmMax, cpeMax},
     linkRequired,
@@ -3166,6 +3238,7 @@ function normalizeBriefAnalysis(data, brief){
     platforms: (Array.isArray(data.platforms) ? data.platforms : local.platforms).filter(key => PLATFORM_CONFIG[key]) || local.platforms,
     keywords: [...new Set([...(local.keywords || []), ...((data.keywords || []).filter(item => text.includes(item) || (local.keywords || []).includes(item)) || [])])],
     hardRequirements: local.hardRequirements || data.hardRequirements || [],
+    creatorRequirementText: local.creatorRequirementText || data.creatorRequirementText || '',
     creatorTypes: safeCreatorTypes,
     creatorTypeDetails: local.creatorTypeDetails || data.creatorTypeDetails || [],
     requiredAudienceTags: safeRequiredTags,
@@ -3176,6 +3249,7 @@ function normalizeBriefAnalysis(data, brief){
     otherRequirements: local.otherRequirements || data.otherRequirements || '',
     syncRequirement: local.syncRequirement || data.syncRequirement || '',
     contentQualityRequirement: local.contentQualityRequirement || data.contentQualityRequirement || '',
+    requirementNote: local.requirementNote || data.requirementNote || '',
     forms: local.forms || data.forms || [],
     scoringFocus: data.scoringFocus || local.scoringFocus,
     exclusions: data.exclusions || local.exclusions,
@@ -3203,24 +3277,21 @@ function renderBriefAnalysis(){
     a.metrics?.cpeMax ? `CPE < ${a.metrics.cpeMax}` : ''
   ].filter(Boolean).join(' / ') || '未写明';
   const hardRules = (a.hardRequirements || []).map(rule => `<div class="rule-line">${escapeHtml(rule)}</div>`).join('') || '<div class="rule-line">未写明硬性排除项</div>';
-  const coverTags = (a.requiredAudienceTags || []).length ? a.requiredAudienceTags.map(escapeHtml).join(' / ') : '未写明';
+  const creatorRequirement = a.creatorRequirementText || formatCreatorRequirement(a) || '未写明';
   const accountDistribution = (a.accountDistribution || []).length ? a.accountDistribution.map(escapeHtml).join(' / ') : '未写明';
   const contentAngles = (a.contentAngles || []).length ? a.contentAngles.map(escapeHtml).join(' / ') : '未写明';
-  const coreText = a.coreRequirements || a.contentQualityRequirement || '未写明';
-  const otherText = a.syncRequirement || a.otherRequirements || '未写明';
+  const noteText = a.requirementNote || formatRequirementNote(a) || '未写明';
   el.innerHTML = `
     <div class="analysis-item"><div class="analysis-label">品牌 / 档期</div><div class="analysis-value">${escapeHtml(a.brand || '未写明')}</div><div class="analysis-value small">${escapeHtml(a.launchWindow || '档期待二核')}</div></div>
     <div class="analysis-item"><div class="analysis-label">平台策略</div><div class="analysis-value platform-suggestion">${platformBadges}</div><div class="analysis-value small">${escapeHtml(a.platformStrategy || '')}</div></div>
-    <div class="analysis-item"><div class="analysis-label">预算 / 数量 / 返点</div><div class="analysis-value">总预算 ${a.totalBudget ? money(a.totalBudget) : '未写明'} · 单个 ${a.budgetMin || a.budgetMax ? `${money(a.budgetMin)}-${money(a.budgetMax)}` : '未写明'} · ${a.reportCountMin || a.targetCount} 个</div><div class="analysis-value small">返点要求：${a.rebateMinPct ? `不低于 ${a.rebateMinPct}%` : '未写明'}</div>${a.budgetRisk ? `<div class="risk-text">${escapeHtml(a.budgetRisk.message)}</div>` : ''}</div>
-    <div class="analysis-item"><div class="analysis-label">合作形式</div><div class="analysis-value">${(a.forms || []).map(escapeHtml).join(' / ')}</div><div class="analysis-value small">优先：${escapeHtml(a.preferredForm || '待确认')}</div></div>
-    <div class="analysis-item"><div class="analysis-label">达人类型</div><div class="analysis-value">${(a.creatorTypes || []).map(escapeHtml).join(' / ') || '未写明'}</div></div>
+    <div class="analysis-item"><div class="analysis-label">数量 / 单个预算</div><div class="analysis-value">${a.reportCountMin || a.targetCount || '-'} 个 · ${a.budgetMin || a.budgetMax ? `${money(a.budgetMin)}-${money(a.budgetMax)}` : '未写明'}</div></div>
+    <div class="analysis-item"><div class="analysis-label">合作形式</div><div class="analysis-value">${(a.forms || []).map(escapeHtml).join(' / ')}</div><div class="analysis-value small">${formQuoteRuleText(a)}</div></div>
+    <div class="analysis-item full"><div class="analysis-label">达人类型 / 标签要求</div><div class="analysis-value small">${escapeHtml(creatorRequirement).replace(/\n/g, '<br>')}</div></div>
     <div class="analysis-item"><div class="analysis-label">粉丝量级分布</div><div class="analysis-value">${accountDistribution}</div></div>
-    <div class="analysis-item"><div class="analysis-label">必须覆盖标签</div><div class="analysis-value">${coverTags}</div><div class="analysis-value small">TA：${escapeHtml(a.ta || '未写明')}</div></div>
     <div class="analysis-item"><div class="analysis-label">内容切入标签</div><div class="analysis-value">${contentAngles}</div><div class="analysis-value small">${escapeHtml(a.contentAngleNote || '')}</div></div>
     <div class="analysis-item"><div class="analysis-label">数据门槛</div><div class="analysis-value">${metricText}</div></div>
     <div class="analysis-item"><div class="analysis-label">内容关键词</div><div class="analysis-value">${(a.keywords || []).map(escapeHtml).join(' / ')}</div></div>
-    <div class="analysis-item full"><div class="analysis-label">核心要求</div><div class="analysis-value small">${escapeHtml(coreText)}</div></div>
-    <div class="analysis-item full"><div class="analysis-label">同步 / 其他要求</div><div class="analysis-value small">${escapeHtml(otherText)}</div></div>
+    <div class="analysis-item full"><div class="analysis-label">备注 / 其他规则</div><div class="analysis-value small">${escapeHtml(noteText).replace(/\n/g, '<br>')}</div></div>
     <div class="analysis-item full"><div class="analysis-label">硬性提报规则</div><div class="rule-list">${hardRules}</div></div>
   `;
 }
@@ -3344,8 +3415,8 @@ function simulateCollection(){
 
 function makeSyntheticCandidate(platform, index){
   const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
-  const audienceTags = a.requiredAudienceTags?.length ? a.requiredAudienceTags : ['上班族','学生党','养生党','精致妈妈'];
-  const creatorTypes = a.creatorTypes?.length ? a.creatorTypes : ['美食种草类','美食开箱测评类'];
+  const audienceTags = a.requiredAudienceTags?.length ? a.requiredAudienceTags : (a.contentAngles?.length ? a.contentAngles : ['内容匹配']);
+  const creatorTypes = a.creatorTypes?.length ? a.creatorTypes : ['种草类'];
   const audience = audienceTags[index % audienceTags.length];
   const creatorType = creatorTypes[index % creatorTypes.length].replace('类','');
   const keyword = /美食|零食|坚果/.test((a.keywords || []).join(' ')) ? ['美食','零食','坚果','开箱测评'][index % 4] : (a.keywords[index % a.keywords.length] || '内容');
@@ -3948,14 +4019,13 @@ function normalizeCandidate(row){
   const platform = row.platform || 'pgy';
   const config = PLATFORM_CONFIG[platform] || PLATFORM_CONFIG.pgy;
   const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
-  const preferVideo = /视频/.test(String(a.preferredForm || '') + ' ' + String((a.forms || []).join(' ')));
+  const rawImageQuote = Number(row.price_img || row.imageQuote || row.quoteLow || row.image_quote || 0);
+  const rawVideoQuote = Number(row.price_video || row.videoQuote || row.quoteHigh || row.video_quote || 0);
+  const genericQuote = Number(row.quote || row.price_oral || row.price_implant || 0);
   const quote = Number(
-    row.quote ||
-    (platform === 'pgy' && preferVideo ? row.price_video : row.price_img) ||
-    row.price_video ||
-    row.price_oral ||
-    row.price_implant ||
-    0
+    platform === 'pgy'
+      ? (formRequirementMode(a) === 'video' ? rawVideoQuote : (formRequirementMode(a) === 'image' ? rawImageQuote : (rawVideoQuote || rawImageQuote || genericQuote)))
+      : genericQuote
   );
   const uid = `${platform}-${row.id || row.platformId || row.name}`;
   const override = databaseTagOverrides[uid] || {};
@@ -3964,8 +4034,8 @@ function normalizeCandidate(row){
   const contact = override.contact !== undefined ? String(override.contact || '') : String(row.contact || row.contactInfo || row.wechat || row.phone || '');
   const displayPlatformId = row.platformId || (row.profileId ? '' : row.id || '');
   const efficiency = estimateEfficiency(row, platform, quote);
-  const imageQuote = Number(row.price_img || row.imageQuote || row.quoteLow || row.quote || 0);
-  const videoQuote = Number(row.price_video || row.videoQuote || row.quoteHigh || row.quote || 0);
+  const imageQuote = rawImageQuote || (platform === 'pgy' ? 0 : genericQuote);
+  const videoQuote = rawVideoQuote || (platform === 'pgy' ? 0 : genericQuote);
   const platformFields = getPlatformFields(row, platform, efficiency);
   return {
     uid,
@@ -4084,7 +4154,8 @@ function formatQuote(row, platform){
 
 function scoreCandidate(candidate){
   const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
-  const budgetScore = scoreBudget(candidate.quote, a.budgetMin, a.budgetMax);
+  const formQuote = candidateFormQuote(candidate, a);
+  const budgetScore = formQuote.missing ? 30 : scoreBudget(formQuote.quote, a.budgetMin, a.budgetMax);
   const overlap = candidate.tags.filter(tag => a.keywords.some(kw => tag.includes(kw) || kw.includes(tag))).length;
   const coverOverlap = (a.requiredAudienceTags || []).filter(tag => candidate.tags.some(t => t.includes(tag) || tag.includes(t)) || candidate.persona.includes(tag)).length;
   const contentScore = Math.min(98, 52 + overlap * 14 + coverOverlap * 10 + (a.platforms.includes(candidate.platform) ? 12 : 0));
@@ -4099,7 +4170,7 @@ function scoreCandidate(candidate){
   performanceScore = Math.max(30, performanceScore);
   const historyScore = scoreHistory(candidate);
   const verticalScore = Math.min(98, 56 + candidate.tags.length * 7 + overlap * 8 + coverOverlap * 12);
-  const total = Math.round(budgetScore * .24 + contentScore * .28 + performanceScore * .24 + historyScore * .14 + verticalScore * .10);
+  const total = Math.round(budgetScore * .24 + contentScore * .28 + performanceScore * .24 + historyScore * .14 + verticalScore * .10 - (formQuote.missing ? 18 : 0));
   return {budgetScore, contentScore, performanceScore, historyScore, verticalScore, total};
 }
 
@@ -4332,9 +4403,11 @@ function autoRecommend(){
 }
 
 function passesHardFilters(candidate, a){
+  const formQuote = candidateFormQuote(candidate, a);
   if(a.platforms?.length && !a.platforms.includes(candidate.platform)) return false;
-  if(a.budgetMin && candidate.quote < a.budgetMin) return false;
-  if(a.budgetMax && candidate.quote > a.budgetMax) return false;
+  if(formQuote.missing) return false;
+  if(a.budgetMin && formQuote.quote < a.budgetMin) return false;
+  if(a.budgetMax && formQuote.quote > a.budgetMax) return false;
   if(a.metrics?.cpmMax && (!candidate.efficiency.cpm || candidate.efficiency.cpm > a.metrics.cpmMax)) return false;
   if(a.metrics?.cpeMax && (!candidate.efficiency.cpe || candidate.efficiency.cpe > a.metrics.cpeMax)) return false;
   return true;
@@ -4346,10 +4419,12 @@ function rankCandidatesForBrief(rows, a){
   return [...rows].sort((left, right) => {
     const leftTagHits = (a.requiredAudienceTags || []).filter(tag => candidateMatchesTag(left, tag)).length;
     const rightTagHits = (a.requiredAudienceTags || []).filter(tag => candidateMatchesTag(right, tag)).length;
-    const leftBudgetPenalty = perSlotBudget ? Math.max(0, left.quote - perSlotBudget) / perSlotBudget * 16 : 0;
-    const rightBudgetPenalty = perSlotBudget ? Math.max(0, right.quote - perSlotBudget) / perSlotBudget * 16 : 0;
-    const leftRank = left.scores.total + leftTagHits * 6 - leftBudgetPenalty - left.quote / 12000;
-    const rightRank = right.scores.total + rightTagHits * 6 - rightBudgetPenalty - right.quote / 12000;
+    const leftQuote = candidateFormQuote(left, a).quote || left.quote || 0;
+    const rightQuote = candidateFormQuote(right, a).quote || right.quote || 0;
+    const leftBudgetPenalty = perSlotBudget ? Math.max(0, leftQuote - perSlotBudget) / perSlotBudget * 16 : 0;
+    const rightBudgetPenalty = perSlotBudget ? Math.max(0, rightQuote - perSlotBudget) / perSlotBudget * 16 : 0;
+    const leftRank = left.scores.total + leftTagHits * 6 - leftBudgetPenalty - leftQuote / 12000;
+    const rightRank = right.scores.total + rightTagHits * 6 - rightBudgetPenalty - rightQuote / 12000;
     return rightRank - leftRank;
   });
 }
@@ -4564,12 +4639,14 @@ async function copyCodexTaskCommand(){
 
 function getHitSummary(candidate, a){
   const platformOk = !a.platforms?.length || a.platforms.includes(candidate.platform);
-  const budgetOk = (!a.budgetMin || candidate.quote >= a.budgetMin) && (!a.budgetMax || candidate.quote <= a.budgetMax);
+  const formQuote = candidateFormQuote(candidate, a);
+  const budgetOk = !formQuote.missing && (!a.budgetMin || formQuote.quote >= a.budgetMin) && (!a.budgetMax || formQuote.quote <= a.budgetMax);
   const cpmOk = !a.metrics?.cpmMax || (!!candidate.efficiency.cpm && candidate.efficiency.cpm <= a.metrics.cpmMax);
   const cpeOk = !a.metrics?.cpeMax || (!!candidate.efficiency.cpe && candidate.efficiency.cpe <= a.metrics.cpeMax);
   const tagHits = (a.requiredAudienceTags || []).filter(tag => candidateMatchesTag(candidate, tag));
   const hits = [
     {ok: platformOk, text: platformOk ? '平台符合' : '平台不符'},
+    {ok: !formQuote.missing, text: formQuote.missing ? `${formQuote.label}缺失` : `${formQuote.label}已登记`},
     {ok: budgetOk, text: budgetOk ? '单个预算匹配' : '单个预算不符'},
     {ok: cpmOk && cpeOk, text: cpmOk && cpeOk ? 'CPM/CPE 达标' : '数据阈值缺失或超标'}
   ];
@@ -4585,7 +4662,7 @@ function rebateStatusCell(candidate, a){
 
 function buildResultAssessment(items, a, diag){
   const target = Number(a.reportCountMin || a.targetCount || 0);
-  const totalQuote = items.reduce((sum, item) => sum + Number(item.quote || 0), 0);
+  const totalQuote = items.reduce((sum, item) => sum + Number(candidateFormQuote(item, a).quote || item.quote || 0), 0);
   const avgScore = items.length ? Math.round(items.reduce((sum, item) => sum + item.scores.total, 0) / items.length) : 0;
   const platformOk = items.every(item => !a.platforms?.length || a.platforms.includes(item.platform));
   const budgetOk = !a.totalBudget || totalQuote <= a.totalBudget;

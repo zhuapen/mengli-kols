@@ -942,6 +942,21 @@ def analyze_brief(brief: str) -> dict[str, Any]:
 
     creator_types, creator_type_details = extract_creator_details(text)
     required_audience_tags = extract_required_audience_tags(text)
+    if creator_type_details:
+        creator_requirement_text = "\n".join(
+            f"{item.get('category', '')}{'：' + '、'.join(item.get('examples') or []) if item.get('examples') else ''}"
+            for item in creator_type_details
+            if item.get("category")
+        )
+    else:
+        creator_requirement_text = "\n".join(
+            part
+            for part in [
+                "、".join(creator_types),
+                f"必须覆盖：{'、'.join(required_audience_tags)}" if required_audience_tags else "",
+            ]
+            if part
+        )
 
     ta = ""
     ta_match = re.search(r"TA[：:]\s*([^\n【]+)", text)
@@ -1005,6 +1020,15 @@ def analyze_brief(brief: str) -> dict[str, Any]:
             budget_risk = "数量和单价按最低值测算可以进入总预算。"
     elif not total_budget:
         budget_risk = "brief 未写明总预算，只能按单博主预算筛选。"
+    requirement_note = "\n".join(
+        dedupe(
+            [
+                content_form if re.search(r"好看|好玩|精致|有趣|创意", content_form) else "",
+                core_requirements,
+                other_requirements,
+            ]
+        )
+    )
 
     return {
         "brand": brand,
@@ -1022,6 +1046,7 @@ def analyze_brief(brief: str) -> dict[str, Any]:
         "targetCount": report_count_min,
         "recommendationTarget": report_count_min or 10,
         "rebateMinPct": rebate_min_pct,
+        "creatorRequirementText": creator_requirement_text,
         "creatorTypes": creator_types,
         "creatorTypeDetails": creator_type_details,
         "requiredAudienceTags": required_audience_tags,
@@ -1032,6 +1057,7 @@ def analyze_brief(brief: str) -> dict[str, Any]:
         "otherRequirements": other_requirements,
         "syncRequirement": other_requirements if re.search(r"同步|分发", other_requirements) else "",
         "contentQualityRequirement": content_form if re.search(r"好看|好玩|精致|有趣|创意", content_form) else "",
+        "requirementNote": requirement_note,
         "ta": ta,
         "metrics": {"cpmMax": cpm_max, "cpeMax": cpe_max},
         "linkRequired": link_required,
@@ -1637,16 +1663,16 @@ async def get_collection_tasks(project_id: str) -> dict[str, Any]:
 FOOD_NAME_LEFT = ["饭饭", "栗子", "阿柚", "小满", "安安", "小鹿", "乔乔", "叮当", "米粒", "桃桃", "南瓜", "小椰", "姜姜", "白桃", "悠悠"]
 FOOD_NAME_RIGHT = ["零食铺", "开箱记", "办公室餐桌", "轻食日记", "妈妈厨房", "早餐研究所", "测评局", "好物手帐", "养生食堂", "追剧零食柜"]
 TITLE_TEMPLATES = [
-    "{tag}也能放心囤的坚果零食清单",
-    "新品零食开箱，办公室下午茶真实测评",
-    "这一袋坚果我连吃一周，配料表先看这里",
-    "学生党宿舍零食怎么选，便携和饱腹都要",
-    "精致妈妈的早餐备货，省时间但不糊弄",
-    "上班族抽屉里常备什么，低负担零食分享",
-    "养生党看过来，坚果和酸奶这样搭更方便",
-    "礼盒零食到底值不值，拆给你看",
-    "视频实测：一周早餐坚果搭配不重样",
-    "不想做饭的时候，办公室轻食怎么搭",
+    "{tag}真实体验，哪些细节最打动我",
+    "新品开箱测评，从外观到使用感完整记录",
+    "近期好物推荐，适合收藏的灵感清单",
+    "{tag}人群会喜欢吗，实际使用后说说优缺点",
+    "生活方式分享：把新鲜体验做得更好看",
+    "视频实测：这个创意点到底有没有记忆点",
+    "购物分享和开箱测评，哪些卖点更容易种草",
+    "从内容质感看转化，真实体验比硬广重要",
+    "适合日常发布的内容切入角度复盘",
+    "同类产品怎么拍更有趣，给你几个参考点",
 ]
 
 
@@ -1669,8 +1695,8 @@ def generate_titles(rng: random.Random, tags: list[str], brand: str, count: int 
 
 def generate_pgy_rows(project_id: str, analysis: dict[str, Any], target_count: int) -> list[dict[str, Any]]:
     rng = seeded_random(project_id, analysis)
-    required_tags = analysis.get("requiredAudienceTags") or ["上班族", "学生党", "养生党", "精致妈妈"]
-    creator_types = analysis.get("creatorTypes") or ["美食种草类", "美食开箱测评类"]
+    required_tags = analysis.get("requiredAudienceTags") or analysis.get("contentAngles") or ["内容匹配"]
+    creator_types = analysis.get("creatorTypes") or ["种草类"]
     brand = analysis.get("brand") or ""
     budget_min = int(analysis.get("budgetMin") or 3500)
     budget_max = int(analysis.get("budgetMax") or 12000)
@@ -1679,7 +1705,8 @@ def generate_pgy_rows(project_id: str, analysis: dict[str, Any], target_count: i
     for index in range(target_count):
         audience = required_tags[index % len(required_tags)] if required_tags else rng.choice(["上班族", "学生党", "养生党", "精致妈妈"])
         creator_type = creator_types[index % len(creator_types)] if creator_types else "美食种草类"
-        side_tag = rng.choice(["坚果", "零食", "早餐", "轻食", "开箱测评", "办公室零食", "健康食品"])
+        side_candidates = dedupe((analysis.get("contentAngles") or []) + (analysis.get("keywords") or []) + ["开箱测评", "好物推荐", "生活方式"])
+        side_tag = rng.choice(side_candidates)
         tags = dedupe([creator_type.replace("类", ""), side_tag, audience])
         base = max(2500, budget_min - 2500)
         top = max(base + 2000, budget_max + 3500)
@@ -1887,14 +1914,16 @@ def content_relevance_summary(row: dict[str, Any], analysis: dict[str, Any]) -> 
 
 
 def evaluate_row(row: dict[str, Any], analysis: dict[str, Any], memories: list[sqlite3.Row]) -> tuple[dict[str, int], str, str, str]:
-    form_text = str(analysis.get("preferredForm") or "") + " " + " ".join(analysis.get("forms") or [])
-    preferred_video = "视频" in form_text
-    if preferred_video:
-        quote = int(row.get("video_quote") or row.get("quote_high") or row.get("image_quote") or 0)
+    form_mode = form_requirement_mode(analysis)
+    if form_mode == "video":
+        quote = int(row.get("video_quote") or row.get("quote_high") or 0)
         quote_label = "视频报价"
-    else:
-        quote = int(row.get("image_quote") or row.get("quote_low") or row.get("video_quote") or 0)
+    elif form_mode == "image":
+        quote = int(row.get("image_quote") or row.get("quote_low") or 0)
         quote_label = "图文报价"
+    else:
+        quote = int(row.get("video_quote") or row.get("quote_high") or row.get("image_quote") or row.get("quote_low") or 0)
+        quote_label = "视频报价" if row.get("video_quote") or row.get("quote_high") else "图文报价"
     budget_min = int(analysis.get("budgetMin") or 0)
     budget_max = int(analysis.get("budgetMax") or 0)
     metrics = analysis.get("metrics") or {}
@@ -2786,11 +2815,28 @@ async def resolve_repair_record(repair_id: str, req: RepairRecordUpdate) -> dict
     return {"repair": row_repair_record(updated), "candidateId": candidate_id}
 
 
-def recommendation_quote(row: dict[str, Any], analysis: dict[str, Any]) -> int:
+def form_requirement_mode(analysis: dict[str, Any]) -> str:
     form_text = str(analysis.get("preferredForm") or "") + " " + " ".join(analysis.get("forms") or [])
-    if "视频" in form_text:
-        return int(row.get("videoQuote") or row.get("quoteHigh") or row.get("imageQuote") or 0)
-    return int(row.get("imageQuote") or row.get("quoteLow") or row.get("videoQuote") or 0)
+    if not form_text.strip() or re.search(r"不限|待确认", form_text):
+        return "any"
+    if re.search(r"优先视频|视频合作|报备视频", form_text):
+        return "video"
+    has_video = "视频" in form_text
+    has_image = "图文" in form_text
+    if has_video and not has_image:
+        return "video"
+    if has_image and not has_video:
+        return "image"
+    return "any"
+
+
+def recommendation_quote(row: dict[str, Any], analysis: dict[str, Any]) -> int:
+    mode = form_requirement_mode(analysis)
+    if mode == "video":
+        return int(row.get("videoQuote") or row.get("quoteHigh") or 0)
+    if mode == "image":
+        return int(row.get("imageQuote") or row.get("quoteLow") or 0)
+    return int(row.get("videoQuote") or row.get("quoteHigh") or row.get("imageQuote") or row.get("quoteLow") or 0)
 
 
 def passes_recommendation_hard_filter(row: dict[str, Any], analysis: dict[str, Any]) -> bool:
@@ -2800,6 +2846,8 @@ def passes_recommendation_hard_filter(row: dict[str, Any], analysis: dict[str, A
     if not content_relevance_summary(row, analysis)["pass"]:
         return False
     quote = recommendation_quote(row, analysis)
+    if not quote:
+        return False
     budget_min = int(analysis.get("budgetMin") or 0)
     budget_max = int(analysis.get("budgetMax") or 0)
     if budget_min and quote < budget_min:
@@ -2832,11 +2880,14 @@ def recommendation_issue_labels(row: dict[str, Any], analysis: dict[str, Any], c
     required_tags = analysis.get("requiredAudienceTags") or []
     title_status = str(row.get("titleStatus") or "").strip()
     recent_titles = row.get("recentTitles") or []
+    form_mode = form_requirement_mode(analysis)
 
     if not checks.get("platform", False):
         issues.append("平台不符")
     if not checks.get("content", False):
         issues.append("内容不相关")
+    if not checks.get("quote", False):
+        issues.append("视频报价缺失" if form_mode == "video" else ("图文报价缺失" if form_mode == "image" else "报价缺失"))
     if not checks.get("budgetMin", False):
         issues.append("低于预算下限")
     if not checks.get("budgetMax", False):
@@ -2867,6 +2918,7 @@ def recommendation_gate_details(row: dict[str, Any], analysis: dict[str, Any]) -
     checks = {
         "platform": (not platforms) or row.get("platform") in platforms,
         "content": relevance["pass"],
+        "quote": bool(quote),
         "budgetMin": (not budget_min) or quote >= budget_min,
         "budgetMax": (not budget_max) or quote <= budget_max,
         "cpm": cpm_max is None or (bool(cpm) and cpm <= float(cpm_max)),
@@ -2878,6 +2930,7 @@ def recommendation_gate_details(row: dict[str, Any], analysis: dict[str, Any]) -
         not strict_pass
         and checks["platform"]
         and checks["content"]
+        and checks["quote"]
         and checks["budgetMin"]
         and checks["budgetMax"]
     )
