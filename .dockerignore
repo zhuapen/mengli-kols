@@ -1,9 +1,10 @@
-.git
-.vercel
-.vscode
-.env.local
-.env.preview.local
-*.backup
-node_modules
 __pycache__
 *.pyc
+.git
+.env
+data/
+backups/
+exports/
+*.sqlite3
+node_modules/
+.DS_Store

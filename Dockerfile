@@ -1,12 +1,19 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# 复制后端脚本
-COPY kols-proxy.py .
+# 安装依赖
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 复制代码
+COPY . .
+
+# 创建数据目录
+RUN mkdir -p data exports backups
 
 # 暴露端口
-EXPOSE 8899
+EXPOSE ${PORT:-8890}
 
-# 启动服务
-CMD ["python3", "kols-proxy.py"]
+# 启动
+CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT:-8890}"]

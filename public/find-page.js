@@ -8,7 +8,7 @@
 // 优先级：window.MEDIA_API_BASE > index.html 中的 meta 标签 > 默认空（同源）
 const MEDIA_API_BASE = window.MEDIA_API_BASE
   || document.querySelector('meta[name="media-api-base"]')?.content
-  || 'https://media-api.mengliai.cn';  // 生产环境地址
+  || 'https://mengli-media-api-production.up.railway.app';  // Railway 生产地址
 
 // ===== 状态变量 =====
 let currentProjectId = null;
