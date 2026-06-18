@@ -3041,6 +3041,30 @@ def build_recommendation_diagnostics(conn: sqlite3.Connection, project_id: str) 
         }
         for tag in required_tags
     ]
+    target = int(analysis.get("reportCountMin") or analysis.get("recommendationTarget") or 0)
+    follower_distribution = []
+    for spec in parse_follower_distribution(analysis, target):
+        recommended_count = sum(
+            1
+            for row in rows
+            if row["id"] in recommendation_ids and candidate_matches_follower_spec(row, spec)
+        )
+        candidate_count = sum(1 for row in rows if candidate_matches_follower_spec(row, spec))
+        strict_count = sum(
+            1
+            for row, gate in zip(rows, gates)
+            if gate["strictPass"] and candidate_matches_follower_spec(row, spec)
+        )
+        follower_distribution.append(
+            {
+                "label": spec["label"],
+                "target": spec["target"],
+                "recommended": recommended_count,
+                "candidateCount": candidate_count,
+                "strictCount": strict_count,
+                "missing": max(0, spec["target"] - recommended_count),
+            }
+        )
 
     top_candidates = []
     for row, gate in zip(rows[:30], gates[:30]):
@@ -3088,6 +3112,7 @@ def build_recommendation_diagnostics(conn: sqlite3.Connection, project_id: str) 
         "repairCounts": repair_counts,
         "recommendationBuckets": recommendation_buckets,
         "tagCoverage": tag_coverage,
+        "followerDistribution": follower_distribution,
         "topCandidates": top_candidates,
         "recommendationCount": len(recommendation_ids),
     }
@@ -3153,6 +3178,65 @@ async def update_candidate_status(candidate_id: str, req: CandidateStatusUpdate)
     return {"candidate": row_candidate(row)}
 
 
+def parse_follower_distribution(analysis: dict[str, Any], target: int) -> list[dict[str, Any]]:
+    specs: list[dict[str, Any]] = []
+    for raw in analysis.get("accountDistribution") or []:
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        percent_match = re.search(r"(\d+(?:\.\d+)?)\s*%", text)
+        if not percent_match:
+            continue
+        range_text = re.sub(r"\d+(?:\.\d+)?\s*%", "", text)
+        normalized = range_text.replace("—", "-").replace("–", "-").replace("~", "-").replace("至", "-").replace("到", "-")
+        min_followers: Optional[float] = None
+        max_followers: Optional[float] = None
+        range_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:万|w|W)?\s*-\s*(\d+(?:\.\d+)?)\s*(?:万|w|W)?", normalized)
+        if range_match:
+            min_followers = float(range_match.group(1))
+            max_followers = float(range_match.group(2))
+        else:
+            min_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:万|w|W)?\s*(?:粉)?\s*(?:以上|及以上|\+)", normalized)
+            max_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:万|w|W)?\s*(?:粉)?\s*(?:以下|以内)", normalized)
+            if min_match:
+                min_followers = float(min_match.group(1))
+            if max_match:
+                max_followers = float(max_match.group(1))
+        if min_followers is None and max_followers is None:
+            continue
+        percent = float(percent_match.group(1))
+        raw_target = max(0.0, target * percent / 100)
+        specs.append(
+            {
+                "label": text,
+                "min": min_followers,
+                "max": max_followers,
+                "rawTarget": raw_target,
+                "target": int(math.floor(raw_target)),
+                "fraction": raw_target - math.floor(raw_target),
+            }
+        )
+    desired_total = min(target, int(round(sum(spec["rawTarget"] for spec in specs))))
+    remainder = max(0, desired_total - sum(spec["target"] for spec in specs))
+    for spec in sorted(specs, key=lambda item: item["fraction"], reverse=True):
+        if remainder <= 0:
+            break
+        spec["target"] += 1
+        remainder -= 1
+    return [spec for spec in specs if spec["target"] > 0]
+
+
+def candidate_matches_follower_spec(row: dict[str, Any], spec: dict[str, Any]) -> bool:
+    followers = float(row.get("followers") or 0)
+    min_followers = spec.get("min")
+    max_followers = spec.get("max")
+    if min_followers is not None and followers < float(min_followers):
+        return False
+    if max_followers is not None and followers >= float(max_followers):
+        return False
+    return True
+
+
 def save_auto_recommendations(conn: sqlite3.Connection, project_id: str, target: int) -> list[dict[str, Any]]:
     analysis = get_project_analysis(conn, project_id)
     rows = [
@@ -3172,6 +3256,7 @@ def save_auto_recommendations(conn: sqlite3.Connection, project_id: str, target:
         return []
 
     required_tags = analysis.get("requiredAudienceTags") or []
+    follower_distribution = parse_follower_distribution(analysis, target)
     selected: list[dict[str, Any]] = []
     used_ids = set()
 
@@ -3185,6 +3270,17 @@ def save_auto_recommendations(conn: sqlite3.Connection, project_id: str, target:
             if match:
                 selected.append(match)
                 used_ids.add(match["id"])
+        for spec in follower_distribution:
+            if len(selected) >= target:
+                return
+            current = sum(1 for row in selected if candidate_matches_follower_spec(row, spec))
+            while current < spec["target"] and len(selected) < target:
+                match = next((row for row in pool if row["id"] not in used_ids and candidate_matches_follower_spec(row, spec)), None)
+                if not match:
+                    break
+                selected.append(match)
+                used_ids.add(match["id"])
+                current += 1
         for row in pool:
             if len(selected) >= target:
                 return

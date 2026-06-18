@@ -4675,6 +4675,8 @@ function buildResultAssessment(items, a, diag){
   const cpmPass = items.filter(item => !a.metrics?.cpmMax || (!!item.efficiency.cpm && item.efficiency.cpm <= a.metrics.cpmMax)).length;
   const cpePass = items.filter(item => !a.metrics?.cpeMax || (!!item.efficiency.cpe && item.efficiency.cpe <= a.metrics.cpeMax)).length;
   const missingData = items.filter(item => !item.efficiency.exposure || !item.efficiency.interactions || !item.raw.titlesCount).length;
+  const followerDistribution = diag?.followerDistribution || [];
+  const followerMissing = followerDistribution.filter(row => Number(row.missing || 0) > 0);
   const notes = [];
   if(target && strictCount < target && backupCount){
     notes.push(`严格达标不足：严格达标 ${strictCount}/${target} 个，已用可备选补足提报数量，需人工复核缺口。`);
@@ -4685,6 +4687,12 @@ function buildResultAssessment(items, a, diag){
     : `预算风险：报价合计 ${money(totalQuote)}，超过总预算 ${money(a.totalBudget)}。`);
   notes.push(platformOk ? '平台匹配：结果均来自确认平台。' : '平台风险：存在非确认平台账号。');
   notes.push(missingTags.length ? `标签覆盖缺口：${missingTags.join('、')} 暂未覆盖。` : `标签覆盖完整：${tagCoverage.map(row => `${row.tag}${row.count}个`).join('，') || 'brief 未设置强制标签'}。`);
+  if(followerDistribution.length){
+    const followerText = followerDistribution.map(row => `${row.label} ${row.recommended}/${row.target}`).join('，');
+    notes.push(followerMissing.length
+      ? `粉丝量分布缺口：${followerText}；${followerMissing.map(row => `${row.label}差${row.missing}个`).join('，')}。`
+      : `粉丝量分布达标：${followerText}。`);
+  }
   notes.push(`数据门槛：CPM 达标 ${cpmPass}/${items.length || 0}，CPE 达标 ${cpePass}/${items.length || 0}。`);
   if(missingData) notes.push(`数据缺失：${missingData} 个账号缺少完整曝光、互动或标题数据，需人工复核。`);
   return `<div class="assessment-grid">
@@ -4705,11 +4713,17 @@ function buildPrecisionDiagnostics(diag){
   const buckets = diag.recommendationBuckets || {};
   const failures = (diag.failureGroups || []).slice(0,3).map(row => `${row.count}个：${row.reason}`);
   const tagCoverage = (diag.tagCoverage || []).map(row => `${row.tag}${row.count}个`).join('，') || '无强制标签';
+  const followerDistribution = diag.followerDistribution || [];
+  const followerMissing = followerDistribution.filter(row => Number(row.missing || 0) > 0);
+  const followerCoverage = followerDistribution.length
+    ? followerDistribution.map(row => `${row.label}${row.recommended}/${row.target}`).join('，')
+    : '未设置粉丝量配比';
   const missingTotal = ['platformId','homeUrl','audienceTags','recentTitles'].reduce((sum, key) => sum + Number(missing[key] || 0), 0);
   const notes = [
     `内容相关通过 ${counts.content || 0}/${counts.total || 0}，预算区间通过 ${counts.budgetRange || 0}/${counts.total || 0}，CPM通过 ${counts.cpm || 0}/${counts.total || 0}，CPE通过 ${counts.cpe || 0}/${counts.total || 0}。`,
     `推荐分层：严格达标 ${buckets.strong || counts.strict || 0} 个，可备选 ${buckets.backup || 0} 个，不建议 ${buckets.notRecommended || 0} 个。`,
     `TA标签覆盖：${tagCoverage}。`,
+    `粉丝量分布：${followerCoverage}${followerMissing.length ? `；缺口 ${followerMissing.map(row => `${row.label}差${row.missing}个`).join('，')}` : ''}。`,
     `字段缺失：小红书号 ${missing.platformId || 0}，主页 ${missing.homeUrl || 0}，人群标签 ${missing.audienceTags || 0}，最近标题 ${missing.recentTitles || 0}。`,
     `待修复：${repairs.pending || 0} 个，已修复：${repairs.resolved || 0} 个。`,
     failures.length ? `主要失败：${failures.join('；')}` : '主要失败：暂无。'
@@ -4720,6 +4734,7 @@ function buildPrecisionDiagnostics(diag){
     <div class="assessment-item"><div class="assessment-label">可备选</div><div class="assessment-value">${buckets.backup || 0}</div><div class="assessment-detail">平台/内容可用</div></div>
     <div class="assessment-item"><div class="assessment-label">不建议</div><div class="assessment-value">${buckets.notRecommended || 0}</div><div class="assessment-detail">条件缺口大</div></div>
     <div class="assessment-item"><div class="assessment-label">标题待修复</div><div class="assessment-value">${missing.recentTitles || 0}</div><div class="assessment-detail">不阻止入库</div></div>
+    <div class="assessment-item"><div class="assessment-label">粉丝量缺口</div><div class="assessment-value">${followerMissing.reduce((sum, row) => sum + Number(row.missing || 0), 0)}</div><div class="assessment-detail">${followerMissing.length ? '需补同档账号' : '配比达标'}</div></div>
     <div class="assessment-item"><div class="assessment-label">CPM/CPE通过</div><div class="assessment-value">${counts.cpm || 0}/${counts.cpe || 0}</div><div class="assessment-detail">阈值通过数</div></div>
   </div>
   <div class="assessment-note">${notes.map(escapeHtml).join('<br>')}</div>`;
