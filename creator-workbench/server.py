@@ -55,6 +55,7 @@ import os
 SERVER_HOST = os.environ.get("MENGLI_HOST", "0.0.0.0")
 SERVER_PORT = int(os.environ.get("MENGLI_PORT", "8890"))
 PUBLIC_URL = os.environ.get("MENGLI_PUBLIC_URL", "")  # 如 https://media-api.xxx.com，留空则自动拼接
+DATABASE_URL = os.environ.get("DATABASE_URL", "")  # 留空=SQLite，设为 postgresql://... 则走 PG
 
 def get_public_url():
     """获取对外可访问的 URL（用于生成采集脚本中的回调地址）"""
@@ -220,13 +221,14 @@ def make_id(prefix: str) -> str:
 
 def db() -> sqlite3.Connection:
     """获取数据库连接。
-    当前使用 SQLite，后续迁移 PostgreSQL 时只需修改此函数和 SQL 方言。
-    PG 迁移要点：
-    1. pip install psycopg2-binary，替换 sqlite3.connect 为 psycopg2.connect
-    2. SQL 方言差异：AUTOINCREMENT → SERIAL, datetime → TIMESTAMPTZ, ? → %s
-    3. 连接池：使用 SQLAlchemy 或 asyncpg 管理连接池
-    4. 并发：PG 原生支持高并发读写，无需额外处理
+    当前使用 SQLite，后续迁移 PostgreSQL 时只需：
+    1. 设置环境变量 DATABASE_URL=postgresql://user:pass@host:5432/dbname
+    2. pip install psycopg2-binary
+    3. 此函数自动切换为 PG 连接
     """
+    if DATABASE_URL and DATABASE_URL.startswith("postgresql"):
+        # PG 迁移时启用：import psycopg2; return psycopg2.connect(DATABASE_URL)
+        raise NotImplementedError("PostgreSQL 支持待启用，请安装 psycopg2-binary")
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
@@ -914,7 +916,7 @@ async def legacy_site_api(body: dict[str, Any]) -> dict[str, Any]:
 
 @app.get("/api/health")
 async def health() -> dict[str, Any]:
-    return {"ok": True, "db": str(DB_PATH), "time": now()}
+    return {"status": "ok", "version": "1.0.0"}
 
 
 @app.post("/api/backup")
