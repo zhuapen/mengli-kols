@@ -190,9 +190,9 @@ INSERT INTO feature_permissions (feature_key, feature_name, description) VALUES
     ('datacenter', '数据中心', '管理员数据中心')
 ON CONFLICT (feature_key) DO NOTHING;
 
--- 创建默认管理员账号（密码: admin123，bcrypt hash）
+-- 创建默认管理员账号（密码: admin123，pbkdf2 hash）
 INSERT INTO user_profiles (email, password_hash, display_name, role, position, is_active, status) VALUES
-    ('admin@mengliai.cn', '$2b$12$LJ3m4ys3Lz0YBNOURq0Y3OjCfKJmKPOJYqDTPVCKzLOBhZMHfWO6e', '管理员', 'admin', '管理员', true, 'approved')
+    ('admin@mengliai.cn', '$pbkdf2$f4e89f8a745d43e0$852d6d45a7ad0c1fb58d4cc8492ae4cc2fd77d2d22daf2e62261adbe11e8e4ca', '管理员', 'admin', '管理员', true, 'approved')
 ON CONFLICT (email) DO NOTHING;
 
 -- 管理员拥有所有权限
