@@ -3,7 +3,7 @@
  * 替代 Supabase SDK，提供相同接口
  */
 
-const API_BASE = window.API_BASE || 'http://43.128.56.10';
+const API_BASE = window.API_BASE || 'https://api.mengliai.cn';
 
 // ===== 通用请求 =====
 async function apiRequest(path, options = {}) {
