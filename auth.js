@@ -1,14 +1,9 @@
 /**
  * 萌力互动 · 权限管理系统
- * 方案B：按功能模块单独勾选
- * 基于 Supabase Auth 的用户认证和权限控制
+ * 基于自建 API 的用户认证和权限控制
  */
 
-// Supabase 配置
-const SUPABASE_URL = 'https://fjlxlkokmcdfmwskgvsp.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZqbHhsa29rbWNkZm13c2tndnNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NTQ4OTMsImV4cCI6MjA5NjAzMDg5M30.LcFIuu1dmiU09IptN3vYKE0NkDighHnOkbepHbubfaU';
-
-// 初始化 Supabase 客户端
+// API 客户端由 api-client.js 提供（supabase 兼容层）
 let supabase = null;
 let currentUser = null;
 let userProfile = null;
@@ -31,36 +26,20 @@ const PRESET_POSITIONS = [
 ];
 
 /**
- * 初始化 Supabase
+ * 初始化认证系统
  */
 async function initSupabase() {
     try {
-        // 动态加载 Supabase SDK（本地文件优先，CDN 备用）
+        // api-client.js 已加载，提供 window.supabase 兼容层
         if (typeof window.supabase === 'undefined') {
-            try {
-                await loadScript('supabase.min.js');
-                console.log('从本地加载 Supabase SDK 成功');
-            } catch (e) {
-                console.warn('本地 SDK 加载失败，尝试 CDN...');
-                try {
-                    await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js');
-                } catch (e2) {
-                    console.error('所有 CDN 均加载失败');
-                }
-            }
-        }
-
-        if (typeof window.supabase === 'undefined') {
-            console.error('Supabase SDK 加载失败，window.supabase 未定义');
+            console.error('API 客户端未加载，请确保 api-client.js 在 auth.js 之前加载');
             return false;
         }
 
-        console.log('Supabase SDK 已加载，开始初始化客户端...');
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        supabase = window.supabase.createClient('', '');
 
         // 监听登录状态变化
         supabase.auth.onAuthStateChange((event, session) => {
-            console.log('Auth state changed:', event);
             if (event === 'SIGNED_IN' && session) {
                 handleLogin(session.user);
             } else if (event === 'SIGNED_OUT') {
@@ -77,10 +56,10 @@ async function initSupabase() {
         // 加载所有功能配置
         await loadAllFeatures();
 
-        console.log('Supabase 初始化完成');
+        console.log('认证系统初始化完成');
         return true;
     } catch (error) {
-        console.error('Supabase 初始化失败:', error);
+        console.error('认证系统初始化失败:', error);
         return false;
     }
 }
@@ -2049,15 +2028,12 @@ async function updateFeedbackStatus(id, status) {
 async function deleteFeedback(id) {
     if (!confirm('确定删除此反馈？')) return;
     try {
-        // 直接调 REST API，绕过 Supabase JS 客户端对 204 响应的解析问题
-        const resp = await fetch(`${SUPABASE_URL}/rest/v1/plugin_feedback?id=eq.${id}`, {
+        const token = localStorage.getItem('mengli_token');
+        const resp = await fetch(`${API_BASE}/plugin-feedback/${id}`, {
             method: 'DELETE',
-            headers: {
-                'apikey': SUPABASE_ANON_KEY,
-                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-            }
+            headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (!resp.ok && resp.status !== 204) {
+        if (!resp.ok) {
             const errText = await resp.text();
             throw new Error(errText || `HTTP ${resp.status}`);
         }
