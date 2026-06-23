@@ -1279,6 +1279,7 @@ BRIEF_INTELLIGENCE_JSON_SCHEMA = {
     "hardRequirements": ["CPM < 70"],
     "relaxableRequirements": ["免费同步分发需人工确认"],
     "riskNotes": ["挂链要求暂不自动判断"],
+    "executionNotes": ["新品链接上线时间属于发布执行确认，不作为选号筛选条件"],
     "confirmQuestions": ["视频报价缺失账号是否允许作为备选？"],
     "metrics": {"cpmMax": 70, "cpeMax": 8},
     "strategySummary": "一句话概括本次找号策略",
@@ -1345,6 +1346,32 @@ def normalize_synonym_groups(value: Any) -> dict[str, list[str]]:
     return groups
 
 
+PUBLISH_EXECUTION_QUESTION_RE = re.compile(
+    r"链接.*上线|产品链接|新品链接|挂链|发布时间|发布排期|内容发布|发布档期|上新时间|排期|卖点|口味|包装|脚本|审稿|寄样|样品|素材交付|拍摄要求|成片|发布时"
+)
+SELECTION_CONFIRM_QUESTION_RE = re.compile(
+    r"账号|达人|博主|KOL|KOC|粉丝|报价|预算|CPM|CPE|阅读|互动|曝光|平台|蒲公英|小红盟|图文报价|视频报价|标签|人群|赛道|类型|头部|腰部|尾部|初级|微型|学生群体|排除|备选|分布|数据|内容相关|垂直",
+    re.I,
+)
+
+
+def split_selection_confirm_questions(questions: list[str]) -> tuple[list[str], list[str]]:
+    selection: list[str] = []
+    execution: list[str] = []
+    for question in questions:
+        text = str(question or "").strip()
+        if not text:
+            continue
+        if PUBLISH_EXECUTION_QUESTION_RE.search(text):
+            execution.append(text)
+            continue
+        if SELECTION_CONFIRM_QUESTION_RE.search(text):
+            selection.append(text)
+        else:
+            execution.append(text)
+    return dedupe(selection), dedupe(execution)
+
+
 def default_synonym_groups(analysis: dict[str, Any]) -> dict[str, list[str]]:
     text = " ".join(
         [
@@ -1400,7 +1427,11 @@ def ensure_strategy_fields(analysis: dict[str, Any]) -> dict[str, Any]:
     synonym_groups.update(normalize_synonym_groups(out.get("synonymGroups")))
     out["synonymGroups"] = synonym_groups
     out["riskNotes"] = normalize_string_list(out.get("riskNotes") or out.get("risks"), 20)
-    out["confirmQuestions"] = normalize_string_list(out.get("confirmQuestions") or out.get("questions"), 12)
+    explicit_execution = normalize_string_list(out.get("executionNotes") or out.get("publishNotes"), 16)
+    raw_confirm_questions = normalize_string_list(out.get("confirmQuestions") or out.get("questions"), 16)
+    selection_questions, execution_questions = split_selection_confirm_questions(raw_confirm_questions)
+    out["confirmQuestions"] = selection_questions[:12]
+    out["executionNotes"] = dedupe([*explicit_execution, *execution_questions])[:16]
     out["relaxableRequirements"] = normalize_string_list(out.get("relaxableRequirements"), 16)
     if not out.get("strategySummary"):
         out["strategySummary"] = f"{out.get('brand') or '本项目'}：按达人类型、内容标题、预算和官方数据分层推荐。"
@@ -1445,6 +1476,7 @@ def merge_model_analysis(fallback: dict[str, Any], model_data: dict[str, Any], p
         "hardRequirements",
         "relaxableRequirements",
         "riskNotes",
+        "executionNotes",
         "confirmQuestions",
         "strategySummary",
         "budgetRisk",
@@ -1525,6 +1557,7 @@ def blank_brief_analysis() -> dict[str, Any]:
         "hardRequirements": [],
         "relaxableRequirements": [],
         "riskNotes": [],
+        "executionNotes": [],
         "confirmQuestions": [],
         "strategySummary": "",
         "budgetRisk": "",
@@ -1542,6 +1575,8 @@ def build_brief_intelligence_prompt(brief: str) -> str:
 - 如果没有明确【品牌】，但 brief 出现产品线/系列名（例如 YOGA、ThinkPad、Mitoto），brand 可用“系列名+品类”，不要轻易写“未命名品牌”。
 - searchKeywords 要能直接拿去蒲公英搜索。
 - synonymGroups 要用于标题匹配，例如零食可扩展到小零食、小零嘴、下午茶、便利店、山姆、低卡零食等。
+- confirmQuestions 只能放“影响选号筛选”的待确认问题，例如是否接受报价缺失账号、粉丝量级是否必须严格、某类达人是否可作为备选。
+- 新品链接上线时间、发布时间/排期、内容发布时间、卖点/口味/包装、脚本/审稿/寄样、素材交付、挂链执行等发布执行问题，不要放进 confirmQuestions；这类内容只能放到 executionNotes。
 - 不要让 AI 直接决定推荐名单，只输出策略。
 - 字段缺失时用空数组、空字符串或 0。
 

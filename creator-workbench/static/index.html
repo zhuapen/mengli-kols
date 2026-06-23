@@ -2265,6 +2265,7 @@ function defaultProjectAnalysis(project = getCurrentProject()){
     hardRequirements: [],
     relaxableRequirements: [],
     riskNotes: ['该项目还没有模型拆解结果，请先点击“AI 拆解需求”。'],
+    executionNotes: [],
     confirmQuestions: [],
     strategySummary: '',
     intelligenceProvider: '',
@@ -2932,6 +2933,30 @@ function renderStrategyList(items, emptyText='未写明', limit=12){
   return `<ul class="strategy-list">${arr.slice(0, limit).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
 }
 
+function isSelectionConfirmQuestion(question){
+  const text = String(question || '').trim();
+  if(!text) return false;
+  const publishOnly = /(链接.*上线|产品链接|新品链接|挂链|发布时间|发布排期|内容发布|发布档期|上新时间|排期|卖点|口味|包装|脚本|审稿|寄样|样品|素材交付|拍摄要求|成片|发布时间是否|发布时)/;
+  if(publishOnly.test(text)) return false;
+  const selectionSignal = /(账号|达人|博主|KOL|KOC|粉丝|报价|预算|CPM|CPE|阅读|互动|曝光|平台|蒲公英|小红盟|图文报价|视频报价|标签|人群|赛道|类型|头部|腰部|尾部|初级|微型|学生群体|排除|备选|分布|数据|内容相关|垂直)/i;
+  return selectionSignal.test(text);
+}
+
+function splitConfirmQuestions(a){
+  const questions = Array.isArray(a?.confirmQuestions) ? a.confirmQuestions.filter(Boolean) : [];
+  const selection = [];
+  const execution = [];
+  questions.forEach(question => {
+    if(isSelectionConfirmQuestion(question)) selection.push(question);
+    else execution.push(question);
+  });
+  const explicitExecution = Array.isArray(a?.executionNotes) ? a.executionNotes.filter(Boolean) : [];
+  return {
+    selection: [...new Set(selection)],
+    execution: [...new Set([...execution, ...explicitExecution])]
+  };
+}
+
 function strategyBudgetText(a){
   if(a.budgetMin || a.budgetMax) return `${money(a.budgetMin)}-${money(a.budgetMax)}`;
   return '未写明';
@@ -2951,6 +2976,7 @@ function buildStrategySummary(a){
     ? `${providerName} 拆解${a.intelligenceModel ? ` / ${a.intelligenceModel}` : ''}`
     : '未完成模型拆解';
   const platformNames = (a.platforms || []).map(key => PLATFORM_CONFIG[key]?.short || key);
+  const confirmSplit = splitConfirmQuestions(a);
   return `
     <div class="strategy-hero">
       <div class="strategy-label">系统判断</div>
@@ -2971,7 +2997,8 @@ function buildStrategySummary(a){
       <div class="strategy-section full"><div class="strategy-label">硬性要求</div>${renderStrategyList(a.hardRequirements, '未写明硬性要求', 16)}</div>
       <div class="strategy-section full"><div class="strategy-label">搜索词</div>${renderStrategyTags(a.searchKeywords || a.keywords, '未生成搜索词', 36)}</div>
       <div class="strategy-section full"><div class="strategy-label">风险提示</div>${renderStrategyList(a.riskNotes, '暂无明显风险', 10)}</div>
-      <div class="strategy-section full"><div class="strategy-label">待确认项</div>${renderStrategyList(a.confirmQuestions, '暂无必须确认项', 10)}</div>
+      <div class="strategy-section full"><div class="strategy-label">选号待确认</div>${renderStrategyList(confirmSplit.selection, '暂无影响选号的待确认项', 10)}</div>
+      <div class="strategy-section full"><div class="strategy-label">发布执行提醒</div>${renderStrategyList(confirmSplit.execution, '暂无发布执行类提醒', 10)}</div>
     </div>
   `;
 }
@@ -2985,7 +3012,8 @@ function renderAnalysisCorrectionPanel(a){
     return;
   }
   panel.style.display = 'grid';
-  const questions = Array.isArray(a.confirmQuestions) ? a.confirmQuestions.filter(Boolean).slice(0, 12) : [];
+  const confirmSplit = splitConfirmQuestions(a);
+  const questions = confirmSplit.selection.slice(0, 12);
   const savedAnswers = Array.isArray(a.manualConfirmAnswers) ? a.manualConfirmAnswers : [];
   const answerRows = questions.length
     ? `<div class="confirm-answer-list">${questions.map((question, index) => {
@@ -2995,13 +3023,17 @@ function renderAnalysisCorrectionPanel(a){
           <textarea class="confirm-answer-input" data-question-index="${index}" placeholder="在这里填写你的确认结果，例如：可以接受 / 不接受 / 按XX规则处理">${escapeHtml(saved)}</textarea>
         </div>`;
       }).join('')}</div>`
-    : '<div class="confirm-note">模型没有列出必须二次确认的问题；如果拆解不准，可以直接在下面写修正意见。</div>';
+    : '<div class="confirm-note">模型没有列出影响选号筛选的待确认问题；如果拆解不准，可以直接在下面写修正意见。</div>';
+  const executionRows = confirmSplit.execution.length
+    ? `<div class="confirm-answer-item"><div class="confirm-question">发布执行类信息</div>${renderStrategyList(confirmSplit.execution, '暂无', 12)}<div class="confirm-note">这些不影响账号筛选，不需要在选号阶段逐条确认。</div></div>`
+    : '';
   panel.innerHTML = `
     <div>
       <div class="confirm-panel-title">确认与修正</div>
-      <div class="confirm-panel-desc">这里专门处理两件事：回答模型列出的待确认项；以及指出拆解有误的地方。重新拆解时，这里的内容会作为更高优先级输入。</div>
+      <div class="confirm-panel-desc">这里只回答影响选号筛选的问题，比如账号类型、粉丝量、预算、报价、数据、人群标签。发布时间、链接上线、卖点包装等发布执行信息只作为备注提醒。</div>
     </div>
     ${answerRows}
+    ${executionRows}
     <div>
       <div class="confirm-question">拆解有误 / 需要补充</div>
       <textarea id="analysisCorrectionText" class="correction-textarea" placeholder="例如：品牌不是 YOGA电脑，是联想YOGA系列；达人类型不要时尚类，改成科技数码/白领职场；预算上限改成4000；不要学生群体必须作为排除条件。">${escapeHtml(a.manualCorrectionNote || '')}</textarea>
@@ -3015,9 +3047,10 @@ function renderAnalysisCorrectionPanel(a){
 }
 
 function collectAnalysisCorrections(){
+  const questionList = splitConfirmQuestions(currentProjectAnalysis()).selection;
   const answers = [...document.querySelectorAll('.confirm-answer-input')].map(input => {
     const index = Number(input.dataset.questionIndex || 0);
-    const question = currentProjectAnalysis()?.confirmQuestions?.[index] || '';
+    const question = questionList[index] || '';
     return {index, question, answer: input.value.trim()};
   }).filter(item => item.answer);
   const note = document.getElementById('analysisCorrectionText')?.value.trim() || '';
@@ -3602,6 +3635,7 @@ function normalizeBriefAnalysis(data, brief){
     hardRequirements: data.hardRequirements || [],
     relaxableRequirements: data.relaxableRequirements || [],
     riskNotes: data.riskNotes || [],
+    executionNotes: data.executionNotes || [],
     confirmQuestions: data.confirmQuestions || [],
     strategySummary: data.strategySummary || '',
     intelligenceProvider: data.intelligenceProvider || selectedBriefProvider,
@@ -3660,7 +3694,9 @@ function renderBriefAnalysis(){
     return `<div class="rule-line">${escapeHtml(key)}：${list.slice(0,8).map(escapeHtml).join('、')}</div>`;
   }).join('') || '<div class="rule-line">未生成近义词组</div>';
   const riskNotes = (a.riskNotes || []).map(item => `<div class="rule-line">${escapeHtml(item)}</div>`).join('') || '<div class="rule-line">暂无明显风险</div>';
-  const confirmQuestions = (a.confirmQuestions || []).map(item => `<div class="rule-line">${escapeHtml(item)}</div>`).join('') || '<div class="rule-line">暂无必须二次确认项</div>';
+  const confirmSplit = splitConfirmQuestions(a);
+  const confirmQuestions = confirmSplit.selection.map(item => `<div class="rule-line">${escapeHtml(item)}</div>`).join('') || '<div class="rule-line">暂无影响选号的二次确认项</div>';
+  const executionNotes = confirmSplit.execution.map(item => `<div class="rule-line">${escapeHtml(item)}</div>`).join('') || '<div class="rule-line">暂无发布执行类提醒</div>';
   const providerText = a.intelligenceFallback
     ? `拆解失败${a.intelligenceError ? `：${a.intelligenceError}` : ''}`
     : `${briefProviderLabel(a.intelligenceProvider)}${a.intelligenceModel ? ` / ${a.intelligenceModel}` : ''}`;
@@ -3678,7 +3714,8 @@ function renderBriefAnalysis(){
     <div class="analysis-item full"><div class="analysis-label">标题同义词 / 近义内容</div><div class="rule-list">${synonymGroups}</div></div>
     <div class="analysis-item full"><div class="analysis-label">备注 / 其他规则</div><div class="analysis-value small">${escapeHtml(noteText).replace(/\n/g, '<br>')}</div></div>
     <div class="analysis-item full"><div class="analysis-label">风险提示</div><div class="rule-list">${riskNotes}</div></div>
-    <div class="analysis-item full"><div class="analysis-label">人工确认项</div><div class="rule-list">${confirmQuestions}</div></div>
+    <div class="analysis-item full"><div class="analysis-label">选号待确认</div><div class="rule-list">${confirmQuestions}</div></div>
+    <div class="analysis-item full"><div class="analysis-label">发布执行提醒</div><div class="rule-list">${executionNotes}</div></div>
     <div class="analysis-item full"><div class="analysis-label">硬性提报规则</div><div class="rule-list">${hardRules}</div></div>
   `;
 }
