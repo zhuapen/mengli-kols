@@ -1,9 +1,9 @@
 /**
  * 萌力互动 · API 客户端
  * 替代 Supabase SDK，提供相同接口
+ * API_BASE 由 config.js 统一管理
  */
-
-const API_BASE = window.API_BASE || 'https://api.mengliai.cn';
+const API_BASE = window.MENGLI ? window.MENGLI.API_BASE : '';
 
 // ===== 通用请求 =====
 async function apiRequest(path, options = {}) {
@@ -266,13 +266,13 @@ function createStorageClient(token) {
 }
 
 // ===== 全局 Supabase 兼容对象 =====
+// Token 每次请求时动态读取，避免登录后旧 token 问题
 window.supabase = {
     createClient: function(url, key) {
-        const token = localStorage.getItem('mengli_token') || key;
         return {
             auth: authApi,
-            from: (table) => createDbClient(token).from(table),
-            storage: createStorageClient(token)
+            from: (table) => createDbClient(localStorage.getItem('mengli_token') || key).from(table),
+            storage: createStorageClient(localStorage.getItem('mengli_token') || key)
         };
     }
 };

@@ -1,9 +1,9 @@
 /**
  * 萌力互动 · API 客户端
  * 替代 Supabase SDK，提供相同接口
+ * API_BASE 由 config.js 统一管理
  */
-
-const API_BASE = window.API_BASE || '';  // 同源，无需跨域
+const API_BASE = window.MENGLI ? window.MENGLI.API_BASE : '';
 
 // ===== 通用请求 =====
 async function apiRequest(path, options = {}) {

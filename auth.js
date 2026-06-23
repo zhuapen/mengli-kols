@@ -2,10 +2,11 @@
  * 萌力互动 · 权限管理系统
  * 基于自建 API 的用户认证和权限控制
  * 已彻底移除 Supabase 依赖
+ * API_BASE 由 config.js 统一管理
  */
 
 // ===== 配置 =====
-const API_BASE = window.API_BASE || '';  // 同源
+const API_BASE = window.MENGLI ? window.MENGLI.API_BASE : '';
 
 // ===== 状态 =====
 let currentUser = null;
@@ -46,7 +47,7 @@ async function apiCall(path, options = {}) {
 }
 
 // ===== 初始化认证系统 =====
-async function initSupabase() {
+async function initAuth() {
     try {
         const token = localStorage.getItem('mengli_token');
         const userStr = localStorage.getItem('mengli_user');
@@ -806,7 +807,5 @@ function checkPagePermission(page) {
     return true;
 }
 
-// ===== 页面加载时初始化认证系统 =====
-document.addEventListener('DOMContentLoaded', async () => {
-    await initSupabase();
-});
+// 向后兼容别名
+const initSupabase = initAuth;
