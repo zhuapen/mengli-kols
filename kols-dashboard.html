@@ -1417,10 +1417,11 @@ tbody tr:hover{
           </div>
           <div class="workbench-top-actions">
             <input type="file" id="databaseImportInput" accept=".xlsx,.csv,.tsv,.txt,.xls,.html" style="display:none" onchange="handleDatabaseImport(event)">
-            <button class="ghost-btn" onclick="document.getElementById('databaseImportInput').click()">导入 Excel/CSV</button>
+            <button class="ghost-btn" id="databaseImportBtn" onclick="handleDatabaseImportClick()">导入 Excel/CSV</button>
             <button class="primary-btn" onclick="openProjectManagementView()">去项目管理</button>
           </div>
         </div>
+        <div class="view-desc" id="mediaPermissionHint" style="margin:-4px 0 14px"></div>
         <div class="toolbar-controls" style="margin-bottom:14px">
           <select class="compact-select" id="databasePlatformFilter" onchange="handleDatabaseFilterChange()"></select>
           <select class="compact-select" id="databaseIntakeFilter" onchange="handleDatabaseFilterChange()">
@@ -2229,6 +2230,19 @@ let findWorkbenchReady = false;
 let findCurrentView = 'home';
 const DATABASE_PAGE_SIZE = 20;
 let databasePage = 1;
+const MEDIA_SUPABASE_URL = window.MEDIA_SUPABASE_URL || 'https://fjlxlkokmcdfmwskgvsp.supabase.co';
+const MEDIA_SUPABASE_ANON_KEY = window.MEDIA_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZqbHhsa29rbWNkZm13c2tndnNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NTQ4OTMsImV4cCI6MjA5NjAzMDg5M30.LcFIuu1dmiU09IptN3vYKE0NkDighHnOkbepHbubfaU';
+let mediaSupabaseClient = null;
+let mediaPermissionPromise = null;
+let mediaPermissionState = {
+  loaded: false,
+  canManage: false,
+  canViewContact: false,
+  role: '',
+  position: '',
+  source: 'loading',
+  accessToken: ''
+};
 
 function briefProviderLabel(provider){
   return BRIEF_PROVIDER_LABELS[provider] || provider || '模型';
@@ -2339,6 +2353,7 @@ function showPage(page){
 // ========== FIND WORKBENCH ==========
 function initFindWorkbench(){
   if(!document.getElementById('pageFind')) return;
+  initMediaPermissions();
   ensureProjectState();
   repairSyntheticCandidateContacts();
   renderBrief();
@@ -2390,7 +2405,7 @@ function getCurrentProject(){
 async function apiJson(url, options={}){
   const resp = await fetch(url, {
     ...options,
-    headers: {'Content-Type':'application/json', ...(options.headers || {})},
+    headers: {'Content-Type':'application/json', ...mediaPermissionHeaders(), ...(options.headers || {})},
     cache: 'no-store'
   });
   const text = await resp.text();
@@ -2399,13 +2414,141 @@ async function apiJson(url, options={}){
   return data;
 }
 
+function initMediaPermissions(){
+  if(mediaPermissionPromise) return mediaPermissionPromise;
+  mediaPermissionPromise = resolveMediaUserProfile()
+    .then(profile => {
+      applyMediaPermissionProfile(profile);
+      refreshMediaPermissionUi();
+    })
+    .catch(err => {
+      console.warn('媒体库权限读取失败，按普通用户处理', err);
+      applyMediaPermissionProfile(null);
+      refreshMediaPermissionUi();
+    });
+  return mediaPermissionPromise;
+}
+
+function isLocalMediaDevHost(){
+  return ['127.0.0.1', 'localhost', '::1', ''].includes(window.location.hostname) || window.location.protocol === 'file:';
+}
+
+async function resolveMediaUserProfile(){
+  if(typeof userProfile !== 'undefined' && userProfile){
+    const token = await readSupabaseAccessToken().catch(() => '');
+    return {...userProfile, accessToken: token, _source: 'site-auth'};
+  }
+  if(window.userProfile){
+    const token = await readSupabaseAccessToken().catch(() => '');
+    return {...window.userProfile, accessToken: token, _source: 'window-profile'};
+  }
+  const client = await getMediaSupabaseClient();
+  if(!client) return null;
+  const {data:{session}} = await client.auth.getSession();
+  if(!session?.user) return null;
+  const {data, error} = await client
+    .from('user_profiles')
+    .select('role,position,email,display_name,status')
+    .eq('id', session.user.id)
+    .single();
+  if(error) throw error;
+  return {...(data || {}), email: data?.email || session.user.email, accessToken: session.access_token, _source: 'supabase'};
+}
+
+async function getMediaSupabaseClient(){
+  if(mediaSupabaseClient) return mediaSupabaseClient;
+  if(!MEDIA_SUPABASE_URL || !MEDIA_SUPABASE_ANON_KEY) return null;
+  if(!window.supabase?.createClient){
+    await loadMediaScript('supabase.min.js').catch(() => loadMediaScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js'));
+  }
+  if(!window.supabase?.createClient) return null;
+  mediaSupabaseClient = window.supabase.createClient(MEDIA_SUPABASE_URL, MEDIA_SUPABASE_ANON_KEY);
+  return mediaSupabaseClient;
+}
+
+function loadMediaScript(src){
+  return new Promise((resolve, reject) => {
+    const existing = [...document.scripts].find(script => script.src && script.src.includes(src));
+    if(existing) return resolve();
+    const script = document.createElement('script');
+    script.src = src;
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+async function readSupabaseAccessToken(){
+  if(typeof supabase !== 'undefined' && supabase?.auth?.getSession){
+    const {data:{session}} = await supabase.auth.getSession();
+    return session?.access_token || '';
+  }
+  const client = await getMediaSupabaseClient();
+  if(!client) return '';
+  const {data:{session}} = await client.auth.getSession();
+  return session?.access_token || '';
+}
+
+function applyMediaPermissionProfile(profile){
+  const role = String(profile?.role || '').trim().toLowerCase();
+  const position = String(profile?.position || profile?.jobTitle || '').trim();
+  const roleText = `${role} ${position}`.toLowerCase();
+  const permissionList = typeof userPermissions !== 'undefined' && Array.isArray(userPermissions) ? userPermissions : [];
+  const canByRole = role === 'admin' || role === 'media' || role === 'medium' || roleText.includes('管理员') || roleText.includes('媒介');
+  const canByPermission = permissionList.includes('media_library_manage');
+  const canManage = canByRole || canByPermission || (!profile && isLocalMediaDevHost());
+  mediaPermissionState = {
+    loaded: true,
+    canManage,
+    canViewContact: canManage,
+    role,
+    position,
+    source: profile?._source || (profile ? 'profile' : (isLocalMediaDevHost() ? 'local-dev' : 'anonymous')),
+    accessToken: profile?.accessToken || ''
+  };
+}
+
+function mediaPermissionHeaders(){
+  const headers = {};
+  if(mediaPermissionState.accessToken) headers.Authorization = `Bearer ${mediaPermissionState.accessToken}`;
+  if(mediaPermissionState.role) headers['X-Mengli-User-Role'] = mediaPermissionState.role;
+  if(mediaPermissionState.position) headers['X-Mengli-User-Position'] = mediaPermissionState.position;
+  return headers;
+}
+
+function canManageMediaLibrary(){
+  return !!mediaPermissionState.canManage;
+}
+
+function canViewCreatorContact(){
+  return !!mediaPermissionState.canViewContact;
+}
+
+function mediaPermissionDenied(action='操作'){
+  alert(`${action}仅限媒介和管理员使用。`);
+}
+
+function refreshMediaPermissionUi(){
+  const hint = document.getElementById('mediaPermissionHint');
+  if(hint){
+    hint.textContent = canManageMediaLibrary()
+      ? '当前权限：媒介/管理员，可查看联系方式并维护媒体库资料。'
+      : '当前权限：普通用户，联系方式已隐藏，媒体库资料仅可查看不可修改。';
+  }
+  const importBtn = document.getElementById('databaseImportBtn');
+  if(importBtn){
+    importBtn.textContent = canManageMediaLibrary() ? '导入 Excel/CSV' : '导入仅限媒介/管理员';
+  }
+  renderDatabaseView();
+}
+
 async function syncProjectToBackend(analysis){
   const project = getCurrentProject();
   if(!project) throw new Error('当前项目不存在');
   if(project.serverId){
     await apiJson(`/api/projects/${project.serverId}/analysis`, {
       method:'PUT',
-      body: JSON.stringify({analysis})
+      body: JSON.stringify({analysis, name: project.name, brief: project.brief})
     });
     return project.serverId;
   }
@@ -2417,7 +2560,7 @@ async function syncProjectToBackend(analysis){
   persistProjects();
   await apiJson(`/api/projects/${project.serverId}/analysis`, {
     method:'PUT',
-    body: JSON.stringify({analysis})
+    body: JSON.stringify({analysis, name: project.name, brief: project.brief})
   });
   return project.serverId;
 }
@@ -3991,13 +4134,13 @@ function renderDatabaseView(){
 	    <td>${metricNumber(readUnitPrice(row))}</td>
 		    <td>${metricNumber(interactionUnitPrice(row))}</td>
 		    <td>${row.rebatePct ? `${row.rebatePct}%` : '-'}</td>
-		    <td>${escapeHtml(row.contact || '-')}</td>
+		    <td>${contactCell(row)}</td>
 		    <td>${row.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</td>
 		    <td>${repairReasonCell(row)}</td>
 		    <td>${sourceCell(row)}</td>
 		    <td>
 		      <button class="pgy-link" onclick="openCreatorDetail('${row.uid}')">详情</button>
-	      ${row.repairId ? `<button class="ghost-btn" onclick="openRepairEditor('${row.uid}')">修复</button>` : `<button class="ghost-btn" onclick="editDatabaseTags('${row.uid}')">编辑资料</button>`}
+	      ${databaseOperationButtons(row)}
     </td>
   </tr>`).join('');
 }
@@ -4079,12 +4222,31 @@ function setDatabasePage(page){
 }
 
 function businessInfoCell(row){
-  return `<div class="fact-list"><div>${row.rebatePct ? `${row.rebatePct}%` : '返点未登记'}</div><div>${row.contact ? '联系方式已登记' : '联系方式未登记'}</div></div>`;
+  return `<div class="fact-list"><div>${row.rebatePct ? `${row.rebatePct}%` : '返点未登记'}</div><div>${contactDisplayText(row)}</div></div>`;
 }
 
 function creatorHomeLink(row){
   if(!row.homeUrl) return '<span class="metric-line">未采集</span>';
   return `<a class="pgy-link" href="${escapeHtml(row.homeUrl)}" target="_blank" rel="noopener">打开主页</a>`;
+}
+
+function contactDisplayText(row){
+  const hasContact = !!String(row?.contact || '').trim();
+  if(canViewCreatorContact()) return hasContact ? String(row.contact).trim() : '联系方式未登记';
+  return hasContact ? '仅媒介/管理员可见' : '联系方式未登记';
+}
+
+function contactCell(row){
+  return `<span class="metric-line">${escapeHtml(contactDisplayText(row))}</span>`;
+}
+
+function databaseOperationButtons(row){
+  if(!canManageMediaLibrary()){
+    return '<span class="metric-line">仅可查看</span>';
+  }
+  return row.repairId
+    ? `<button class="ghost-btn" onclick="openRepairEditor('${row.uid}')">修复</button>`
+    : `<button class="ghost-btn" onclick="editDatabaseTags('${row.uid}')">编辑资料</button>`;
 }
 
 function platformIdCell(row){
@@ -4145,7 +4307,16 @@ function metricNumber(value){
   return num >= 100 ? num.toFixed(0) : num.toFixed(2);
 }
 
+function handleDatabaseImportClick(){
+  if(!canManageMediaLibrary()) return mediaPermissionDenied('导入媒体库账号');
+  document.getElementById('databaseImportInput')?.click();
+}
+
 function handleDatabaseImport(event){
+  if(!canManageMediaLibrary()){
+    if(event?.target) event.target.value = '';
+    return mediaPermissionDenied('导入媒体库账号');
+  }
   const file = event.target.files?.[0];
   if(!file) return;
   const reader = new FileReader();
@@ -4174,6 +4345,10 @@ function handleDatabaseImport(event){
 }
 
 function processDatabaseImportRows(rows, event){
+  if(!canManageMediaLibrary()){
+    if(event?.target) event.target.value = '';
+    return mediaPermissionDenied('导入媒体库账号');
+  }
   const normalized = rows.map(normalizeDatabaseImportRow).filter(row => row.name);
   if(!normalized.length) return alert('没有识别到可导入的达人行，请检查表头。');
   const missingContact = normalized.find(row => Number(row.rebate_pct || 0) > 0 && !String(row.contact || '').trim());
@@ -4338,6 +4513,7 @@ function autoTagsFromText(text){
 }
 
 function editDatabaseTags(uid){
+  if(!canManageMediaLibrary()) return mediaPermissionDenied('编辑媒体库资料');
   const row = getDatabaseRows().find(item => item.uid === uid);
   if(!row) return;
   const override = databaseTagOverrides[uid] || {};
@@ -4358,7 +4534,7 @@ function editDatabaseTags(uid){
         <div class="detail-kv"><span>平台</span><span>${escapeHtml(row.platformLabel)}</span></div>
         <div class="detail-kv"><span>来源</span><span>${escapeHtml(row.source)}</span></div>
         <div class="detail-kv"><span>当前返点</span><span>${row.rebatePct ? `${row.rebatePct}%` : '未登记'}</span></div>
-        <div class="detail-kv"><span>联系方式</span><span>${escapeHtml(row.contact || '未登记')}</span></div>
+        <div class="detail-kv"><span>联系方式</span><span>${escapeHtml(contactDisplayText(row))}</span></div>
       </div>
     </div>`,
     `<button class="submit-btn" onclick="saveDatabaseTags('${uid}')">保存资料</button>`
@@ -4366,6 +4542,7 @@ function editDatabaseTags(uid){
 }
 
 function saveDatabaseTags(uid){
+  if(!canManageMediaLibrary()) return mediaPermissionDenied('保存媒体库资料');
   const rebatePct = Number(document.getElementById('databaseRebateEditor')?.value || 0);
   const contact = (document.getElementById('databaseContactEditor')?.value || '').trim();
   if(rebatePct > 0 && !contact){
@@ -4384,6 +4561,7 @@ function saveDatabaseTags(uid){
 }
 
 function openRepairEditor(uid){
+  if(!canManageMediaLibrary()) return mediaPermissionDenied('修复媒体库资料');
   const row = getDatabaseRows().find(item => item.uid === uid);
   if(!row || !row.repairId) return;
   setSidebar(
@@ -4410,6 +4588,7 @@ function openRepairEditor(uid){
 }
 
 async function saveRepairRecord(uid){
+  if(!canManageMediaLibrary()) return mediaPermissionDenied('保存修复资料');
   const row = getDatabaseRows().find(item => item.uid === uid);
   if(!row?.repairId) return;
   const platformId = (document.getElementById('repairPlatformIdEditor')?.value || '').trim();
@@ -5351,7 +5530,7 @@ function openCreatorDetail(uid){
         <div class="detail-kv"><span>粉丝数</span><span>${fmtFollowers(candidate.followers)}</span></div>
         <div class="detail-kv"><span>报价</span><span>${escapeHtml(candidate.quoteLabel)}</span></div>
         <div class="detail-kv"><span>账号返点</span><span>${candidate.rebatePct ? `${candidate.rebatePct}%` : '未登记'}</span></div>
-        <div class="detail-kv"><span>联系方式</span><span>${escapeHtml(candidate.contact || '未登记')}</span></div>
+        <div class="detail-kv"><span>联系方式</span><span>${escapeHtml(contactDisplayText(candidate))}</span></div>
         <div class="detail-kv"><span>综合推荐分</span><span>${candidate.scores.total}</span></div>
       </div>
       <div class="detail-block">
@@ -5519,7 +5698,7 @@ function getRecommendationRowsByScope(scope = 'all'){
 async function downloadBackendRecommendationExport(scope, fallbackFilename){
   const project = getCurrentProject();
   if(!project?.serverId) return false;
-  const resp = await fetch(`/api/projects/${project.serverId}/export?scope=${encodeURIComponent(scope)}`, {cache:'no-store'});
+  const resp = await fetch(`/api/projects/${project.serverId}/export?scope=${encodeURIComponent(scope)}`, {cache:'no-store', headers: mediaPermissionHeaders()});
   if(!resp.ok) return false;
   const blob = await resp.blob();
   const disposition = resp.headers.get('content-disposition') || '';
@@ -5575,7 +5754,7 @@ function exportRows(rows, filename){
     metricStatusLabel(row).text,
     row.metricError || '',
     row.rebatePct ? row.rebatePct + '%' : '',
-    row.contact || '',
+    canViewCreatorContact() ? (row.contact || '') : '',
     row.tags.join('/'),
     row.scores.budgetScore,
     row.scores.contentScore,
