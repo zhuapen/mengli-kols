@@ -2405,7 +2405,7 @@ async function syncProjectToBackend(analysis){
   if(project.serverId){
     await apiJson(`/api/projects/${project.serverId}/analysis`, {
       method:'PUT',
-      body: JSON.stringify({analysis})
+      body: JSON.stringify({analysis, name: project.name, brief: project.brief})
     });
     return project.serverId;
   }
@@ -2417,7 +2417,7 @@ async function syncProjectToBackend(analysis){
   persistProjects();
   await apiJson(`/api/projects/${project.serverId}/analysis`, {
     method:'PUT',
-    body: JSON.stringify({analysis})
+    body: JSON.stringify({analysis, name: project.name, brief: project.brief})
   });
   return project.serverId;
 }

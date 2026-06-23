@@ -173,6 +173,8 @@ class ProjectCreate(BaseModel):
 
 class AnalysisUpdate(BaseModel):
     analysis: dict[str, Any]
+    name: str = ""
+    brief: str = ""
 
 
 class BriefIntelligenceRequest(BaseModel):
@@ -2468,14 +2470,22 @@ async def update_analysis(project_id: str, req: AnalysisUpdate) -> dict[str, Any
     if not isinstance(analysis, dict):
         raise HTTPException(status_code=400, detail="analysis 必须是对象")
     brand = str(analysis.get("brand") or "未命名品牌")
+    project_name = req.name.strip()
+    brief = req.brief.strip()
     with db() as conn:
         row = conn.execute("select id from projects where id=?", (project_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="项目不存在")
-        conn.execute(
-            "update projects set brand=?, analysis_json=?, status='confirmed', updated_at=? where id=?",
-            (brand, jdump(analysis), now(), project_id),
-        )
+        fields = ["brand=?", "analysis_json=?", "status='confirmed'", "updated_at=?"]
+        params: list[Any] = [brand, jdump(analysis), now()]
+        if project_name:
+            fields.append("name=?")
+            params.append(project_name)
+        if brief:
+            fields.append("brief=?")
+            params.append(brief)
+        params.append(project_id)
+        conn.execute(f"update projects set {', '.join(fields)} where id=?", params)
         project = row_project(conn.execute("select * from projects where id=?", (project_id,)).fetchone())
         project["counts"] = get_project_counts(conn, project_id)
     return {"project": project}
@@ -2664,6 +2674,31 @@ def text_overlap_score(keywords: list[str], fields: list[str]) -> int:
 
 CONTENT_ACTION_TERMS = {"种草", "开箱", "测评", "体验", "分享", "推荐"}
 CONTENT_STOP_TERMS = {"新品", "视频", "视频种草", "报备图文", "报备视频", "图文", "小红书", "蒲公英"}
+CORE_DOMAIN_TERM_RE = re.compile(
+    r"电脑|笔记本|轻薄本|办公本|数码|科技|国补|YOGA|联想|"
+    r"美食|零食|坚果|食品|早餐|轻食|养生|"
+    r"拖鞋|鞋履|鞋子|凉鞋|凉拖|"
+    r"AI|美图|修图|设计|绘画|手工|拼豆|"
+    r"母婴|育儿|宝妈|护肤|美妆|彩妆|家居|日用|宠物"
+)
+BROAD_AUXILIARY_CONTENT_TERMS = {
+    "时尚",
+    "穿搭",
+    "潮流穿搭",
+    "精致日常",
+    "购物分享",
+    "好物",
+    "好物推荐",
+    "单品",
+    "单品直推",
+    "生活方式",
+    "高级感",
+    "质感",
+    "职场生活",
+    "都市青年生活",
+}
+BROAD_ALIAS_TRIGGER_TERMS = {"好物", "好物推荐", "单品", "单品直推", "日用", "分享", "推荐"}
+WEAK_CORE_DOMAIN_HIT_TERMS = {"科技", "科技数码", "桌面搭配", "桌面美学", "办公好物", "办公效率", "生产力工具"}
 ACTION_TERM_ALIASES = {
     "种草": {"种草", "安利", "推荐", "分享", "好物", "清单", "值得买", "入手", "晒单"},
     "开箱": {"开箱", "拆箱", "试用", "实测", "体验", "上手", "测评"},
@@ -2673,6 +2708,24 @@ ACTION_TERM_ALIASES = {
     "推荐": {"推荐", "安利", "好物", "清单", "值得买", "种草"},
 }
 KNOWN_CONTENT_TERMS = [
+    "电脑",
+    "笔记本",
+    "笔记本电脑",
+    "轻薄本",
+    "办公本",
+    "办公电脑",
+    "电脑推荐",
+    "电脑测评",
+    "数码",
+    "科技",
+    "国补",
+    "电脑国补",
+    "国补笔记本",
+    "YOGA",
+    "联想YOGA",
+    "桌面搭配",
+    "办公好物",
+    "生产力工具",
     "美食",
     "零食",
     "坚果",
@@ -2721,6 +2774,15 @@ KNOWN_CONTENT_TERMS = [
     "推荐",
 ]
 CONTENT_ADJACENCY_GROUPS = [
+    {
+        "triggers": {"电脑", "笔记本", "笔记本电脑", "轻薄本", "办公本", "办公电脑", "电脑推荐", "电脑测评", "数码", "科技", "国补", "电脑国补", "国补笔记本", "YOGA", "联想YOGA"},
+        "aliases": {
+            "电脑", "笔记本", "笔记本电脑", "轻薄本", "办公本", "办公电脑", "电脑推荐", "电脑测评",
+            "数码", "数码测评", "数码好物", "科技", "科技数码", "电子产品", "智能设备",
+            "国补", "电脑国补", "国补笔记本", "以旧换新", "换新补贴",
+            "YOGA", "联想YOGA", "高端轻薄本", "生产力工具", "办公效率", "桌面搭配", "桌面美学", "办公好物"
+        },
+    },
     {
         "triggers": {"美食", "零食", "坚果", "办公室零食", "早餐", "轻食", "养生", "饮品", "烘焙"},
         "aliases": {
@@ -2803,7 +2865,12 @@ def expand_domain_terms_with_aliases(terms: list[str]) -> list[str]:
         for group in CONTENT_ADJACENCY_GROUPS:
             triggers = set(group["triggers"])
             aliases = set(group["aliases"])
-            if clean in triggers or clean in aliases or any(trigger and (trigger in clean or clean in trigger) for trigger in triggers):
+            if clean in triggers or clean in aliases or any(
+                trigger
+                and trigger not in BROAD_ALIAS_TRIGGER_TERMS
+                and (trigger in clean or clean in trigger)
+                for trigger in triggers
+            ):
                 expanded.extend(sorted(aliases))
     return dedupe(expanded)
 
@@ -2817,6 +2884,19 @@ def expand_action_terms_with_aliases(terms: list[str]) -> list[str]:
         expanded.append(clean)
         expanded.extend(sorted(ACTION_TERM_ALIASES.get(clean, set())))
     return dedupe(expanded)
+
+
+def select_core_domain_terms(domain_terms: list[str]) -> list[str]:
+    core = []
+    for term in domain_terms:
+        clean = str(term or "").strip()
+        if clean and CORE_DOMAIN_TERM_RE.search(clean):
+            core.append(clean)
+    return dedupe(core)
+
+
+def strong_core_domain_hits(hits: list[str]) -> list[str]:
+    return [hit for hit in hits if str(hit or "").strip() not in WEAK_CORE_DOMAIN_HIT_TERMS]
 
 
 def audience_tag_hits(row: dict[str, Any], required_tags: list[str]) -> list[str]:
@@ -2862,36 +2942,51 @@ def content_relevance_terms(analysis: dict[str, Any]) -> dict[str, list[str]]:
             else:
                 domain_terms.append(piece)
 
-    return {"domain": dedupe(domain_terms), "action": dedupe(action_terms)}
+    domain_terms = dedupe(domain_terms)
+    action_terms = dedupe(action_terms)
+    core_terms = select_core_domain_terms(domain_terms)
+    if core_terms:
+        domain_terms = dedupe([*core_terms, *[term for term in domain_terms if term not in BROAD_AUXILIARY_CONTENT_TERMS]])
+    return {"domain": domain_terms, "action": action_terms, "coreDomain": core_terms}
 
 
 def title_relevance_summary(row: dict[str, Any], analysis: dict[str, Any]) -> dict[str, Any]:
     terms = content_relevance_terms(analysis)
     title_text = candidate_title_haystack(row)
     titles = row.get("recentTitles") or row.get("recent_titles") or []
+    core_match_terms = expand_domain_terms_with_aliases(terms.get("coreDomain") or [])
     domain_match_terms = expand_domain_terms_with_aliases(terms["domain"])
     action_match_terms = expand_action_terms_with_aliases(terms["action"])
+    core_hits = [term for term in core_match_terms if term in title_text]
+    strong_core_hits = strong_core_domain_hits(core_hits)
     domain_hits = [term for term in domain_match_terms if term in title_text]
     action_hits = [term for term in action_match_terms if term in title_text]
     required_terms = terms["domain"] or terms["action"]
-    passes = not required_terms or bool(domain_hits if terms["domain"] else action_hits)
+    passes = bool(strong_core_hits) if core_match_terms else (not required_terms or bool(domain_hits if terms["domain"] else action_hits))
     matched_titles = []
+    title_match_terms = [*(core_match_terms or domain_match_terms), *action_match_terms]
     for title in titles[:50]:
         title_text_item = str(title or "")
-        if any(term and term in title_text_item for term in [*domain_match_terms, *action_match_terms]):
+        if any(term and term in title_text_item for term in title_match_terms):
             matched_titles.append(title_text_item)
-    hit_score = min(100, len(domain_hits) * 18 + len(action_hits) * 10 + min(30, len(matched_titles) * 6))
+    if core_match_terms:
+        hit_score = min(100, len(core_hits) * 24 + len(action_hits) * 6 + min(30, len(matched_titles) * 6))
+    else:
+        hit_score = min(100, len(domain_hits) * 18 + len(action_hits) * 10 + min(30, len(matched_titles) * 6))
     if required_terms and not titles:
         hit_score = 0
     elif not required_terms:
         hit_score = 72 if titles else 50
     return {
         "terms": terms,
+        "coreDomainHits": core_hits,
+        "strongCoreDomainHits": strong_core_hits,
         "domainHits": domain_hits,
         "actionHits": action_hits,
         "matchedTitles": matched_titles[:5],
         "pass": passes,
         "score": hit_score,
+        "expandedCoreDomainTerms": core_match_terms,
         "expandedDomainTerms": domain_match_terms,
         "expandedActionTerms": action_match_terms,
     }
@@ -2900,17 +2995,23 @@ def title_relevance_summary(row: dict[str, Any], analysis: dict[str, Any]) -> di
 def content_relevance_summary(row: dict[str, Any], analysis: dict[str, Any]) -> dict[str, Any]:
     terms = content_relevance_terms(analysis)
     haystack = candidate_haystack(row)
+    core_match_terms = expand_domain_terms_with_aliases(terms.get("coreDomain") or [])
     domain_match_terms = expand_domain_terms_with_aliases(terms["domain"])
     action_match_terms = expand_action_terms_with_aliases(terms["action"])
+    core_hits = [term for term in core_match_terms if term in haystack]
+    strong_core_hits = strong_core_domain_hits(core_hits)
     domain_hits = [term for term in domain_match_terms if term in haystack]
     action_hits = [term for term in action_match_terms if term in haystack]
     required_terms = terms["domain"] or terms["action"]
-    passes = not required_terms or bool(domain_hits if terms["domain"] else action_hits)
+    passes = bool(strong_core_hits) if core_match_terms else (not required_terms or bool(domain_hits if terms["domain"] else action_hits))
     return {
         "terms": terms,
+        "coreDomainHits": core_hits,
+        "strongCoreDomainHits": strong_core_hits,
         "domainHits": domain_hits,
         "actionHits": action_hits,
         "pass": passes,
+        "expandedCoreDomainTerms": core_match_terms,
         "expandedDomainTerms": domain_match_terms,
         "expandedActionTerms": action_match_terms,
     }
@@ -2965,12 +3066,15 @@ def evaluate_row(row: dict[str, Any], analysis: dict[str, Any], memories: list[s
     titles = row.get("recent_titles") or []
     relevance = content_relevance_summary(row, analysis)
     title_relevance = title_relevance_summary(row, analysis)
-    content_hits = len(relevance["domainHits"]) * 2 + len(relevance["actionHits"])
+    core_hits = len(relevance.get("strongCoreDomainHits") or relevance.get("coreDomainHits") or [])
+    content_hits = core_hits * 3 + len(relevance["domainHits"]) * 2 + len(relevance["actionHits"])
     matched_audience_tags = audience_tag_hits(row, required_tags)
     audience_hits = len(matched_audience_tags)
     title_score = int(title_relevance["score"])
     content_score = min(100, 36 + content_hits * 7 + audience_hits * 14 + min(24, title_score // 4))
-    if relevance["terms"]["domain"] and not relevance["domainHits"]:
+    if relevance["terms"].get("coreDomain") and not (relevance.get("strongCoreDomainHits") or []):
+        content_score -= 36
+    elif relevance["terms"]["domain"] and not relevance["domainHits"]:
         content_score -= 26
     elif relevance["terms"]["action"] and not relevance["actionHits"]:
         content_score -= 16
@@ -3032,8 +3136,14 @@ def evaluate_row(row: dict[str, Any], analysis: dict[str, Any], memories: list[s
     }
 
     reasons = []
-    if title_relevance["domainHits"]:
+    if title_relevance.get("strongCoreDomainHits"):
+        reasons.append("标题命中核心品类" + "、".join(title_relevance["strongCoreDomainHits"][:3]))
+    elif title_relevance.get("coreDomainHits"):
+        reasons.append("标题命中弱相关词" + "、".join(title_relevance["coreDomainHits"][:3]))
+    elif title_relevance["domainHits"]:
         reasons.append("标题命中" + "、".join(title_relevance["domainHits"][:3]))
+    elif relevance.get("strongCoreDomainHits"):
+        reasons.append("内容命中核心品类" + "、".join(relevance["strongCoreDomainHits"][:3]))
     elif relevance["domainHits"]:
         reasons.append("内容命中" + "、".join(relevance["domainHits"][:3]))
     if matched_audience_tags:
@@ -4226,10 +4336,15 @@ def recommendation_gate_details(row: dict[str, Any], analysis: dict[str, Any]) -
         "cpe": cpe,
         "checks": checks,
         "content": {
+            "coreDomainTerms": relevance["terms"].get("coreDomain") or [],
             "domainTerms": relevance["terms"]["domain"],
             "actionTerms": relevance["terms"]["action"],
+            "coreDomainHits": relevance.get("coreDomainHits") or [],
+            "strongCoreDomainHits": relevance.get("strongCoreDomainHits") or [],
             "domainHits": relevance["domainHits"],
             "actionHits": relevance["actionHits"],
+            "titleCoreDomainHits": title_relevance.get("coreDomainHits") or [],
+            "titleStrongCoreDomainHits": title_relevance.get("strongCoreDomainHits") or [],
             "titleDomainHits": title_relevance["domainHits"],
             "titleActionHits": title_relevance["actionHits"],
             "matchedTitles": title_relevance["matchedTitles"],

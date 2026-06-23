@@ -78,6 +78,14 @@ function normalizeKeywords(task) {
   const collector = payload.collector || {};
   const synonymGroups = analysis.synonymGroups && typeof analysis.synonymGroups === "object" ? analysis.synonymGroups : {};
   const synonymTerms = Object.values(synonymGroups).flatMap(value => Array.isArray(value) ? value : [value]);
+  const directSearch = [];
+  for (const item of [
+    ...(collector.keywords || []),
+    ...(analysis.searchKeywords || [])
+  ]) {
+    const text = String(item || "").replace(/类$/, "").trim();
+    if (text && !directSearch.includes(text)) directSearch.push(text);
+  }
   const raw = [
     payload.brand,
     ...(collector.keywords || []),
@@ -97,6 +105,7 @@ function normalizeKeywords(task) {
   const haystack = compact.join(" ");
   const explicitFootwear = /拖鞋|鞋履|凉拖|凉鞋|鞋子|鞋款|运动鞋|单鞋|靴/.test(haystack);
   const domainRules = [
+    {test: /电脑|笔记本|轻薄本|办公本|数码|科技|国补|YOGA|联想|桌面|办公/, terms: ["电脑推荐", "笔记本电脑推荐", "轻薄本推荐", "办公电脑推荐", "电脑测评", "轻薄本测评", "数码好物", "电脑国补", "国补笔记本", "桌面搭配"]},
     {test: /拖鞋|鞋履|凉拖|凉鞋|鞋子|鞋款|运动鞋|单鞋|靴/, terms: ["拖鞋", "鞋履", "家居拖鞋", "夏季拖鞋", "凉拖"]},
     {test: /穿搭|时尚|服装|衣服|优衣库|搭配|OOTD|潮流/, terms: ["时尚穿搭", "穿搭", "精致日常", "购物分享", "好物推荐"]},
     {test: /设计|绘画|手工|拼豆|定制|创意|裸辞创业/, terms: ["设计", "创意手作", "绘画", "手工", "拼豆"]},
@@ -112,6 +121,8 @@ function normalizeKeywords(task) {
     if (rule.test.test(haystack)) domains.push(...rule.terms);
   }
   const knownTerms = [
+    "电脑推荐", "笔记本电脑推荐", "轻薄本推荐", "办公电脑推荐", "电脑测评", "轻薄本测评",
+    "电脑", "笔记本电脑", "轻薄本", "办公电脑", "数码好物", "数码测评", "电脑国补", "国补笔记本", "桌面搭配",
     ...(explicitFootwear ? ["拖鞋", "鞋履", "家居拖鞋", "凉拖"] : []),
     "时尚穿搭", "穿搭", "精致日常", "购物分享", "好物推荐",
     "设计", "创意手作", "绘画", "手工", "拼豆",
@@ -141,6 +152,9 @@ function normalizeKeywords(task) {
     }
   }
   const specialCombos = [
+    ...(/电脑|笔记本|轻薄本|办公本|数码|科技|国补|YOGA|联想|桌面|办公/.test(haystack)
+      ? ["电脑推荐", "笔记本电脑推荐", "轻薄本推荐", "办公电脑推荐", "职场电脑推荐", "电脑测评", "轻薄本测评", "数码好物推荐", "电脑国补", "国补笔记本", "办公好物", "桌面搭配"]
+      : []),
     ...(explicitFootwear ? ["拖鞋开箱", "拖鞋种草", "鞋履种草", "鞋履开箱", "夏季拖鞋", "家居拖鞋"] : []),
     ...(/穿搭|时尚|服装|衣服|优衣库|搭配|OOTD|潮流/.test(haystack) ? ["时尚穿搭", "穿搭种草", "购物分享", "精致日常", "好物推荐"] : []),
     ...(/设计|绘画|手工|拼豆|定制|创意|裸辞创业/.test(haystack) ? ["设计博主", "手工博主", "绘画博主", "拼豆手作", "创意手作"] : []),
@@ -151,8 +165,9 @@ function normalizeKeywords(task) {
   for (const text of specialCombos) {
     if (!combos.includes(text)) combos.push(text);
   }
-  const merged = [...combos, ...compact];
-  return merged.slice(0, 24).length ? merged.slice(0, 24) : ["美食种草", "美食开箱测评", "坚果", "零食"];
+  const merged = [...directSearch, ...specialCombos, ...combos, ...compact];
+  const deduped = [...new Set(merged.map(item => String(item || "").trim()).filter(Boolean))];
+  return deduped.slice(0, 30).length ? deduped.slice(0, 30) : ["美食种草", "美食开箱测评", "坚果", "零食"];
 }
 
 async function ensureLoggedIn(page, target) {
