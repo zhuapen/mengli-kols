@@ -2423,21 +2423,22 @@ async function syncProjectToBackend(analysis){
 }
 
 function backendProjectScore(row, project, analysis){
-  const sameId = project.serverId && row.id === project.serverId ? 20 : 0;
-  const sameName = row.name && row.name === project.name ? 120 : 0;
-  const sameBrand = row.brand && row.brand === (analysis.brand || project.brand) ? 80 : 0;
-  const counts = row.counts || {};
-  return sameId + sameName + sameBrand + Number(counts.candidates || 0) * 8 + Number(counts.recommendations || 0) * 10 + Number(counts.tasks || 0);
+  const sameId = project.serverId && row.id === project.serverId ? 1000 : 0;
+  const sameBrief = String(row.brief || '').trim() === String(project.brief || '').trim() ? 500 : 0;
+  const sameName = row.name && row.name === project.name ? 20 : 0;
+  const sameBrand = row.brand && row.brand === (analysis.brand || project.brand) ? 10 : 0;
+  return sameId + sameBrief + sameName + sameBrand;
 }
 
 async function attachBackendProjectByIdentity(){
   const project = getCurrentProject();
   if(!project) return '';
   const analysis = analysisOrProjectDefaults(project);
+  if(project.serverId) return project.serverId;
   const data = await apiJson('/api/projects');
   const rows = data.projects || [];
   const matches = rows
-    .filter(row => row.id === project.serverId || row.name === project.name || (row.brand && row.brand === (analysis.brand || project.brand)))
+    .filter(row => String(row.brief || '').trim() === String(project.brief || '').trim())
     .sort((a, b) => backendProjectScore(b, project, analysis) - backendProjectScore(a, project, analysis));
   const best = matches[0];
   if(best?.id && best.id !== project.serverId){
@@ -5100,6 +5101,23 @@ function renderResultSection(title, detail, rows, a){
     + rows.map(candidate => renderResultCandidateRow(candidate, a)).join('');
 }
 
+function currentCollectionStatus(){
+  const task = collectionTasks.find(item => item.projectId === currentProjectId && item.platform === 'pgy');
+  const status = task?.status || activeCodexTask?.status || '';
+  return {task, status};
+}
+
+function renderResultEmptyState(empty){
+  const {task, status} = currentCollectionStatus();
+  if(['queued','running','searching','login_required'].includes(status)){
+    const label = statusLabel(status);
+    const target = task?.target || activeCodexTask?.target || 0;
+    empty.innerHTML = `<div class="icon">...</div><h3>${escapeHtml(label)}，采集完成后才会生成推荐</h3><p class="muted-text">目标 ${target || '-'} 个；当前不会使用演示数据或旧项目推荐。</p>`;
+    return;
+  }
+  empty.innerHTML = '<div class="icon">+</div><h3>还没有真实推荐结果</h3><p class="muted-text">请先开始找号并等待蒲公英采集完成。</p>';
+}
+
 function renderResultsView(){
   const tbody = document.getElementById('resultTableBody');
   const empty = document.getElementById('resultEmpty');
@@ -5117,6 +5135,7 @@ function renderResultsView(){
   renderCollectorStatusPanel();
   if(!items.length){
     tbody.innerHTML = '';
+    renderResultEmptyState(empty);
     empty.style.display = 'block';
     return;
   }

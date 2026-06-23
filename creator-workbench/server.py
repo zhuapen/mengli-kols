@@ -1985,6 +1985,15 @@ def create_codex_find_task(conn: sqlite3.Connection, project_id: str, target_cou
         raise HTTPException(status_code=404, detail="项目不存在")
     analysis = jload(row["analysis_json"], {})
     collector = collector_payload(project_id, analysis, target_count)
+    clear_project_selection(conn, project_id)
+    conn.execute(
+        """
+        update codex_tasks
+        set status='error', error='已被新的找号任务替代', updated_at=?
+        where project_id=? and type='pgy_find' and status in ('queued','running','searching','login_required')
+        """,
+        (now(), project_id),
+    )
     task_id = make_id("codex")
     payload = {
         "projectId": project_id,
