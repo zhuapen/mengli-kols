@@ -33,6 +33,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, Union
+from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request as UrlRequest, urlopen
 from xml.etree import ElementTree as ET
@@ -54,6 +55,11 @@ BRIEF_MODEL_PROVIDER = os.getenv("BRIEF_MODEL_PROVIDER", "codex").strip().lower(
 BRIEF_MODEL_NAME = os.getenv("BRIEF_MODEL_NAME", "").strip()
 DEEPSEEK_MODEL_NAME = os.getenv("DEEPSEEK_MODEL_NAME", "deepseek-chat").strip()
 DEEPSEEK_API_BASE = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com").rstrip("/")
+KIMI_MODEL_NAME = os.getenv("KIMI_MODEL_NAME", "kimi-latest").strip()
+KIMI_API_BASE = os.getenv("KIMI_API_BASE", "https://api.moonshot.cn/v1").rstrip("/")
+BRIEF_COMPAT_MODEL_NAME = os.getenv("BRIEF_COMPAT_MODEL_NAME", "").strip()
+BRIEF_COMPAT_API_BASE = os.getenv("BRIEF_COMPAT_API_BASE", "").rstrip("/")
+BRIEF_COMPAT_PROVIDER_NAME = os.getenv("BRIEF_COMPAT_PROVIDER_NAME", "openai-compatible").strip() or "openai-compatible"
 CODEX_EXECUTABLE = os.getenv("CODEX_EXECUTABLE", "codex").strip() or "codex"
 BRIEF_INTELLIGENCE_TIMEOUT = int(os.getenv("BRIEF_INTELLIGENCE_TIMEOUT", "180"))
 MENGLI_SERVER_BASE = os.getenv("MENGLI_SERVER", "http://127.0.0.1:8890").rstrip("/")
@@ -1481,7 +1487,51 @@ def merge_model_analysis(fallback: dict[str, Any], model_data: dict[str, Any], p
     return merged
 
 
-def build_brief_intelligence_prompt(brief: str, local_analysis: dict[str, Any]) -> str:
+def blank_brief_analysis() -> dict[str, Any]:
+    return {
+        "brand": "",
+        "background": "",
+        "launchWindow": "",
+        "cooperationPlatform": "",
+        "platforms": ["pgy"],
+        "platformStrategy": "首版只自动采集小红书蒲公英，其他平台作为人工同步或后续接入。",
+        "forms": [],
+        "preferredForm": "",
+        "totalBudget": 0,
+        "budgetMin": 0,
+        "budgetMax": 0,
+        "reportCountMin": 0,
+        "targetCount": 0,
+        "recommendationTarget": 0,
+        "rebateMinPct": 0,
+        "creatorRequirementText": "",
+        "creatorTypes": [],
+        "creatorTypeDetails": [],
+        "requiredAudienceTags": [],
+        "contentAngles": [],
+        "contentAngleNote": "",
+        "accountDistribution": [],
+        "coreRequirements": "",
+        "otherRequirements": "",
+        "syncRequirement": "",
+        "contentQualityRequirement": "",
+        "requirementNote": "",
+        "ta": "",
+        "metrics": {"cpmMax": 0, "cpeMax": 0},
+        "linkRequired": False,
+        "keywords": [],
+        "searchKeywords": [],
+        "synonymGroups": {},
+        "hardRequirements": [],
+        "relaxableRequirements": [],
+        "riskNotes": [],
+        "confirmQuestions": [],
+        "strategySummary": "",
+        "budgetRisk": "",
+    }
+
+
+def build_brief_intelligence_prompt(brief: str) -> str:
     return f"""你是萌力互动的资深媒介选号策略分析器。请只输出一个合法 JSON 对象，不要 Markdown，不要解释。
 
 目标：把客户 brief 拆成可执行的找号策略，用于小红书蒲公英采集和后端推荐引擎。
@@ -1498,38 +1548,86 @@ def build_brief_intelligence_prompt(brief: str, local_analysis: dict[str, Any]) 
 固定 JSON 形状示例：
 {json.dumps(BRIEF_INTELLIGENCE_JSON_SCHEMA, ensure_ascii=False, indent=2)}
 
-本地规则初拆结果，可参考但不要盲从：
-{json.dumps(local_analysis, ensure_ascii=False)}
-
 客户 brief：
 {brief}
 """
 
 
-def call_deepseek_brief_intelligence(brief: str, local_analysis: dict[str, Any]) -> tuple[dict[str, Any], str]:
-    api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+def call_chat_completion_brief_intelligence(
+    brief: str,
+    provider_label: str,
+    api_key: str,
+    api_base: str,
+    model: str,
+) -> tuple[dict[str, Any], str]:
     if not api_key:
-        raise RuntimeError("未配置 DEEPSEEK_API_KEY")
-    model = BRIEF_MODEL_NAME or DEEPSEEK_MODEL_NAME
+        raise RuntimeError(f"未配置 {provider_label} API Key")
+    if not api_base:
+        raise RuntimeError(f"未配置 {provider_label} API Base")
+    if not model:
+        raise RuntimeError(f"未配置 {provider_label} 模型名")
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": "你只输出合法 JSON，用于媒介找号 brief 拆解。"},
-            {"role": "user", "content": build_brief_intelligence_prompt(brief, local_analysis)},
+            {"role": "system", "content": "你是萌力互动的资深媒介选号策略分析器。你只输出合法 JSON，不要 Markdown，不要解释。"},
+            {"role": "user", "content": build_brief_intelligence_prompt(brief)},
         ],
         "temperature": 0.2,
         "response_format": {"type": "json_object"},
     }
-    req = UrlRequest(
-        f"{DEEPSEEK_API_BASE}/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        method="POST",
-    )
-    with urlopen(req, timeout=BRIEF_INTELLIGENCE_TIMEOUT) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
+    def post_chat_completion(body: dict[str, Any]) -> dict[str, Any]:
+        req = UrlRequest(
+            f"{api_base.rstrip('/')}/chat/completions",
+            data=json.dumps(body).encode("utf-8"),
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urlopen(req, timeout=BRIEF_INTELLIGENCE_TIMEOUT) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except HTTPError as exc:
+            error_body = exc.read().decode("utf-8", errors="ignore")[:600]
+            raise RuntimeError(f"{provider_label} HTTP {exc.code}: {error_body}") from exc
+
+    try:
+        data = post_chat_completion(payload)
+    except RuntimeError as exc:
+        if ("HTTP 400" not in str(exc) and "HTTP 422" not in str(exc)) or "response_format" not in payload:
+            raise
+        fallback_payload = {key: value for key, value in payload.items() if key != "response_format"}
+        data = post_chat_completion(fallback_payload)
     content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
     return extract_json_object(content), model
+
+
+def call_deepseek_brief_intelligence(brief: str, local_analysis: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    return call_chat_completion_brief_intelligence(
+        brief,
+        "DeepSeek",
+        os.getenv("DEEPSEEK_API_KEY", "").strip(),
+        DEEPSEEK_API_BASE,
+        BRIEF_MODEL_NAME or DEEPSEEK_MODEL_NAME,
+    )
+
+
+def call_kimi_brief_intelligence(brief: str, local_analysis: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    return call_chat_completion_brief_intelligence(
+        brief,
+        "Kimi",
+        os.getenv("KIMI_API_KEY", "").strip(),
+        KIMI_API_BASE,
+        BRIEF_MODEL_NAME or KIMI_MODEL_NAME,
+    )
+
+
+def call_compatible_brief_intelligence(brief: str, local_analysis: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    return call_chat_completion_brief_intelligence(
+        brief,
+        BRIEF_COMPAT_PROVIDER_NAME,
+        os.getenv("BRIEF_COMPAT_API_KEY", "").strip(),
+        BRIEF_COMPAT_API_BASE,
+        BRIEF_MODEL_NAME or BRIEF_COMPAT_MODEL_NAME,
+    )
 
 
 def call_codex_brief_intelligence(brief: str, local_analysis: dict[str, Any]) -> tuple[dict[str, Any], str]:
@@ -1538,7 +1636,7 @@ def call_codex_brief_intelligence(brief: str, local_analysis: dict[str, Any]) ->
         executable = CODEX_EXECUTABLE if Path(CODEX_EXECUTABLE).exists() else ""
     if not executable:
         raise RuntimeError("找不到 Codex CLI，请确认已安装并登录 Codex")
-    prompt = build_brief_intelligence_prompt(brief, local_analysis)
+    prompt = build_brief_intelligence_prompt(brief)
     cmd = [executable, "exec", "--skip-git-repo-check", "--ephemeral", "-C", str(ROOT_DIR), prompt]
     if BRIEF_MODEL_NAME:
         cmd[2:2] = ["--model", BRIEF_MODEL_NAME]
@@ -1557,25 +1655,30 @@ def call_codex_brief_intelligence(brief: str, local_analysis: dict[str, Any]) ->
 
 
 async def run_brief_intelligence(brief: str, project: str = "", provider: str = "") -> dict[str, Any]:
-    local_analysis = ensure_strategy_fields(analyze_brief(brief))
+    base_analysis = blank_brief_analysis()
     selected = (provider or BRIEF_MODEL_PROVIDER or "codex").strip().lower()
-    if selected in {"local", "rules", "local-rules"}:
-        return merge_model_analysis(local_analysis, {}, "local-rules", "local-rules", fallback_used=True)
+    provider_callers = {
+        "codex": call_codex_brief_intelligence,
+        "deepseek": call_deepseek_brief_intelligence,
+        "kimi": call_kimi_brief_intelligence,
+        "moonshot": call_kimi_brief_intelligence,
+        "openai-compatible": call_compatible_brief_intelligence,
+        "compatible": call_compatible_brief_intelligence,
+        "custom": call_compatible_brief_intelligence,
+    }
+    caller = provider_callers.get(selected)
+    if not caller:
+        raise HTTPException(status_code=400, detail=f"未知 brief provider：{selected}，可选 codex/deepseek/kimi/openai-compatible")
 
     errors: list[str] = []
     for attempt in range(2):
         try:
-            if selected == "deepseek":
-                model_data, model = await asyncio.to_thread(call_deepseek_brief_intelligence, brief, local_analysis)
-            elif selected == "codex":
-                model_data, model = await asyncio.to_thread(call_codex_brief_intelligence, brief, local_analysis)
-            else:
-                raise RuntimeError(f"未知 brief provider：{selected}")
-            return merge_model_analysis(local_analysis, model_data, selected, model)
+            model_data, model = await asyncio.to_thread(caller, brief, base_analysis)
+            return merge_model_analysis(base_analysis, model_data, selected, model)
         except Exception as exc:
             errors.append(f"第{attempt + 1}次{selected}拆解失败：{exc}")
             await asyncio.sleep(0.5)
-    return merge_model_analysis(local_analysis, {}, "local-rules", "local-rules", fallback_used=True, error="；".join(errors))
+    raise HTTPException(status_code=502, detail=f"{selected} 拆解失败：" + "；".join(errors))
 
 
 def planned_collection_target(analysis: dict[str, Any], default: int = 30) -> int:

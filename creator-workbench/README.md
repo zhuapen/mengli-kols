@@ -33,7 +33,7 @@ UI 使用项目根目录的 `index.html`，也就是后续准备同步到 GitHub
 ## 首版流程
 
 1. 新建项目，粘贴客户 brief。
-2. `AI 拆解需求` 调用 `/api/brief-intelligence`，默认走 Codex CLI；DeepSeek 可通过环境变量切换。
+2. `AI 拆解需求` 调用 `/api/brief-intelligence`，默认走 Codex CLI；页面也可选择 DeepSeek、Kimi 或兼容 API。
 3. 页面展示策略卡：客户目标、达人画像、搜索词、同义词、数据门槛、风险和人工确认项。
 4. 人工确认后点击“开始找号”，系统创建后台采集任务。
 5. 本地 worker 自动轮询任务，调用 `scripts/run-pgy-task.mjs`，用已登录 Chrome 采集蒲公英。
@@ -56,19 +56,30 @@ UI 使用项目根目录的 `index.html`，也就是后续准备同步到 GitHub
 
 ## 模型配置
 
-默认测试阶段使用 Codex CLI 做 brief 拆解；如果 Codex/DeepSeek 不可用，会自动回退本地规则，页面会显示“本地规则兜底”。
+默认测试阶段使用 Codex CLI 做 brief 拆解。模型不可用时会明确报错，不再自动回退本地规则，避免旧模板污染确认页。
 
 ```bash
-# codex | deepseek | local
+# codex | deepseek | kimi | openai-compatible
 export BRIEF_MODEL_PROVIDER=codex
 
-# 可选：指定 Codex 或 DeepSeek 模型名
+# 可选：指定当前 provider 的模型名
 export BRIEF_MODEL_NAME=""
 
 # 使用 DeepSeek 时配置
 export DEEPSEEK_API_KEY="sk-..."
 export DEEPSEEK_MODEL_NAME="deepseek-chat"
 export DEEPSEEK_API_BASE="https://api.deepseek.com"
+
+# 使用 Kimi / Moonshot 时配置
+export KIMI_API_KEY="sk-..."
+export KIMI_MODEL_NAME="kimi-latest"
+export KIMI_API_BASE="https://api.moonshot.cn/v1"
+
+# 使用其它 OpenAI-compatible 模型时配置，例如小米、Kimi 私有网关等
+export BRIEF_COMPAT_API_KEY="sk-..."
+export BRIEF_COMPAT_MODEL_NAME="your-model-name"
+export BRIEF_COMPAT_API_BASE="https://your-provider.example.com/v1"
+export BRIEF_COMPAT_PROVIDER_NAME="兼容模型名称"
 
 # Codex CLI 路径，默认从 PATH 找 codex
 export CODEX_EXECUTABLE="codex"
@@ -138,4 +149,4 @@ POST /api/collector/ingest
 - 首轮只跑小红书蒲公英，星图、抖音、腾讯互选先保留入口。
 - 返点只展示和导出，不参与推荐判断。
 - 不采集、不判断“是否支持挂链”；brief 里提到挂链时只作为需求信息保留。
-- AI 不直接决定推荐名单；Codex/DeepSeek 只输出 brief 策略，最终名单由后端规则引擎生成。
+- AI 不直接决定推荐名单；Codex/DeepSeek/Kimi/兼容 API 只输出 brief 策略，最终名单由后端规则引擎生成。

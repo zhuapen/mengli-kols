@@ -7,9 +7,18 @@ Railway 只建议承载 FastAPI 后端和数据库接口，不建议直接跑蒲
 推荐环境变量：
 
 ```bash
-BRIEF_MODEL_PROVIDER=deepseek
+BRIEF_MODEL_PROVIDER=deepseek   # codex | deepseek | kimi | openai-compatible
+BRIEF_MODEL_NAME=
 DEEPSEEK_API_KEY=sk-...
 DEEPSEEK_MODEL_NAME=deepseek-chat
+DEEPSEEK_API_BASE=https://api.deepseek.com
+KIMI_API_KEY=
+KIMI_MODEL_NAME=kimi-latest
+KIMI_API_BASE=https://api.moonshot.cn/v1
+BRIEF_COMPAT_API_KEY=
+BRIEF_COMPAT_MODEL_NAME=
+BRIEF_COMPAT_API_BASE=
+BRIEF_COMPAT_PROVIDER_NAME=openai-compatible
 MENGLI_COLLECTOR_WORKER_ENABLED=0
 ```
 
@@ -21,6 +30,7 @@ MENGLI_COLLECTOR_WORKER_ENABLED=0
 
 ```bash
 BRIEF_MODEL_PROVIDER=codex
+CODEX_EXECUTABLE=codex
 MENGLI_COLLECTOR_WORKER_ENABLED=1
 MENGLI_SERVER=http://127.0.0.1:8890
 ```

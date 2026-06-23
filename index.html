@@ -520,6 +520,14 @@ tbody tr:hover{
 }
 .brief-textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(244,132,95,.18)}
 .brief-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.model-choice-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.model-choice{
+  border:1px solid var(--gray-200);background:var(--white);color:var(--gray-600);
+  padding:8px 12px;font-size:12px;font-weight:800;font-family:var(--font);
+  cursor:pointer;transition:all .2s;
+}
+.model-choice.active{border-color:var(--black);background:var(--black);color:var(--white)}
+.model-choice:hover{border-color:var(--black)}
 .brief-analysis{
   display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;
 }
@@ -529,9 +537,31 @@ tbody tr:hover{
 .analysis-value{font-size:14px;font-weight:700;line-height:1.6}
 .analysis-value.small{font-size:13px;font-weight:600;color:var(--gray-600)}
 .risk-text{margin-top:6px;font-size:12px;font-weight:800;color:#c2410c}
-.rule-list{display:grid;gap:5px}
-.rule-line{font-size:13px;font-weight:600;color:var(--gray-600);line-height:1.55}
-.platform-suggestion{display:flex;gap:6px;flex-wrap:wrap}
+	.rule-list{display:grid;gap:5px}
+	.rule-line{font-size:13px;font-weight:600;color:var(--gray-600);line-height:1.55}
+	.strategy-summary{display:grid;gap:14px}
+	.strategy-empty{
+	  border:1px dashed var(--gray-200);background:var(--gray-50);
+	  padding:22px;color:var(--gray-500);font-size:14px;line-height:1.8;
+	}
+	.strategy-hero{
+	  border:1px solid var(--gray-100);background:var(--gray-50);
+	  padding:16px;display:grid;gap:8px;
+	}
+	.strategy-title{font-size:18px;font-weight:900;line-height:1.45}
+	.strategy-meta{font-size:12px;color:var(--gray-500);font-weight:700;line-height:1.6}
+	.strategy-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+	.strategy-cell{border:1px solid var(--gray-100);background:var(--white);padding:13px}
+	.strategy-label{font-size:11px;font-weight:900;color:var(--gray-400);letter-spacing:.8px;text-transform:uppercase;margin-bottom:6px}
+	.strategy-value{font-size:15px;font-weight:900;line-height:1.55}
+	.strategy-section{border:1px solid var(--gray-100);background:var(--white);padding:14px}
+	.strategy-section.full{grid-column:1/-1}
+	.strategy-tags{display:flex;flex-wrap:wrap;gap:6px}
+	.strategy-tag{display:inline-flex;align-items:center;padding:5px 9px;background:var(--gray-100);font-size:12px;font-weight:800;line-height:1.3}
+	.strategy-list{display:grid;gap:7px;margin:0;padding:0;list-style:none}
+	.strategy-list li{font-size:13px;font-weight:700;color:var(--gray-600);line-height:1.6}
+	.strategy-list li::before{content:"";display:inline-block;width:5px;height:5px;background:var(--accent);margin-right:8px;vertical-align:middle}
+	.platform-suggestion{display:flex;gap:6px;flex-wrap:wrap}
 .platform-badge{
   display:inline-flex;align-items:center;gap:6px;padding:5px 10px;
   font-size:11px;font-weight:800;border:1px solid var(--gray-200);background:var(--white);
@@ -1436,13 +1466,19 @@ tbody tr:hover{
               <div class="panel-title">输入 brief</div>
             </div>
             <button class="ghost-btn" onclick="openProjectManagementView()">返回项目</button>
-          </div>
-          <textarea class="brief-textarea" id="briefInput" placeholder="粘贴完整 brief，系统会提取品牌、平台、数量、单个预算、合作形式、达人类型/标签、粉丝量级、内容偏好、CPM/CPE 等条件。"></textarea>
-          <div class="brief-actions">
-            <button class="primary-btn" id="briefAnalyzeBtn" onclick="analyzeBrief()">AI 拆解需求</button>
-            <button class="ghost-btn" onclick="loadDemoBrief()">填入沃隆 brief</button>
-          </div>
-          <div class="assessment-note">拆解只是建议，必须在右侧确认后才会开始找号。</div>
+	          </div>
+	          <textarea class="brief-textarea" id="briefInput" placeholder="粘贴完整 brief，系统会提取品牌、平台、数量、单个预算、合作形式、达人类型/标签、粉丝量级、内容偏好、CPM/CPE 等条件。"></textarea>
+	          <div class="model-choice-row" id="briefProviderChoices">
+	            <button class="model-choice active" data-provider="codex" onclick="chooseBriefProvider('codex')">Codex</button>
+	            <button class="model-choice" data-provider="deepseek" onclick="chooseBriefProvider('deepseek')">DeepSeek</button>
+	            <button class="model-choice" data-provider="kimi" onclick="chooseBriefProvider('kimi')">Kimi</button>
+	            <button class="model-choice" data-provider="openai-compatible" onclick="chooseBriefProvider('openai-compatible')">兼容 API</button>
+	          </div>
+	          <div class="brief-actions">
+	            <button class="primary-btn" id="briefAnalyzeBtn" onclick="analyzeBrief()">AI 拆解需求</button>
+	            <button class="ghost-btn" onclick="loadDemoBrief()">填入沃隆 brief</button>
+	          </div>
+	          <div class="assessment-note">默认使用 Codex。DeepSeek、Kimi 或兼容 API 需要先在后端配置对应 API Key 和模型名。</div>
         </div>
 
         <div class="workbench-panel panel-pad">
@@ -1453,20 +1489,9 @@ tbody tr:hover{
             </div>
             <span class="status-pill ok" id="analysisStatus">待确认</span>
           </div>
-          <div class="form-grid">
-            <div class="form-field"><label>品牌</label><input id="confirmBrand" placeholder="品牌名称"></div>
-            <div class="form-field"><label>推荐数量</label><input id="confirmTargetCount" type="number" min="1" max="80" placeholder="例如 25"></div>
-            <div class="form-field"><label>单个预算下限</label><input id="confirmBudgetMin" type="number" placeholder="例如 5000"></div>
-            <div class="form-field"><label>单个预算上限</label><input id="confirmBudgetMax" type="number" placeholder="例如 10000"></div>
-            <div class="form-field"><label>CPM 上限（选填）</label><input id="confirmCpm" type="number" step="0.1" placeholder="例如 70"></div>
-            <div class="form-field"><label>CPE 上限（选填）</label><input id="confirmCpe" type="number" step="0.1" placeholder="例如 8"></div>
-            <div class="form-field full"><label>合作形式</label><input id="confirmForms" placeholder="视频、图文、图文/视频、不限"></div>
-            <div class="form-field full"><label>达人类型 / 标签要求</label><textarea id="confirmCreatorRequirement" placeholder="例如：P0种草类：精致日常、购物分享、开箱测评；P1时尚类：穿搭、新鲜事物体验。若客户明确每类都要覆盖，也写在这里。"></textarea></div>
-            <div class="form-field full"><label>粉丝量级分布</label><input id="confirmAccountDistribution" placeholder="中腰部10%（10万粉以上）、初级40%（5-10万粉）、微型50%（1-5万粉）"></div>
-            <div class="form-field full"><label>内容切入标签 / 偏好（选填）</label><input id="confirmContentAngles" placeholder="宠物、家庭内容、毕业学生、乐迷、情侣、有梗"></div>
-            <div class="form-field full"><label>备注 / 其他规则（选填）</label><textarea id="confirmRequirementNote" placeholder="不适合直接作为筛选条件、但媒介复核时需要看的要求，例如内容必须好看/好玩、免费同步其他平台等。"></textarea></div>
-            <div class="form-field full"><label>需求信息</label><label class="check-row"><input id="confirmLinkRequired" type="checkbox"> brief 提到需要配合站内产品链接挂链</label></div>
-          </div>
+	          <div id="briefStrategySummary" class="strategy-summary">
+	            <div class="strategy-empty">粘贴 brief 后点击“AI 拆解需求”，这里会显示模型输出的完整找号策略。</div>
+	          </div>
 
           <div style="margin-top:18px">
             <div class="analysis-label">选择平台</div>
@@ -2152,6 +2177,19 @@ let currentPage = 'home';
 let currentProjectId = localStorage.getItem('mengli_current_project') || DEFAULT_PROJECTS[0].id;
 let projects = JSON.parse(localStorage.getItem('mengli_projects') || 'null') || DEFAULT_PROJECTS;
 let currentAnalysis = JSON.parse(localStorage.getItem('mengli_brief_analysis') || 'null');
+const VALID_BRIEF_PROVIDERS = ['codex', 'deepseek', 'kimi', 'openai-compatible'];
+const BRIEF_PROVIDER_LABELS = {
+  codex: 'Codex',
+  deepseek: 'DeepSeek',
+  kimi: 'Kimi',
+  'openai-compatible': '兼容 API'
+};
+let selectedBriefProvider = localStorage.getItem('mengli_brief_provider') || 'codex';
+if(!VALID_BRIEF_PROVIDERS.includes(selectedBriefProvider)) selectedBriefProvider = 'codex';
+if(currentAnalysis && (!currentAnalysis.intelligenceProvider || currentAnalysis.intelligenceFallback)){
+  currentAnalysis = null;
+  localStorage.removeItem('mengli_brief_analysis');
+}
 let collectionTasks = JSON.parse(localStorage.getItem('mengli_collection_tasks') || 'null') || [];
 let syntheticCandidates = JSON.parse(localStorage.getItem('mengli_synthetic_candidates') || '[]');
 let recommendations = JSON.parse(localStorage.getItem('mengli_recommendations') || '[]');
@@ -2176,6 +2214,53 @@ let findWorkbenchReady = false;
 let findCurrentView = 'home';
 const DATABASE_PAGE_SIZE = 20;
 let databasePage = 1;
+
+function briefProviderLabel(provider){
+  return BRIEF_PROVIDER_LABELS[provider] || provider || '模型';
+}
+
+function currentProjectAnalysis(){
+  return currentAnalysis && currentAnalysis.projectId === currentProjectId ? currentAnalysis : null;
+}
+
+function defaultProjectAnalysis(project = getCurrentProject()){
+  return {
+    projectId: project?.id || currentProjectId,
+    brand: project?.brand || '',
+    launchWindow: '',
+    totalBudget: 0,
+    budgetMin: Number(project?.budgetMin || 0),
+    budgetMax: Number(project?.budgetMax || 0),
+    targetCount: Number(project?.targetCount || 0),
+    reportCountMin: Number(project?.targetCount || 0),
+    rebateMinPct: 0,
+    platforms: ['pgy'],
+    platformStrategy: '',
+    forms: [],
+    preferredForm: '',
+    creatorTypes: [],
+    creatorTypeDetails: [],
+    requiredAudienceTags: [],
+    contentAngles: [],
+    accountDistribution: [],
+    metrics: {cpmMax: 0, cpeMax: 0},
+    keywords: [],
+    searchKeywords: [],
+    synonymGroups: {},
+    hardRequirements: [],
+    relaxableRequirements: [],
+    riskNotes: ['该项目还没有模型拆解结果，请先点击“AI 拆解需求”。'],
+    confirmQuestions: [],
+    strategySummary: '',
+    intelligenceProvider: '',
+    intelligenceModel: '',
+    intelligenceFallback: false
+  };
+}
+
+function analysisOrProjectDefaults(project = getCurrentProject()){
+  return currentProjectAnalysis() || defaultProjectAnalysis(project);
+}
 
 async function loadLocalKols(){
   try{
@@ -2275,8 +2360,9 @@ function repairSyntheticCandidateContacts(){
 
 function ensureProjectState(){
   if(!projects.find(p => p.id === currentProjectId)) currentProjectId = projects[0].id;
-  if(!currentAnalysis || currentAnalysis.projectId !== currentProjectId){
-    currentAnalysis = localAnalyzeBrief(getCurrentProject().brief);
+  if(!currentProjectAnalysis()){
+    currentAnalysis = null;
+    localStorage.removeItem('mengli_brief_analysis');
   }
   if(!collectionTasks.length) createDefaultTasks();
 }
@@ -2331,7 +2417,7 @@ function backendProjectScore(row, project, analysis){
 async function attachBackendProjectByIdentity(){
   const project = getCurrentProject();
   if(!project) return '';
-  const analysis = currentAnalysis || localAnalyzeBrief(project.brief, project);
+  const analysis = analysisOrProjectDefaults(project);
   const data = await apiJson('/api/projects');
   const rows = data.projects || [];
   const matches = rows
@@ -2501,7 +2587,7 @@ async function refreshBackendSelection(autoRecommendIfNeeded=true){
   serverCandidates = (candidateData.candidates || []).map(mapBackendCandidate);
   let recData = await apiJson(`/api/projects/${serverId}/recommendations`);
   if(autoRecommendIfNeeded && serverCandidates.length && !(recData.recommendations || []).length){
-    const a = currentAnalysis || localAnalyzeBrief(project.brief);
+    const a = analysisOrProjectDefaults(project);
     recData = await apiJson(`/api/projects/${serverId}/recommendations/auto?target=${Math.min(80, Number(a.reportCountMin || a.targetCount || 25))}`, {method:'POST'});
   }
   serverRecommendations = (recData.recommendations || []).map(row => ({
@@ -2587,6 +2673,7 @@ function showFindView(view){
   if(normalized === 'projects') renderProjectList();
   if(normalized === 'wizard'){
     renderBrief();
+    renderBriefProviderChoices();
     renderRequirementForm();
     renderPlatformChoices();
   }
@@ -2629,7 +2716,7 @@ function renderProjectList(){
   if(!el) return;
   el.innerHTML = projects.map(project => {
     const projectRecs = recommendations.filter(item => item.projectId === project.id || (!item.projectId && project.id === currentProjectId));
-    const analysis = project.id === currentProjectId ? (currentAnalysis || localAnalyzeBrief(project.brief, project)) : localAnalyzeBrief(project.brief, project);
+    const analysis = project.id === currentProjectId ? analysisOrProjectDefaults(project) : defaultProjectAnalysis(project);
     const statusText = projectRecs.length ? `已生成 ${projectRecs.length} 个推荐` : '待生成推荐';
     const budgetText = `${money(analysis.budgetMin)}-${money(analysis.budgetMax)} / ${analysis.reportCountMin || analysis.targetCount || project.targetCount} 个`;
     return `<div class="project-card">
@@ -2658,8 +2745,10 @@ function renderProjectTabs(){
 function switchProject(projectId){
   currentProjectId = projectId;
   localStorage.setItem('mengli_current_project', projectId);
-  currentAnalysis = localAnalyzeBrief(getCurrentProject().brief);
-  localStorage.setItem('mengli_brief_analysis', JSON.stringify(currentAnalysis));
+  if(!currentProjectAnalysis()){
+    currentAnalysis = null;
+    localStorage.removeItem('mengli_brief_analysis');
+  }
   renderBrief();
   renderRequirementForm();
   renderPlatformChoices();
@@ -2709,8 +2798,8 @@ function createNewProject(){
   };
   projects.unshift(project);
   currentProjectId = id;
-  currentAnalysis = localAnalyzeBrief(project.brief);
-  localStorage.setItem('mengli_brief_analysis', JSON.stringify(currentAnalysis));
+  currentAnalysis = null;
+  localStorage.removeItem('mengli_brief_analysis');
   persistProjects();
   renderProjectList();
   renderBrief();
@@ -2787,6 +2876,24 @@ function formQuoteRuleText(a){
   return '形式不限：图文或视频任一报价可参与推荐';
 }
 
+function renderBriefProviderChoices(){
+  document.querySelectorAll('#briefProviderChoices .model-choice').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.provider === selectedBriefProvider);
+  });
+}
+
+function chooseBriefProvider(provider){
+  if(!VALID_BRIEF_PROVIDERS.includes(provider)) return;
+  selectedBriefProvider = provider;
+  localStorage.setItem('mengli_brief_provider', provider);
+  renderBriefProviderChoices();
+  const status = document.getElementById('analysisStatus');
+  if(status && !currentProjectAnalysis()){
+    status.className = 'status-pill wait';
+    status.textContent = `待${briefProviderLabel(provider)}拆解`;
+  }
+}
+
 function candidateFormQuote(candidate, a){
   const mode = formRequirementMode(a);
   if(candidate.platform === 'pgy'){
@@ -2798,78 +2905,121 @@ function candidateFormQuote(candidate, a){
   return {quote:Number(candidate.quote || 0), label:'报价', missing:!Number(candidate.quote || 0)};
 }
 
+function renderStrategyTags(items, emptyText='未写明', limit=24){
+  const arr = (Array.isArray(items) ? items : String(items || '').split(/[、,，/；;\n|]+/)).map(item => String(item || '').trim()).filter(Boolean);
+  if(!arr.length) return `<span class="muted-text">${escapeHtml(emptyText)}</span>`;
+  return `<div class="strategy-tags">${arr.slice(0, limit).map(item => `<span class="strategy-tag">${escapeHtml(item)}</span>`).join('')}</div>`;
+}
+
+function renderStrategyList(items, emptyText='未写明', limit=12){
+  const arr = (Array.isArray(items) ? items : String(items || '').split(/\n+/)).map(item => String(item || '').trim()).filter(Boolean);
+  if(!arr.length) return `<div class="muted-text">${escapeHtml(emptyText)}</div>`;
+  return `<ul class="strategy-list">${arr.slice(0, limit).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+}
+
+function strategyBudgetText(a){
+  if(a.budgetMin || a.budgetMax) return `${money(a.budgetMin)}-${money(a.budgetMax)}`;
+  return '未写明';
+}
+
+function strategyMetricText(a){
+  const parts = [
+    a.metrics?.cpmMax ? `CPM < ${a.metrics.cpmMax}` : '',
+    a.metrics?.cpeMax ? `CPE < ${a.metrics.cpeMax}` : ''
+  ].filter(Boolean);
+  return parts.join(' / ') || '未写明';
+}
+
+function buildStrategySummary(a){
+  const providerName = briefProviderLabel(a.intelligenceProvider || selectedBriefProvider);
+  const providerText = a.intelligenceProvider && !a.intelligenceFallback
+    ? `${providerName} 拆解${a.intelligenceModel ? ` / ${a.intelligenceModel}` : ''}`
+    : '未完成模型拆解';
+  const platformNames = (a.platforms || []).map(key => PLATFORM_CONFIG[key]?.short || key);
+  return `
+    <div class="strategy-hero">
+      <div class="strategy-label">系统判断</div>
+      <div class="strategy-title">${escapeHtml(a.strategySummary || '模型已完成 brief 拆解')}</div>
+      <div class="strategy-meta">${escapeHtml(providerText)}</div>
+    </div>
+    <div class="strategy-grid">
+      <div class="strategy-cell"><div class="strategy-label">品牌</div><div class="strategy-value">${escapeHtml(a.brand || '未写明')}</div></div>
+      <div class="strategy-cell"><div class="strategy-label">推荐数量</div><div class="strategy-value">${Number(a.reportCountMin || a.targetCount || 0) || '-'} 个</div></div>
+      <div class="strategy-cell"><div class="strategy-label">单个预算</div><div class="strategy-value">${escapeHtml(strategyBudgetText(a))}</div></div>
+      <div class="strategy-cell"><div class="strategy-label">合作形式</div><div class="strategy-value">${escapeHtml((a.forms || []).join(' / ') || '未写明')}</div></div>
+      <div class="strategy-cell"><div class="strategy-label">平台</div><div class="strategy-value">${escapeHtml(platformNames.join(' / ') || '未写明')}</div></div>
+      <div class="strategy-cell"><div class="strategy-label">数据门槛</div><div class="strategy-value">${escapeHtml(strategyMetricText(a))}</div></div>
+      <div class="strategy-section full"><div class="strategy-label">达人类型</div>${renderStrategyTags(a.creatorTypes)}</div>
+      <div class="strategy-section full"><div class="strategy-label">人群 / 排除判断</div>${renderStrategyTags(a.requiredAudienceTags)}</div>
+      <div class="strategy-section full"><div class="strategy-label">内容切入</div>${renderStrategyTags(a.contentAngles, '未生成内容切入', 30)}</div>
+      <div class="strategy-section full"><div class="strategy-label">粉丝量级 / 报价分布</div>${renderStrategyList(a.accountDistribution, '未写明粉丝量级分布')}</div>
+      <div class="strategy-section full"><div class="strategy-label">硬性要求</div>${renderStrategyList(a.hardRequirements, '未写明硬性要求', 16)}</div>
+      <div class="strategy-section full"><div class="strategy-label">搜索词</div>${renderStrategyTags(a.searchKeywords || a.keywords, '未生成搜索词', 36)}</div>
+      <div class="strategy-section full"><div class="strategy-label">风险提示</div>${renderStrategyList(a.riskNotes, '暂无明显风险', 10)}</div>
+      <div class="strategy-section full"><div class="strategy-label">待确认项</div>${renderStrategyList(a.confirmQuestions, '暂无必须确认项', 10)}</div>
+    </div>
+  `;
+}
+
 function renderRequirementForm(){
   const project = getCurrentProject();
   if(!project) return;
-  const a = currentAnalysis && currentAnalysis.projectId === currentProjectId ? currentAnalysis : localAnalyzeBrief(project.brief);
-  const setValue = (id, value) => {
-    const el = document.getElementById(id);
-    if(el) el.value = value ?? '';
-  };
-  setValue('confirmBrand', a.brand || project.brand || '');
-  setValue('confirmTargetCount', a.reportCountMin || a.targetCount || project.targetCount || 8);
-  setValue('confirmBudgetMin', a.budgetMin || project.budgetMin || '');
-  setValue('confirmBudgetMax', a.budgetMax || project.budgetMax || '');
-  setValue('confirmCpm', a.metrics?.cpmMax || '');
-  setValue('confirmCpe', a.metrics?.cpeMax || '');
-  setValue('confirmForms', (a.forms || []).join('、'));
-  setValue('confirmCreatorRequirement', a.creatorRequirementText || formatCreatorRequirement(a));
-  setValue('confirmAccountDistribution', (a.accountDistribution || []).join('、'));
-  setValue('confirmContentAngles', (a.contentAngles || []).join('、'));
-  setValue('confirmRequirementNote', a.requirementNote || formatRequirementNote(a));
-  const link = document.getElementById('confirmLinkRequired');
-  if(link) link.checked = !!a.linkRequired;
+  const a = currentAnalysis && currentAnalysis.projectId === currentProjectId ? currentAnalysis : null;
+  const summary = document.getElementById('briefStrategySummary');
   const status = document.getElementById('analysisStatus');
+  if(!a){
+    if(summary) summary.innerHTML = '<div class="strategy-empty">粘贴 brief 后点击“AI 拆解需求”，这里会显示模型输出的完整找号策略。</div>';
+    if(status){
+      status.className = 'status-pill wait';
+      status.textContent = `待${briefProviderLabel(selectedBriefProvider)}拆解`;
+    }
+    return;
+  }
+  if(summary) summary.innerHTML = buildStrategySummary(a);
   if(status){
     status.className = 'status-pill ok';
-    status.textContent = a.brand ? '已拆解，可修改' : '待确认';
+    status.textContent = a.intelligenceProvider && !a.intelligenceFallback ? `${briefProviderLabel(a.intelligenceProvider)} 已拆解` : '待确认';
   }
 }
 
 function saveConfirmedAnalysis(){
   const project = getCurrentProject();
   if(!project) return null;
-  const base = currentAnalysis || localAnalyzeBrief(project.brief);
-  const getValue = id => document.getElementById(id)?.value?.trim() || '';
-  const getNumber = id => Number(getValue(id) || 0);
+  const base = currentAnalysis && currentAnalysis.projectId === currentProjectId ? currentAnalysis : null;
+  if(!base){
+    alert('请先点击 AI 拆解需求，拿到模型策略后再确认。');
+    return null;
+  }
   const platforms = (base.platforms || ['pgy']).filter(key => ['pgy','xingtu','huxuan'].includes(key));
-  const creatorRequirementText = getValue('confirmCreatorRequirement');
-  const parsedCreatorRequirement = parseCreatorRequirementText(creatorRequirementText);
   const next = {
     ...base,
     projectId: currentProjectId,
-    brand: getValue('confirmBrand') || base.brand || project.brand || '',
+    brand: base.brand || project.brand || '',
     totalBudget: base.totalBudget || 0,
-    budgetMin: getNumber('confirmBudgetMin') || base.budgetMin || 0,
-    budgetMax: getNumber('confirmBudgetMax') || base.budgetMax || 0,
-    targetCount: Math.max(1, getNumber('confirmTargetCount') || base.targetCount || 8),
-    reportCountMin: Math.max(1, getNumber('confirmTargetCount') || base.reportCountMin || base.targetCount || 8),
+    budgetMin: Number(base.budgetMin || 0),
+    budgetMax: Number(base.budgetMax || 0),
+    targetCount: Math.max(1, Number(base.targetCount || base.reportCountMin || 8)),
+    reportCountMin: Math.max(1, Number(base.reportCountMin || base.targetCount || 8)),
     rebateMinPct: base.rebateMinPct || 0,
-    creatorRequirementText,
-    creatorTypes: parsedCreatorRequirement.creatorTypes.length ? parsedCreatorRequirement.creatorTypes : (base.creatorTypes || []),
-    requiredAudienceTags: parsedCreatorRequirement.requiredAudienceTags.length ? parsedCreatorRequirement.requiredAudienceTags : (base.requiredAudienceTags || []),
-    accountDistribution: splitTags(getValue('confirmAccountDistribution')),
-    contentAngles: splitTags(getValue('confirmContentAngles')),
-    forms: splitTags(getValue('confirmForms')),
-    requirementNote: getValue('confirmRequirementNote'),
+    creatorRequirementText: base.creatorRequirementText || '',
+    creatorTypes: base.creatorTypes || [],
+    requiredAudienceTags: base.requiredAudienceTags || [],
+    accountDistribution: base.accountDistribution || [],
+    contentAngles: base.contentAngles || [],
+    forms: base.forms || [],
+    requirementNote: base.requirementNote || '',
     coreRequirements: base.coreRequirements || '',
     otherRequirements: base.otherRequirements || '',
     syncRequirement: base.syncRequirement || '',
     metrics: {
       ...(base.metrics || {}),
-      cpmMax: getNumber('confirmCpm') || 0,
-      cpeMax: getNumber('confirmCpe') || 0
+      cpmMax: Number(base.metrics?.cpmMax || 0),
+      cpeMax: Number(base.metrics?.cpeMax || 0)
     },
-    linkRequired: !!document.getElementById('confirmLinkRequired')?.checked,
+    linkRequired: !!base.linkRequired,
     platforms: platforms.length ? platforms : ['pgy']
   };
   if(!next.platforms.includes('pgy')) next.platforms = ['pgy'];
-  next.hardRequirements = [];
-  if(next.reportCountMin) next.hardRequirements.push(`推荐数量 ${next.reportCountMin} 个`);
-  if(next.accountDistribution?.length) next.hardRequirements.push(`粉丝量级分布：${next.accountDistribution.join('、')}`);
-  if(next.requiredAudienceTags?.length) next.hardRequirements.push(`必须覆盖标签：${next.requiredAudienceTags.join('、')}`);
-  if(next.metrics.cpmMax) next.hardRequirements.push(`CPM < ${next.metrics.cpmMax}`);
-  if(next.metrics.cpeMax) next.hardRequirements.push(`CPE < ${next.metrics.cpeMax}`);
   project.brand = next.brand;
   project.name = next.brand ? `${next.brand} 选号项目` : project.name;
   project.budgetMin = next.budgetMin;
@@ -2880,6 +3030,7 @@ function saveConfirmedAnalysis(){
   localStorage.setItem('mengli_brief_analysis', JSON.stringify(currentAnalysis));
   renderProjectList();
   renderPlatformChoices();
+  renderRequirementForm();
   const status = document.getElementById('analysisStatus');
   if(status){ status.className = 'status-pill ok'; status.textContent = '已确认'; }
   return next;
@@ -2890,7 +3041,11 @@ function choosePlatform(platform){
     alert('首版先跑通小红书蒲公英，巨量星图和腾讯互选会保留入口但暂不启用。');
     return;
   }
-  const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
+  const a = currentProjectAnalysis();
+  if(!a){
+    alert('请先点击 AI 拆解需求，确认模型策略后再选择平台。');
+    return;
+  }
   currentAnalysis = {...a, platforms:['pgy']};
   localStorage.setItem('mengli_brief_analysis', JSON.stringify(currentAnalysis));
   renderPlatformChoices();
@@ -2899,7 +3054,7 @@ function choosePlatform(platform){
 function renderPlatformChoices(){
   const el = document.getElementById('platformChoiceGrid');
   if(!el) return;
-  const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
+  const a = currentProjectAnalysis() || defaultProjectAnalysis();
   const choices = [
     ['pgy','小红书蒲公英','首版启用，可本地跑通采集、推荐、导出'],
     ['xingtu','巨量星图','结构预留，后续接入星图采集节点'],
@@ -2925,25 +3080,29 @@ async function analyzeBrief(){
   persistProjects();
 
   const btn = document.getElementById('briefAnalyzeBtn');
-  if(btn){ btn.disabled = true; btn.textContent = '拆解中...'; }
+  const providerName = briefProviderLabel(selectedBriefProvider);
+  if(btn){ btn.disabled = true; btn.textContent = `${providerName} 拆解中...`; }
 
   try{
     const resp = await fetch('/api/brief-intelligence', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ brief, project: project.name })
+      body: JSON.stringify({ brief, project: project.name, provider: selectedBriefProvider })
     });
     const data = await resp.json();
+    if(!resp.ok) throw new Error(data.detail || data.error || `${providerName} 拆解失败`);
     if(data && !data.error && data.platforms){
       currentAnalysis = normalizeBriefAnalysis(data, brief);
     }else{
-      currentAnalysis = localAnalyzeBrief(brief);
+      throw new Error(`${providerName} 返回结果不完整，请重试`);
     }
   }catch(e){
-    currentAnalysis = localAnalyzeBrief(brief);
+    currentAnalysis = null;
+    localStorage.removeItem('mengli_brief_analysis');
+    alert(e.message || `${providerName} 拆解失败，请稍后重试`);
   }
 
-  localStorage.setItem('mengli_brief_analysis', JSON.stringify(currentAnalysis));
+  if(currentAnalysis) localStorage.setItem('mengli_brief_analysis', JSON.stringify(currentAnalysis));
   renderBriefAnalysis();
   renderRequirementForm();
   renderPlatformChoices();
@@ -3299,77 +3458,65 @@ function localAnalyzeBrief(brief, projectOverride){
 
 function normalizeBriefAnalysis(data, brief){
   data = data || {};
-  const local = localAnalyzeBrief(brief);
-  const text = String(brief || '');
-  const modelReliable = !!data.intelligenceProvider && data.intelligenceProvider !== 'local-rules' && !data.intelligenceFallback;
-  const keepLocalCreatorTypes = !modelReliable && (local.creatorTypes || []).length;
-  const keepLocalRequiredTags = !modelReliable && ((local.requiredAudienceTags || []).length || !REQUIRED_TAG_CONTEXT.test(text));
-  const safeCreatorTypes = modelReliable
-    ? ((data.creatorTypes || []).length ? data.creatorTypes : local.creatorTypes)
-    : (keepLocalCreatorTypes ? local.creatorTypes : (data.creatorTypes || local.creatorTypes));
-  const safeRequiredTags = modelReliable
-    ? ((data.requiredAudienceTags || []).length ? data.requiredAudienceTags : local.requiredAudienceTags)
-    : (keepLocalRequiredTags ? local.requiredAudienceTags : (data.requiredAudienceTags || local.requiredAudienceTags));
   const budgetRisk = typeof data.budgetRisk === 'string'
     ? {level:'info', message:data.budgetRisk}
-    : (data.budgetRisk || local.budgetRisk);
-  const preferModelList = (key) => modelReliable
-    ? (((data[key] || []).length ? data[key] : (local[key] || [])))
-    : (((local[key] || []).length ? local[key] : (data[key] || [])));
-  const preferModelText = (key) => modelReliable
-    ? (data[key] || local[key] || '')
-    : (local[key] || data[key] || '');
+    : (data.budgetRisk || {level:'info', message:''});
+  const platforms = (Array.isArray(data.platforms) ? data.platforms : []).filter(key => PLATFORM_CONFIG[key]);
+  const keywordSet = [...new Set([...(data.keywords || []), ...(data.searchKeywords || [])])].filter(Boolean);
   const merged = {
-    ...local,
     ...data,
-    metrics: {...local.metrics, ...(data.metrics || {})},
+    projectId: currentProjectId,
+    metrics: {cpmMax:0, cpeMax:0, ...(data.metrics || {})},
     budgetRisk,
-    platforms: (Array.isArray(data.platforms) ? data.platforms : local.platforms).filter(key => PLATFORM_CONFIG[key]) || local.platforms,
-    keywords: [...new Set([...(local.keywords || []), ...(data.keywords || []), ...(data.searchKeywords || [])])].filter(Boolean).slice(0, 40),
-    searchKeywords: [...new Set([...(data.searchKeywords || []), ...(local.keywords || [])])].filter(Boolean).slice(0, 40),
-    synonymGroups: data.synonymGroups || local.synonymGroups || {},
-    hardRequirements: preferModelList('hardRequirements'),
-    relaxableRequirements: data.relaxableRequirements || local.relaxableRequirements || [],
-    riskNotes: data.riskNotes || local.riskNotes || [],
-    confirmQuestions: data.confirmQuestions || local.confirmQuestions || [],
-    strategySummary: data.strategySummary || local.strategySummary || '',
-    intelligenceProvider: data.intelligenceProvider || local.intelligenceProvider || 'local-rules',
-    intelligenceModel: data.intelligenceModel || local.intelligenceModel || '',
+    platforms: platforms.length ? platforms : ['pgy'],
+    keywords: keywordSet.slice(0, 60),
+    searchKeywords: [...new Set([...(data.searchKeywords || []), ...(data.keywords || [])])].filter(Boolean).slice(0, 60),
+    synonymGroups: data.synonymGroups || {},
+    hardRequirements: data.hardRequirements || [],
+    relaxableRequirements: data.relaxableRequirements || [],
+    riskNotes: data.riskNotes || [],
+    confirmQuestions: data.confirmQuestions || [],
+    strategySummary: data.strategySummary || '',
+    intelligenceProvider: data.intelligenceProvider || selectedBriefProvider,
+    intelligenceModel: data.intelligenceModel || '',
     intelligenceFallback: !!data.intelligenceFallback,
     intelligenceError: data.intelligenceError || '',
-    creatorRequirementText: preferModelText('creatorRequirementText'),
-    creatorTypes: safeCreatorTypes,
-    creatorTypeDetails: preferModelList('creatorTypeDetails'),
-    requiredAudienceTags: safeRequiredTags,
-    contentAngles: preferModelList('contentAngles'),
-    contentAngleNote: preferModelText('contentAngleNote'),
-    accountDistribution: preferModelList('accountDistribution'),
-    coreRequirements: preferModelText('coreRequirements'),
-    otherRequirements: preferModelText('otherRequirements'),
-    syncRequirement: preferModelText('syncRequirement'),
-    contentQualityRequirement: preferModelText('contentQualityRequirement'),
-    requirementNote: preferModelText('requirementNote'),
-    forms: modelReliable ? ((data.forms || []).length ? data.forms : local.forms) : (local.forms || data.forms || []),
-    scoringFocus: data.scoringFocus || local.scoringFocus,
-    exclusions: data.exclusions || local.exclusions,
-    explanation: data.explanation || local.explanation
+    creatorRequirementText: data.creatorRequirementText || '',
+    creatorTypes: data.creatorTypes || [],
+    creatorTypeDetails: data.creatorTypeDetails || [],
+    requiredAudienceTags: data.requiredAudienceTags || [],
+    contentAngles: data.contentAngles || [],
+    contentAngleNote: data.contentAngleNote || '',
+    accountDistribution: data.accountDistribution || [],
+    coreRequirements: data.coreRequirements || '',
+    otherRequirements: data.otherRequirements || '',
+    syncRequirement: data.syncRequirement || '',
+    contentQualityRequirement: data.contentQualityRequirement || '',
+    requirementNote: data.requirementNote || '',
+    forms: data.forms || [],
+    scoringFocus: data.scoringFocus || [],
+    exclusions: data.exclusions || [],
+    explanation: data.explanation || ''
   };
-  if(!merged.platforms.length) merged.platforms = local.platforms;
   return {
     ...merged,
-    totalBudget: Number((modelReliable ? data.totalBudget : local.totalBudget) || merged.totalBudget || 0),
-    budgetMin: Number((modelReliable ? data.budgetMin : local.budgetMin) || merged.budgetMin || 0),
-    budgetMax: Number((modelReliable ? data.budgetMax : local.budgetMax) || merged.budgetMax || 0),
-    targetCount: Number(merged.targetCount || merged.reportCountMin || local.targetCount),
-    reportCountMin: Number(merged.reportCountMin || merged.targetCount || local.reportCountMin),
-    rebateMinPct: Number(local.rebateMinPct || 0)
+    totalBudget: Number(merged.totalBudget || 0),
+    budgetMin: Number(merged.budgetMin || 0),
+    budgetMax: Number(merged.budgetMax || 0),
+    targetCount: Number(merged.targetCount || merged.reportCountMin || 0),
+    reportCountMin: Number(merged.reportCountMin || merged.targetCount || 0),
+    rebateMinPct: Number(merged.rebateMinPct || 0)
   };
 }
 
 function renderBriefAnalysis(){
   const el = document.getElementById('briefAnalysis');
   if(!el) return;
-  const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
+  const a = currentProjectAnalysis();
+  if(!a){
+    el.innerHTML = '<div class="analysis-item full"><div class="analysis-label">模型拆解</div><div class="analysis-value">请先点击“AI 拆解需求”，系统不会再用本地规则自动填充。</div></div>';
+    return;
+  }
   const platformBadges = a.platforms.map(key => `<span class="platform-badge active">${escapeHtml(PLATFORM_CONFIG[key].short)}</span>`).join('');
   const metricText = [
     a.metrics?.cpmMax ? `CPM < ${a.metrics.cpmMax}` : '',
@@ -3388,8 +3535,8 @@ function renderBriefAnalysis(){
   const riskNotes = (a.riskNotes || []).map(item => `<div class="rule-line">${escapeHtml(item)}</div>`).join('') || '<div class="rule-line">暂无明显风险</div>';
   const confirmQuestions = (a.confirmQuestions || []).map(item => `<div class="rule-line">${escapeHtml(item)}</div>`).join('') || '<div class="rule-line">暂无必须二次确认项</div>';
   const providerText = a.intelligenceFallback
-    ? `本地规则兜底${a.intelligenceError ? `：${a.intelligenceError}` : ''}`
-    : `${a.intelligenceProvider || 'local-rules'}${a.intelligenceModel ? ` / ${a.intelligenceModel}` : ''}`;
+    ? `拆解失败${a.intelligenceError ? `：${a.intelligenceError}` : ''}`
+    : `${briefProviderLabel(a.intelligenceProvider)}${a.intelligenceModel ? ` / ${a.intelligenceModel}` : ''}`;
   el.innerHTML = `
     <div class="analysis-item"><div class="analysis-label">品牌 / 档期</div><div class="analysis-value">${escapeHtml(a.brand || '未写明')}</div><div class="analysis-value small">${escapeHtml(a.launchWindow || '档期待二核')}</div></div>
     <div class="analysis-item full"><div class="analysis-label">策略判断</div><div class="analysis-value">${escapeHtml(a.strategySummary || '按 brief 拆解找号策略')}</div><div class="analysis-value small">${escapeHtml(providerText)}</div></div>
@@ -3410,7 +3557,7 @@ function renderBriefAnalysis(){
 }
 
 function createDefaultTasks(){
-  const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
+  const a = analysisOrProjectDefaults();
   const requested = Number(a.reportCountMin || a.targetCount || 30);
   const firstRoundTarget = requested + Math.max(10, Math.ceil(requested * 0.3));
   collectionTasks = Object.keys(PLATFORM_CONFIG).map(platform => ({
@@ -3426,7 +3573,7 @@ function createDefaultTasks(){
 }
 
 function createCollectionTasks(showAlert=true){
-  const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
+  const a = analysisOrProjectDefaults();
   collectionTasks = Object.keys(PLATFORM_CONFIG).map(platform => {
     const enabled = a.platforms.includes(platform);
     const requested = Number(a.reportCountMin || a.targetCount || 30);
@@ -3454,7 +3601,7 @@ function getRawCandidateCount(platform){
 function renderPlatformCards(){
   const el = document.getElementById('platformCards');
   if(!el) return;
-  const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
+  const a = analysisOrProjectDefaults();
   el.innerHTML = Object.entries(PLATFORM_CONFIG).map(([key, config]) => {
     const suggested = a.platforms.includes(key);
     const task = collectionTasks.find(t => t.platform === key && t.projectId === currentProjectId);
@@ -3508,7 +3655,7 @@ function refreshTaskStatus(){
 }
 
 function simulateCollection(){
-  const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
+  const a = analysisOrProjectDefaults();
   const platforms = a.platforms.length ? a.platforms : ['pgy'];
   const requested = Number(a.reportCountMin || a.targetCount || 30);
   const firstRoundTarget = requested + Math.max(10, Math.ceil(requested * 0.3));
@@ -3527,7 +3674,7 @@ function simulateCollection(){
 }
 
 function makeSyntheticCandidate(platform, index){
-  const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
+  const a = analysisOrProjectDefaults();
   const audienceTags = a.requiredAudienceTags?.length ? a.requiredAudienceTags : (a.contentAngles?.length ? a.contentAngles : ['内容匹配']);
   const creatorTypes = a.creatorTypes?.length ? a.creatorTypes : ['种草类'];
   const audience = audienceTags[index % audienceTags.length];
@@ -4158,7 +4305,7 @@ function buildCandidatePool(){
 function normalizeCandidate(row){
   const platform = row.platform || 'pgy';
   const config = PLATFORM_CONFIG[platform] || PLATFORM_CONFIG.pgy;
-  const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
+  const a = analysisOrProjectDefaults();
   const rawImageQuote = Number(row.price_img || row.imageQuote || row.quoteLow || row.image_quote || 0);
   const rawVideoQuote = Number(row.price_video || row.videoQuote || row.quoteHigh || row.video_quote || 0);
   const genericQuote = Number(row.quote || row.price_oral || row.price_implant || 0);
@@ -4332,7 +4479,7 @@ function formatQuote(row, platform){
 }
 
 function scoreCandidate(candidate){
-  const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
+  const a = analysisOrProjectDefaults();
   const formQuote = candidateFormQuote(candidate, a);
   const budgetScore = formQuote.missing ? 30 : scoreBudget(formQuote.quote, a.budgetMin, a.budgetMax);
   const overlap = candidate.tags.filter(tag => a.keywords.some(kw => tag.includes(kw) || kw.includes(tag))).length;
@@ -4592,7 +4739,7 @@ function removeRecommendation(uid){
 
 function autoRecommend(){
   buildCandidatePool();
-  const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
+  const a = analysisOrProjectDefaults();
   const locked = recommendations.filter(item => {
     if(!item.locked || (item.projectId && item.projectId !== currentProjectId)) return false;
     const candidate = getCandidateByUid(item.uid);
@@ -4689,7 +4836,7 @@ function candidateMatchesTag(candidate, tag){
 }
 
 function ensureCollectionForAnalysis(){
-  const a = currentAnalysis || localAnalyzeBrief(getCurrentProject().brief);
+  const a = analysisOrProjectDefaults();
   const platforms = ['pgy'];
   const requested = Number(a.reportCountMin || a.targetCount || 30);
   const targetPool = requested + Math.max(10, Math.ceil(requested * 0.3));
@@ -4716,7 +4863,7 @@ async function startFindFlow(){
     project.brief = input.value.trim();
     persistProjects();
   }
-  const analysis = saveConfirmedAnalysis() || currentAnalysis;
+  const analysis = saveConfirmedAnalysis() || currentProjectAnalysis();
   if(!analysis) return alert('请先输入 brief 并拆解需求');
   if(!analysis.platforms.includes('pgy')) choosePlatform('pgy');
   const button = window.event?.currentTarget;
@@ -4798,7 +4945,7 @@ function renderResultsView(){
   if(!tbody || !empty || !assessment) return;
   buildCandidatePool();
   const project = getCurrentProject();
-  const a = currentAnalysis || localAnalyzeBrief(project.brief);
+  const a = analysisOrProjectDefaults(project);
   const items = getRecommendedCandidates();
   if(desc) desc.textContent = `${project.name} · 目标 ${a.reportCountMin || a.targetCount || 0} 个 · ${a.platforms.map(key => PLATFORM_CONFIG[key]?.short || key).join(' / ')}`;
   assessment.innerHTML = buildResultAssessment(items, a, serverRecommendationDiagnostics);
