@@ -561,6 +561,20 @@ tbody tr:hover{
 	.strategy-list{display:grid;gap:7px;margin:0;padding:0;list-style:none}
 	.strategy-list li{font-size:13px;font-weight:700;color:var(--gray-600);line-height:1.6}
 	.strategy-list li::before{content:"";display:inline-block;width:5px;height:5px;background:var(--accent);margin-right:8px;vertical-align:middle}
+	.confirm-panel{margin-top:16px;border:1px solid var(--gray-200);background:var(--gray-50);padding:18px;display:grid;gap:14px}
+	.confirm-panel-title{font-size:16px;font-weight:900;color:var(--black)}
+	.confirm-panel-desc{font-size:13px;color:var(--gray-500);line-height:1.7}
+	.confirm-answer-list{display:grid;gap:12px}
+	.confirm-answer-item{display:grid;gap:8px;padding:12px;background:var(--white);border:1px solid var(--gray-100)}
+	.confirm-question{font-size:13px;font-weight:800;color:var(--gray-700);line-height:1.6}
+	.confirm-answer-input,.correction-textarea{
+	  width:100%;border:1.5px solid var(--gray-200);background:var(--white);
+	  padding:12px 13px;font-family:var(--font);font-size:14px;line-height:1.7;outline:none;resize:vertical;
+	}
+	.confirm-answer-input:focus,.correction-textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(244,132,95,.16)}
+	.correction-textarea{min-height:92px}
+	.confirm-panel-actions{display:flex;gap:10px;flex-wrap:wrap}
+	.confirm-note{font-size:12px;color:var(--gray-400);line-height:1.6}
 	.platform-suggestion{display:flex;gap:6px;flex-wrap:wrap}
 .platform-badge{
   display:inline-flex;align-items:center;gap:6px;padding:5px 10px;
@@ -1492,6 +1506,7 @@ tbody tr:hover{
 	          <div id="briefStrategySummary" class="strategy-summary">
 	            <div class="strategy-empty">粘贴 brief 后点击“AI 拆解需求”，这里会显示模型输出的完整找号策略。</div>
 	          </div>
+	          <div id="analysisCorrectionPanel" class="confirm-panel" style="display:none"></div>
 
           <div style="margin-top:18px">
             <div class="analysis-label">选择平台</div>
@@ -2961,6 +2976,102 @@ function buildStrategySummary(a){
   `;
 }
 
+function renderAnalysisCorrectionPanel(a){
+  const panel = document.getElementById('analysisCorrectionPanel');
+  if(!panel) return;
+  if(!a){
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+    return;
+  }
+  panel.style.display = 'grid';
+  const questions = Array.isArray(a.confirmQuestions) ? a.confirmQuestions.filter(Boolean).slice(0, 12) : [];
+  const savedAnswers = Array.isArray(a.manualConfirmAnswers) ? a.manualConfirmAnswers : [];
+  const answerRows = questions.length
+    ? `<div class="confirm-answer-list">${questions.map((question, index) => {
+        const saved = savedAnswers.find(item => Number(item.index) === index)?.answer || '';
+        return `<div class="confirm-answer-item">
+          <div class="confirm-question">${index + 1}. ${escapeHtml(question)}</div>
+          <textarea class="confirm-answer-input" data-question-index="${index}" placeholder="在这里填写你的确认结果，例如：可以接受 / 不接受 / 按XX规则处理">${escapeHtml(saved)}</textarea>
+        </div>`;
+      }).join('')}</div>`
+    : '<div class="confirm-note">模型没有列出必须二次确认的问题；如果拆解不准，可以直接在下面写修正意见。</div>';
+  panel.innerHTML = `
+    <div>
+      <div class="confirm-panel-title">确认与修正</div>
+      <div class="confirm-panel-desc">这里专门处理两件事：回答模型列出的待确认项；以及指出拆解有误的地方。重新拆解时，这里的内容会作为更高优先级输入。</div>
+    </div>
+    ${answerRows}
+    <div>
+      <div class="confirm-question">拆解有误 / 需要补充</div>
+      <textarea id="analysisCorrectionText" class="correction-textarea" placeholder="例如：品牌不是 YOGA电脑，是联想YOGA系列；达人类型不要时尚类，改成科技数码/白领职场；预算上限改成4000；不要学生群体必须作为排除条件。">${escapeHtml(a.manualCorrectionNote || '')}</textarea>
+    </div>
+    <div class="confirm-panel-actions">
+      <button class="ghost-btn" onclick="saveAnalysisCorrectionsOnly()">保存确认答复</button>
+      <button class="primary-btn" onclick="reanalyzeBriefWithCorrections()">带着修正重新拆解</button>
+    </div>
+    <div class="confirm-note">确认答复会跟随项目保存；如果内容会影响筛选条件，建议点击“带着修正重新拆解”。</div>
+  `;
+}
+
+function collectAnalysisCorrections(){
+  const answers = [...document.querySelectorAll('.confirm-answer-input')].map(input => {
+    const index = Number(input.dataset.questionIndex || 0);
+    const question = currentProjectAnalysis()?.confirmQuestions?.[index] || '';
+    return {index, question, answer: input.value.trim()};
+  }).filter(item => item.answer);
+  const note = document.getElementById('analysisCorrectionText')?.value.trim() || '';
+  return {answers, note};
+}
+
+function applyAnalysisCorrectionsToCurrent(){
+  const a = currentProjectAnalysis();
+  if(!a) return null;
+  const corrections = collectAnalysisCorrections();
+  currentAnalysis = {
+    ...a,
+    manualConfirmAnswers: corrections.answers,
+    manualCorrectionNote: corrections.note,
+    manualConfirmedAt: new Date().toISOString()
+  };
+  localStorage.setItem('mengli_brief_analysis', JSON.stringify(currentAnalysis));
+  return currentAnalysis;
+}
+
+function buildBriefWithCorrections(brief, corrections){
+  const answerLines = (corrections.answers || []).map((item, index) => `${index + 1}. 问题：${item.question}\n   答复：${item.answer}`);
+  const blocks = [];
+  if(answerLines.length) blocks.push(`待确认项答复：\n${answerLines.join('\n')}`);
+  if(corrections.note) blocks.push(`拆解修正/补充：\n${corrections.note}`);
+  if(!blocks.length) return brief;
+  return `${brief}\n\n【媒介确认与修正】\n${blocks.join('\n\n')}\n\n请以【媒介确认与修正】为最高优先级，重新输出完整找号策略。`;
+}
+
+function saveAnalysisCorrectionsOnly(){
+  const next = applyAnalysisCorrectionsToCurrent();
+  if(!next){
+    alert('请先完成 AI 拆解后再填写确认答复。');
+    return;
+  }
+  renderRequirementForm();
+  const status = document.getElementById('analysisStatus');
+  if(status){ status.className = 'status-pill ok'; status.textContent = '已保存答复'; }
+}
+
+async function reanalyzeBriefWithCorrections(){
+  const a = applyAnalysisCorrectionsToCurrent();
+  if(!a){
+    alert('请先完成 AI 拆解后再修正。');
+    return;
+  }
+  const corrections = collectAnalysisCorrections();
+  if(!corrections.answers.length && !corrections.note){
+    alert('请先填写待确认项答复，或写明哪里拆解有误。');
+    return;
+  }
+  await analyzeBrief({corrections});
+}
+
 function renderRequirementForm(){
   const project = getCurrentProject();
   if(!project) return;
@@ -2969,6 +3080,7 @@ function renderRequirementForm(){
   const status = document.getElementById('analysisStatus');
   if(!a){
     if(summary) summary.innerHTML = '<div class="strategy-empty">粘贴 brief 后点击“AI 拆解需求”，这里会显示模型输出的完整找号策略。</div>';
+    renderAnalysisCorrectionPanel(null);
     if(status){
       status.className = 'status-pill wait';
       status.textContent = `待${briefProviderLabel(selectedBriefProvider)}拆解`;
@@ -2976,6 +3088,7 @@ function renderRequirementForm(){
     return;
   }
   if(summary) summary.innerHTML = buildStrategySummary(a);
+  renderAnalysisCorrectionPanel(a);
   if(status){
     status.className = 'status-pill ok';
     status.textContent = a.intelligenceProvider && !a.intelligenceFallback ? `${briefProviderLabel(a.intelligenceProvider)} 已拆解` : '待确认';
@@ -2990,6 +3103,7 @@ function saveConfirmedAnalysis(){
     alert('请先点击 AI 拆解需求，拿到模型策略后再确认。');
     return null;
   }
+  const corrections = collectAnalysisCorrections();
   const platforms = (base.platforms || ['pgy']).filter(key => ['pgy','xingtu','huxuan'].includes(key));
   const next = {
     ...base,
@@ -3017,7 +3131,10 @@ function saveConfirmedAnalysis(){
       cpeMax: Number(base.metrics?.cpeMax || 0)
     },
     linkRequired: !!base.linkRequired,
-    platforms: platforms.length ? platforms : ['pgy']
+    platforms: platforms.length ? platforms : ['pgy'],
+    manualConfirmAnswers: corrections.answers,
+    manualCorrectionNote: corrections.note,
+    manualConfirmedAt: new Date().toISOString()
   };
   if(!next.platforms.includes('pgy')) next.platforms = ['pgy'];
   project.brand = next.brand;
@@ -3071,28 +3188,37 @@ function renderPlatformChoices(){
   }).join('');
 }
 
-async function analyzeBrief(){
+async function analyzeBrief(options={}){
   const project = getCurrentProject();
   const input = document.getElementById('briefInput');
   const brief = (input?.value || project.brief || '').trim();
   if(!brief) return alert('请先输入 brief');
   project.brief = brief;
   persistProjects();
+  const corrections = options.corrections || {answers: [], note: ''};
+  const requestBrief = buildBriefWithCorrections(brief, corrections);
 
   const btn = document.getElementById('briefAnalyzeBtn');
+  const correctionButtons = [...document.querySelectorAll('#analysisCorrectionPanel button')];
   const providerName = briefProviderLabel(selectedBriefProvider);
   if(btn){ btn.disabled = true; btn.textContent = `${providerName} 拆解中...`; }
+  correctionButtons.forEach(button => button.disabled = true);
 
   try{
     const resp = await fetch('/api/brief-intelligence', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ brief, project: project.name, provider: selectedBriefProvider })
+      body: JSON.stringify({ brief: requestBrief, project: project.name, provider: selectedBriefProvider })
     });
     const data = await resp.json();
     if(!resp.ok) throw new Error(data.detail || data.error || `${providerName} 拆解失败`);
     if(data && !data.error && data.platforms){
       currentAnalysis = normalizeBriefAnalysis(data, brief);
+      if(corrections.answers.length || corrections.note){
+        currentAnalysis.manualConfirmAnswers = corrections.answers;
+        currentAnalysis.manualCorrectionNote = corrections.note;
+        currentAnalysis.manualConfirmedAt = new Date().toISOString();
+      }
     }else{
       throw new Error(`${providerName} 返回结果不完整，请重试`);
     }
@@ -3107,6 +3233,7 @@ async function analyzeBrief(){
   renderRequirementForm();
   renderPlatformChoices();
   if(btn){ btn.disabled = false; btn.textContent = 'AI 拆解需求'; }
+  correctionButtons.forEach(button => button.disabled = false);
 }
 
 const BRIEF_TOP_LABELS = [
