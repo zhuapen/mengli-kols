@@ -1,7 +1,115 @@
-// ========== 注册、Toast、Markdown 已迁移到 src/ 模块 ==========
-// src/features/register.js, src/utils/toast.js, src/utils/markdown.js
+// ========== REGISTER ==========
+function showRegisterModal(){
+  document.getElementById('registerModal').classList.add('show');
+}
+function closeRegisterModal(){
+  document.getElementById('registerModal').classList.remove('show');
+  document.getElementById('registerError').textContent = '';
+  document.getElementById('regEmail').value = '';
+  document.getElementById('regPassword').value = '';
+  document.getElementById('regName').value = '';
+  document.getElementById('regPosition').value = '';
+}
 
-// 保存原始文本供复制使用（保留在 app.js，因为其他函数依赖）
+async function handleRegister(event){
+  event.preventDefault();
+  const email = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const name = document.getElementById('regName').value.trim();
+  const position = document.getElementById('regPosition').value.trim();
+  const errorEl = document.getElementById('registerError');
+  const btn = document.getElementById('regSubmitBtn');
+
+  if(!email || !password || !name || !position){
+    errorEl.textContent = '请填写所有必填项（邮箱、密码、姓名、岗位）';
+    return;
+  }
+  // 邮箱格式校验（兼容 validator 未加载的情况）
+  if(typeof validator !== 'undefined' && !validator.isEmail(email)){
+    errorEl.textContent = '请输入有效的邮箱地址';
+    return;
+  }
+  if(password.length < 6){
+    errorEl.textContent = '密码至少6位';
+    return;
+  }
+
+  // 净化输入（兼容 validator 未加载的情况）
+  const safeName = typeof validator !== 'undefined' ? validator.escape(name) : name.replace(/[<>&"']/g, '');
+  const safePosition = typeof validator !== 'undefined' ? validator.escape(position) : position.replace(/[<>&"']/g, '');
+
+  errorEl.textContent = '';
+  btn.disabled = true;
+  btn.textContent = '提交中...';
+
+  try {
+    await apiClient.ai.createUser({
+      email, password,
+      display_name: safeName,
+      position: safePosition,
+      status: 'pending'
+    });
+    try { showToast('注册申请已提交，请等待管理员审核'); } catch(e) { alert('注册申请已提交，请等待管理员审核'); }
+    closeRegisterModal();
+  } catch(e){
+    let errMsg = e.message || '注册失败';
+    if(errMsg.includes('already been registered') || errMsg.includes('already registered')){
+      errMsg = '该邮箱已被注册，请直接登录或换一个邮箱';
+    } else if(errMsg.includes('valid email')){
+      errMsg = '请输入有效的邮箱地址';
+    } else if(errMsg.includes('password') && errMsg.includes('6')){
+      errMsg = '密码至少需要6位';
+    } else if(errMsg.includes('rate limit')){
+      errMsg = '注册请求过于频繁，请稍后再试';
+    }
+    errorEl.textContent = '注册失败：' + errMsg;
+  }
+
+  btn.disabled = false;
+  btn.textContent = '提交注册';
+}
+
+// ========== TOAST NOTIFICATION (Notyf) ==========
+let notyf = null;
+try {
+  notyf = new Notyf({
+    duration: 3000,
+    position: { x: 'right', y: 'top' },
+    types: [
+      { type: 'success', background: '#10B981', icon: { className: 'notyf__icon', tagName: 'span', text: '✓' } },
+      { type: 'error', background: '#EF4444', icon: { className: 'notyf__icon', tagName: 'span', text: '✗' } },
+      { type: 'warning', background: '#F59E0B', icon: { className: 'notyf__icon', tagName: 'span', text: '⚠' } }
+    ]
+  });
+} catch(e) { console.warn('Notyf 加载失败，使用 fallback:', e); }
+
+function showToast(msg, type){
+  if(notyf){
+    if(type === 'error') notyf.error(msg);
+    else if(type === 'warning') notyf.open({ type:'warning', message:msg });
+    else notyf.success(msg);
+  } else {
+    // fallback: 简单 alert
+    alert(msg);
+  }
+}
+
+// ========== MARKDOWN RENDERER ==========
+function renderMarkdown(text){
+  if(!text) return '';
+  try {
+    if(typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined'){
+      const html = marked.parse(text, { breaks:true, gfm:true });
+      return DOMPurify.sanitize(html);
+    }
+  } catch(e) { console.warn('Markdown 渲染失败，使用纯文本:', e); }
+  // fallback: 转义 HTML 后返回
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// 保存原始文本供复制使用
 let _lastCopyText = '';
 let _lastArticleText = '';
 

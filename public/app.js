@@ -1,127 +1,7 @@
-// ========== REGISTER ==========
-function showRegisterModal(){
-  document.getElementById('registerModal').classList.add('show');
-}
-function closeRegisterModal(){
-  document.getElementById('registerModal').classList.remove('show');
-  document.getElementById('registerError').textContent = '';
-  document.getElementById('regEmail').value = '';
-  document.getElementById('regPassword').value = '';
-  document.getElementById('regName').value = '';
-  document.getElementById('regPosition').value = '';
-}
+// ========== 注册、Toast、Markdown 已迁移到 src/ 模块 ==========
+// src/features/register.js, src/utils/toast.js, src/utils/markdown.js
 
-async function handleRegister(event){
-  event.preventDefault();
-  const email = document.getElementById('regEmail').value.trim();
-  const password = document.getElementById('regPassword').value;
-  const name = document.getElementById('regName').value.trim();
-  const position = document.getElementById('regPosition').value.trim();
-  const errorEl = document.getElementById('registerError');
-  const btn = document.getElementById('regSubmitBtn');
-
-  if(!email || !password || !name || !position){
-    errorEl.textContent = '请填写所有必填项（邮箱、密码、姓名、岗位）';
-    return;
-  }
-  // 邮箱格式校验（兼容 validator 未加载的情况）
-  if(typeof validator !== 'undefined' && !validator.isEmail(email)){
-    errorEl.textContent = '请输入有效的邮箱地址';
-    return;
-  }
-  if(password.length < 6){
-    errorEl.textContent = '密码至少6位';
-    return;
-  }
-
-  // 净化输入（兼容 validator 未加载的情况）
-  const safeName = typeof validator !== 'undefined' ? validator.escape(name) : name.replace(/[<>&"']/g, '');
-  const safePosition = typeof validator !== 'undefined' ? validator.escape(position) : position.replace(/[<>&"']/g, '');
-
-  errorEl.textContent = '';
-  btn.disabled = true;
-  btn.textContent = '提交中...';
-
-  try {
-    const resp = await fetch('/api', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'create_user',
-        email, password,
-        display_name: safeName,
-        position: safePosition,
-        status: 'pending'
-      })
-    });
-    const result = await resp.json();
-
-    if(result.error){
-      // 翻译常见 Supabase 错误
-      let errMsg = result.error;
-      if(errMsg.includes('already been registered') || errMsg.includes('already registered')){
-        errMsg = '该邮箱已被注册，请直接登录或换一个邮箱';
-      } else if(errMsg.includes('valid email')){
-        errMsg = '请输入有效的邮箱地址';
-      } else if(errMsg.includes('password') && errMsg.includes('6')){
-        errMsg = '密码至少需要6位';
-      } else if(errMsg.includes('rate limit')){
-        errMsg = '注册请求过于频繁，请稍后再试';
-      }
-      errorEl.textContent = '注册失败：' + errMsg;
-    } else {
-      try { showToast('注册申请已提交，请等待管理员审核'); } catch(e) { alert('注册申请已提交，请等待管理员审核'); }
-      closeRegisterModal();
-    }
-  } catch(e){
-    errorEl.textContent = '注册失败：' + e.message;
-  }
-
-  btn.disabled = false;
-  btn.textContent = '提交注册';
-}
-
-// ========== TOAST NOTIFICATION (Notyf) ==========
-let notyf = null;
-try {
-  notyf = new Notyf({
-    duration: 3000,
-    position: { x: 'right', y: 'top' },
-    types: [
-      { type: 'success', background: '#10B981', icon: { className: 'notyf__icon', tagName: 'span', text: '✓' } },
-      { type: 'error', background: '#EF4444', icon: { className: 'notyf__icon', tagName: 'span', text: '✗' } },
-      { type: 'warning', background: '#F59E0B', icon: { className: 'notyf__icon', tagName: 'span', text: '⚠' } }
-    ]
-  });
-} catch(e) { console.warn('Notyf 加载失败，使用 fallback:', e); }
-
-function showToast(msg, type){
-  if(notyf){
-    if(type === 'error') notyf.error(msg);
-    else if(type === 'warning') notyf.open({ type:'warning', message:msg });
-    else notyf.success(msg);
-  } else {
-    // fallback: 简单 alert
-    alert(msg);
-  }
-}
-
-// ========== MARKDOWN RENDERER ==========
-function renderMarkdown(text){
-  if(!text) return '';
-  try {
-    if(typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined'){
-      const html = marked.parse(text, { breaks:true, gfm:true });
-      return DOMPurify.sanitize(html);
-    }
-  } catch(e) { console.warn('Markdown 渲染失败，使用纯文本:', e); }
-  // fallback: 转义 HTML 后返回
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-// 保存原始文本供复制使用
+// 保存原始文本供复制使用（保留在 app.js，因为其他函数依赖）
 let _lastCopyText = '';
 let _lastArticleText = '';
 
@@ -485,11 +365,7 @@ async function aiSearch(){
   document.getElementById('aiResult').style.display = 'none';
 
   try{
-    const resp = await fetch('/api', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ action:'kol_search', query, platform: currentPlatform })
-    });
-    const data = await resp.json();
+    const data = await apiClient.ai.kolSearch(query, currentPlatform);
 
     document.getElementById('searchInput').value = data.search || '';
     if(data.tags){
@@ -989,13 +865,7 @@ async function uploadSingleImage(b64DataUrl, filename, index, total){
     setImgStatus(`上传图片 (${index+1}/${total})${attempt > 1 ? ` 重试${attempt}` : ''}...`);
     IMG_LOG(`上传 ${filename} 第${attempt}次`);
 
-    const resp = await fetch('/api', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'upload_image_file', file_base64: b64DataUrl, filename })
-    });
-    if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const result = await resp.json();
+    const result = await apiClient.ai.uploadImage(b64DataUrl, filename);
     if(result.error) throw new Error(result.error);
     IMG_LOG(`上传成功: ${filename} → ${result.url?.substring(0,60)}...`);
     return result.url;
@@ -1008,18 +878,14 @@ async function callImageEdit(requestBody){
     setImgStatus(`AI 生成中${attempt > 1 ? ` (重试${attempt}/3)` : ''}...`);
     IMG_LOG(`调用 image_edit 第${attempt}次`);
 
-    const resp = await fetch('/api', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
-    });
-    if(!resp.ok){
-      const text = await resp.text().catch(() => '');
-      if(resp.status === 429) throw new Error('限流');
-      if(resp.status === 504 || resp.status === 502) throw new Error('超时');
-      throw new Error(text.substring(0, 100) || `HTTP ${resp.status}`);
+    var data;
+    try {
+      data = await apiClient.ai.imageEdit(requestBody);
+    } catch(e) {
+      if(e.status === 429) throw new Error('限流');
+      if(e.status === 504 || e.status === 502) throw new Error('超时');
+      throw new Error(e.message || '生成失败');
     }
-    const data = await resp.json();
     if(data.error) throw new Error(data.error);
     if(!data.image_url) throw new Error('未返回图片URL');
     return data;
@@ -1173,11 +1039,7 @@ async function genImage(){
   startImgTimer();
 
   try{
-    const resp = await fetch('/api', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(requestBody)
-    });
-    const data = await resp.json();
+    const data = await apiClient.ai.imageEdit(requestBody);
     if(data.image_url){
       const preloader = new Image();
       preloader.onload = () => {
@@ -1259,11 +1121,7 @@ async function genCopy(){
       examples = highRated.map(h => h.output_content).filter(Boolean);
     }
 
-    const resp = await fetch('/api', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ action:'copywriting', type, brand, platform, product, prompt:extra, examples })
-    });
-    const data = await resp.json();
+    const data = await apiClient.ai.copywriting({ type, brand, platform, product, prompt:extra, examples });
     const resultText = data.text || data.error || '生成失败';
     _lastCopyText = data.text || '';
     out.innerHTML = renderMarkdown(resultText);
@@ -1717,12 +1575,7 @@ async function startAnalysis(){
     }
 
     // 3. 调用后端 API
-    const resp = await fetch('/api', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'analyze_kol', images: croppedImages })
-    });
-    const data = await resp.json();
+    const data = await apiClient.ai.analyzeKol(croppedImages);
 
     if(data.error){
       document.getElementById('daErrorMsg').textContent = data.error;
@@ -1954,14 +1807,11 @@ async function showPluginDetail(id){
   listView.style.display = 'none';
   detailView.style.display = 'block';
 
-  // 加载插件信息
+  // 加载插件信息（get 接口已包含 changelog）
   try {
-    const [{data: plugin}, {data: changelog}] = await Promise.all([
-      supabase.from('plugins').select('*').eq('id', id).single(),
-      supabase.from('plugin_changelog').select('*').eq('plugin_id', id).order('created_at', {ascending: false})
-    ]);
-    currentPlugin = plugin;
-    currentPluginChangelog = changelog || [];
+    const pluginData = await apiClient.plugins.get(id);
+    currentPlugin = pluginData;
+    currentPluginChangelog = pluginData.changelog || [];
   } catch(e){
     detail.innerHTML = '<p style="color:red;padding:48px">加载失败</p>';
     return;
@@ -2060,7 +1910,7 @@ async function downloadPlugin(id, url){
   try {
     const plugin = pluginList.find(p => p.id === id);
     if(plugin){
-      await supabase.from('plugins').update({ downloads: (plugin.downloads||0) + 1 }).eq('id', id);
+      await apiClient.plugins.incrementDownload(id);
       plugin.downloads = (plugin.downloads||0) + 1;
     }
   } catch(e){ console.warn('更新下载计数失败:', e); }
@@ -2126,18 +1976,12 @@ async function submitPluginFeedback(pluginId){
   btn.disabled = true; btn.textContent = '提交中...';
 
   try {
-    // 上传图片到 Storage（失败不阻塞反馈提交）
+    // 上传图片（失败不阻塞反馈提交）
     const imageUrls = [];
     for(const img of feedbackImages){
       try {
-        const ext = img.file.name.split('.').pop();
-        const path = `${pluginId}/${Date.now()}_${Math.random().toString(36).slice(2,6)}.${ext}`;
-        const { error: uploadErr } = await supabase.storage
-          .from('feedback-images')
-          .upload(path, img.file);
-        if(uploadErr) { console.warn('图片上传失败，跳过:', uploadErr.message); continue; }
-        const { data: urlData } = supabase.storage.from('feedback-images').getPublicUrl(path);
-        imageUrls.push(urlData.publicUrl);
+        const uploadResult = await apiClient.upload.image(img.file);
+        if(uploadResult.url) imageUrls.push(uploadResult.url);
       } catch(imgErr) {
         console.warn('图片上传异常，跳过:', imgErr);
       }
@@ -2152,8 +1996,7 @@ async function submitPluginFeedback(pluginId){
       images: imageUrls.length ? imageUrls : null
     };
 
-    const { error } = await supabase.from('plugin_feedback').insert(insertData);
-    if(error) throw error;
+    await apiClient.pluginFeedback.submit(insertData);
 
     showToast('✅ 反馈已提交，感谢！');
     try {
@@ -2793,18 +2636,11 @@ async function submitFeedback() {
   btn.textContent = '改进中...';
 
   try {
-    const resp = await fetch('/api', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'feedback',
-        original_content: feedbackData.original_content,
-        feedback_text: feedbackText,
-        gen_type: feedbackData.gen_type
-      })
+    const data = await apiClient.ai.feedback({
+      original_content: feedbackData.original_content,
+      feedback_text: feedbackText,
+      gen_type: feedbackData.gen_type
     });
-
-    const data = await resp.json();
 
     if (data.error) {
       showToast('改进失败：' + data.error, 'error');
@@ -3467,9 +3303,7 @@ async function genCopyStream(){
     if(followUp) followUp.style.display = 'block';
   }
 
-  fetchStream('/api', {
-    action:'stream_copywriting', type, brand, platform, product, prompt:extra, examples:[]
-  },
+  apiClient.ai.streamCopywriting({ type, brand, platform, product, prompt:extra, examples:[] },
   (chunk) => { fullText += chunk; _lastCopyText = fullText; out.innerHTML = renderMarkdown(fullText); updateWordCount(out, fullText); },
   () => { finalizeCopy(fullText); },
   (e) => {
@@ -3598,9 +3432,7 @@ async function refineCopy(){
     input.value = '';
   }
 
-  fetchStream('/api', {
-    action:'stream_refine', original:currentText, instruction, context:{type, brand, platform}
-  },
+  apiClient.ai.streamRefine({ original:currentText, instruction:instruction, context:{type, brand, platform} },
   (chunk) => { fullText += chunk; _lastCopyText = fullText; out.innerHTML = renderMarkdown(fullText); },
   () => { finalizeRefine(fullText); },
   (e) => {
@@ -3687,10 +3519,9 @@ async function genArticleStream(){
     if(tplBtn) tplBtn.style.display = 'inline-flex';
   }
 
-  const body = { action:'stream_article', mode:articleMode, extra };
-  if(file) body.file = { name:file.name, base64:file.base64, type:file.type };
+  var articleParams = { mode:articleMode, extra:extra };
 
-  fetchStream('/api', body,
+  apiClient.ai.streamArticle(articleParams, file,
   (chunk) => { fullText += chunk; _lastArticleText = fullText; out.innerHTML = renderMarkdown(fullText); updateWordCount(out, fullText); },
   () => { finalizeArticle(fullText); },
   (e) => {
@@ -3700,9 +3531,9 @@ async function genArticleStream(){
       finalizeArticle(fullText);
     } else {
       // 非流式回退
-      fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-        .then(r=>r.json()).then(d=>{ _lastArticleText=d.text||''; out.innerHTML=renderMarkdown(d.text||d.error||'生成失败'); finalizeArticle(d.text||''); })
-        .catch(()=>{ out.className='article-output empty'; out.textContent=getApiErrorMessage(e); });
+      apiClient.ai.article(articleParams, file)
+        .then(function(d){ _lastArticleText=d.text||''; out.innerHTML=renderMarkdown(d.text||d.error||'生成失败'); finalizeArticle(d.text||''); })
+        .catch(function(){ out.className='article-output empty'; out.textContent=getApiErrorMessage(e); });
     }
   });
 }

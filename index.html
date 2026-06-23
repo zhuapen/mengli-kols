@@ -7,7 +7,7 @@
 <title>萌力互动 · AI创作平台</title>
 <link rel="preconnect" href="https://fonts.loli.net">
 <link href="https://fonts.loli.net/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260615">
+<link rel="stylesheet" href="style.css">
 <!-- 安全 & 体验增强库 -->
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/validator@13/validator.min.js"></script>
@@ -31,26 +31,26 @@
 <!-- Navigation -->
 <nav class="nav">
   <div class="nav-left">
-    <a href="#" class="nav-logo" onclick="showPage('home')">
+    <a href="#" class="nav-logo" data-action="show-page" data-page="home">
       <img src="logo.jpg" alt="萌力互动">
       <span class="nav-logo-text">萌力互动</span>
     </a>
     <div class="nav-links">
-      <a href="#" class="nav-link active" data-page="home" onclick="showPage('home')">首页</a>
-      <a href="#" class="nav-link" data-page="find" onclick="showPage('find')">智能媒体库</a>
-      <a href="#" class="nav-link" data-page="image" onclick="showPage('image')">图片生成</a>
-      <a href="#" class="nav-link" data-page="copy" onclick="showPage('copy')">文案撰写</a>
-      <a href="#" class="nav-link" data-page="article" onclick="showPage('article')">公众号写稿</a>
-      <a href="#" class="nav-link" data-page="knowledge" onclick="showPage('knowledge')">品牌知识库</a>
-      <a href="#" class="nav-link" data-page="assets" onclick="showPage('assets')">素材库</a>
-      <a href="#" class="nav-link" data-page="datacenter" onclick="showPage('datacenter')">数据中心</a>
-      <a href="#" class="nav-link" data-page="history" onclick="showPage('history')">历史记录</a>
+      <a href="#" class="nav-link active" data-page="home" data-action="show-page" data-page="home">首页</a>
+      <a href="#" class="nav-link" data-page="find" data-action="show-page" data-page="find">智能媒体库</a>
+      <a href="#" class="nav-link" data-page="image" data-action="show-page" data-page="image">图片生成</a>
+      <a href="#" class="nav-link" data-page="copy" data-action="show-page" data-page="copy">文案撰写</a>
+      <a href="#" class="nav-link" data-page="article" data-action="show-page" data-page="article">公众号写稿</a>
+      <a href="#" class="nav-link" data-page="knowledge" data-action="show-page" data-page="knowledge">品牌知识库</a>
+      <a href="#" class="nav-link" data-page="assets" data-action="show-page" data-page="assets">素材库</a>
+      <a href="#" class="nav-link" data-page="datacenter" data-action="show-page" data-page="datacenter">数据中心</a>
+      <a href="#" class="nav-link" data-page="history" data-action="show-page" data-page="history">历史记录</a>
     </div>
   </div>
   <!-- 用户登录区域 -->
   <div id="userSection">
-    <button onclick="showRegisterModal()" style="padding:8px 16px;background:transparent;color:#F4845F;border:1.5px solid #F4845F;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;margin-right:8px;">注册</button>
-    <button onclick="showLoginModal()" style="padding:8px 24px;background:#F4845F;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">登录</button>
+    <button data-action="show-register" style="padding:8px 16px;background:transparent;color:#F4845F;border:1.5px solid #F4845F;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;margin-right:8px;">注册</button>
+    <button data-action="show-login" style="padding:8px 24px;background:#F4845F;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">登录</button>
   </div>
 </nav>
 
@@ -62,17 +62,17 @@
       <h1 class="home-title fade-in" style="transition-delay:0.2s">萌力互动<br>AI创作平台</h1>
 
       <div class="home-features">
-        <div class="home-feature-card fade-in" style="transition-delay:0.6s" data-page="find" onclick="showPage('find')">
+        <div class="home-feature-card fade-in" style="transition-delay:0.6s" data-page="find" data-action="show-page" data-page="find">
           <div class="home-feature-icon">🔍</div>
           <div class="home-feature-title">达人查找</div>
           <div class="home-feature-desc">AI 智能匹配，快速找到最适合品牌合作的达人</div>
         </div>
-        <div class="home-feature-card fade-in" style="transition-delay:0.8s" data-page="image" onclick="showPage('image')">
+        <div class="home-feature-card fade-in" style="transition-delay:0.8s" data-page="image" data-action="show-page" data-page="image">
           <div class="home-feature-icon">🎨</div>
           <div class="home-feature-title">图片生成</div>
           <div class="home-feature-desc">AI 创意生图，一键生成营销素材和宣传海报</div>
         </div>
-        <div class="home-feature-card fade-in" style="transition-delay:1.0s" data-page="copy" onclick="showPage('copy')">
+        <div class="home-feature-card fade-in" style="transition-delay:1.0s" data-page="copy" data-action="show-page" data-page="copy">
           <div class="home-feature-icon">✍️</div>
           <div class="home-feature-title">文案撰写</div>
           <div class="home-feature-desc">智能文案创作，适配各平台风格的种草内容</div>
@@ -126,12 +126,12 @@
   <div class="workbench-shell">
     <section class="find-view active" id="findHomeView">
       <div class="entry-grid">
-        <button class="entry-card" onclick="openDatabaseView()">
+        <button class="entry-card" data-action="open-database-view">
           <div class="entry-mark">DB</div>
           <div class="entry-title">媒体库</div>
           <div class="entry-desc">沉淀已选优质达人、导入账号，并支持标签、报价、返点筛选和人工修正。</div>
         </button>
-        <button class="entry-card" onclick="openProjectManagementView()">
+        <button class="entry-card" data-action="open-project-management">
           <div class="entry-mark">PM</div>
           <div class="entry-title">项目管理</div>
           <div class="entry-desc">新建 brief 找号，或回看过去项目的推荐名单、系统判断、反馈记录和导出结果。</div>
@@ -149,8 +149,8 @@
           </div>
           <div class="workbench-top-actions">
             <input type="file" id="databaseImportInput" accept=".xlsx,.csv,.tsv,.txt,.xls,.html" style="display:none" onchange="handleDatabaseImport(event)">
-            <button class="ghost-btn" onclick="document.getElementById('databaseImportInput').click()">导入 Excel/CSV</button>
-            <button class="primary-btn" onclick="openProjectManagementView()">去项目管理</button>
+            <button class="ghost-btn" data-action="open-file-input" data-target="databaseImportInput">导入 Excel/CSV</button>
+            <button class="primary-btn" data-action="open-project-management">去项目管理</button>
           </div>
         </div>
         <div class="toolbar-controls" style="margin-bottom:14px">
@@ -191,7 +191,7 @@
             <div class="view-title">项目管理</div>
             <div class="view-desc">新项目从 brief 开始，历史项目可以随时回看推荐结果。</div>
           </div>
-          <button class="primary-btn" onclick="openNewProjectWizard()">新建项目</button>
+          <button class="primary-btn" data-action="open-new-project-wizard">新建项目</button>
         </div>
         <div class="project-list-grid" id="projectList"></div>
       </div>
@@ -211,12 +211,12 @@
               <div class="panel-kicker">Project Brief</div>
               <div class="panel-title">输入 brief</div>
             </div>
-            <button class="ghost-btn" onclick="openProjectManagementView()">返回项目</button>
+            <button class="ghost-btn" data-action="open-project-management">返回项目</button>
           </div>
           <textarea class="brief-textarea" id="briefInput" placeholder="粘贴完整 brief，例如：品牌、背景档期、合作平台、合作形式、总预算、提报要求、单个预算、达人类型、TA、CPM/CPE。"></textarea>
           <div class="brief-actions">
-            <button class="primary-btn" id="briefAnalyzeBtn" onclick="analyzeBrief()">AI 拆解需求</button>
-            <button class="ghost-btn" onclick="loadDemoBrief()">填入沃隆 brief</button>
+            <button class="primary-btn" id="briefAnalyzeBtn" data-action="analyze-brief">AI 拆解需求</button>
+            <button class="ghost-btn" data-action="load-demo-brief">填入沃隆 brief</button>
           </div>
           <div class="assessment-note">拆解只是建议，必须在右侧确认后才会开始找号。</div>
         </div>
@@ -250,8 +250,8 @@
           </div>
 
           <div class="brief-actions">
-            <button class="ghost-btn" onclick="saveConfirmedAnalysis()">确认需求</button>
-            <button class="primary-btn" onclick="startFindFlow()">开始找号</button>
+            <button class="ghost-btn" data-action="save-confirmed-analysis">确认需求</button>
+            <button class="primary-btn" data-action="start-find-flow">开始找号</button>
           </div>
         </div>
       </div>
@@ -266,17 +266,17 @@
             <div class="view-desc" id="resultProjectDesc">只展示最终推荐名单和整批系统判断。</div>
           </div>
           <div class="workbench-top-actions">
-            <button class="ghost-btn" onclick="openProjectWizard(currentProjectId)">调整需求</button>
-            <button class="primary-btn" onclick="toggleRecommendationExportMenu()">导出推荐 Excel</button>
+            <button class="ghost-btn" data-action="open-project-wizard">调整需求</button>
+            <button class="primary-btn" data-action="toggle-recommendation-export">导出推荐 Excel</button>
           </div>
         </div>
         <div id="resultAssessment"></div>
         <div id="resultDiagnostics"></div>
         <div id="collectorStatusPanel"></div>
         <div class="export-menu" id="recommendationExportMenu" style="display:none;margin-top:12px">
-          <button class="ghost-btn" onclick="exportRecommendations('strict')">导出严格达标</button>
-          <button class="ghost-btn" onclick="exportRecommendations('backup')">导出可备选</button>
-          <button class="ghost-btn" onclick="exportRecommendations('all')">导出全部推荐</button>
+          <button class="ghost-btn" data-action="export-recommendations" data-mode="strict">导出严格达标</button>
+          <button class="ghost-btn" data-action="export-recommendations" data-mode="backup">导出可备选</button>
+          <button class="ghost-btn" data-action="export-recommendations" data-mode="all">导出全部推荐</button>
         </div>
         <div class="simple-table-wrap" style="margin-top:16px">
           <table>
@@ -332,8 +332,8 @@
           </div>
         </div>
         <div class="brief-actions">
-          <button class="primary-btn" onclick="saveFeedbackMemory()">记录反馈</button>
-          <button class="ghost-btn" onclick="clearProjectMemory()">清空本项目临时记忆</button>
+          <button class="primary-btn" data-action="save-feedback-memory">记录反馈</button>
+          <button class="ghost-btn" data-action="clear-project-memory">清空本项目临时记忆</button>
         </div>
       </div>
     </section>
@@ -355,12 +355,12 @@
     <div class="gen-left">
       <div class="gen-label">生成模式</div>
       <div class="gen-mode-tabs">
-        <button class="gen-mode-tab active" onclick="switchImgMode('text2img',this)">文生图</button>
-        <button class="gen-mode-tab" onclick="switchImgMode('img2img',this)">图生图</button>
+        <button class="gen-mode-tab active" data-action="switch-img-mode" data-mode="text2img">文生图</button>
+        <button class="gen-mode-tab" data-action="switch-img-mode" data-mode="img2img">图生图</button>
       </div>
 
       <div id="text2imgSection">
-        <div class="gen-label" style="margin-top:24px">图片描述 <button class="tpl-toggle-btn" onclick="toggleTemplatePanel()">📝 模板</button></div>
+        <div class="gen-label" style="margin-top:24px">图片描述 <button class="tpl-toggle-btn" data-action="toggle-template-panel">📝 模板</button></div>
         <textarea class="gen-textarea" id="imgPrompt" placeholder="描述你想要的图片，如：可爱的卡通小象，橙色主题，简约风格..."></textarea>
         <div class="template-panel" id="templatePanel"></div>
       </div>
@@ -368,7 +368,7 @@
       <div id="img2imgSection" style="display:none">
         <div class="gen-label" style="margin-top:24px">参考图片 <span style="font-size:11px;color:var(--gray-400);font-weight:400">最多3张</span></div>
         <div class="img2img-grid" id="img2imgGrid"></div>
-        <div class="gen-upload" id="imgUpload" onclick="document.getElementById('imgFileInput').click()">
+        <div class="gen-upload" id="imgUpload" data-action="open-file-input" data-target="imgFileInput">
           <input type="file" id="imgFileInput" accept="image/*" multiple style="display:none" onchange="handleImgUpload(event)">
           <div class="gen-upload-icon">📷</div>
           <div class="gen-upload-text">点击上传参考图片</div>
@@ -376,7 +376,7 @@
         </div>
 
         <div class="mask-entry" id="maskEntry" style="display:none">
-          <button class="mask-entry-btn" onclick="openMaskEditor()">🎨 局部重绘：涂抹修改区域</button>
+          <button class="mask-entry-btn" data-action="open-mask-editor">🎨 局部重绘：涂抹修改区域</button>
           <span class="mask-entry-hint" id="maskStatus">未设置遮罩</span>
         </div>
 
@@ -386,14 +386,14 @@
 
       <div class="gen-label" style="margin-top:24px">图片尺寸</div>
       <div class="gen-sizes">
-        <button class="gen-size-btn active" onclick="setImgSize('1024x1024',this)">1:1 方形</button>
-        <button class="gen-size-btn" onclick="setImgSize('1792x1024',this)">16:9 横版</button>
-        <button class="gen-size-btn" onclick="setImgSize('1024x1792',this)">9:16 竖版</button>
-        <button class="gen-size-btn" onclick="setImgSize('1365x1024',this)">4:3 横版</button>
-        <button class="gen-size-btn" onclick="setImgSize('1024x1365',this)">3:4 竖版</button>
+        <button class="gen-size-btn active" data-action="set-img-size" data-size="1024x1024">1:1 方形</button>
+        <button class="gen-size-btn" data-action="set-img-size" data-size="1792x1024">16:9 横版</button>
+        <button class="gen-size-btn" data-action="set-img-size" data-size="1024x1792">9:16 竖版</button>
+        <button class="gen-size-btn" data-action="set-img-size" data-size="1365x1024">4:3 横版</button>
+        <button class="gen-size-btn" data-action="set-img-size" data-size="1024x1365">3:4 竖版</button>
       </div>
 
-      <button class="gen-btn" id="imgBtn" onclick="genImage()">生成图片</button>
+      <button class="gen-btn" id="imgBtn" data-action="gen-image">生成图片</button>
     </div>
     <div class="gen-right">
       <div class="gen-preview">
@@ -409,7 +409,7 @@
           <p class="gen-loading-sec" style="color:var(--gray-400);font-size:12px;margin-top:8px"></p>
           <p class="gen-loading-tip" style="color:#F59E0B;font-size:12px;margin-top:4px;min-height:16px"></p>
         </div>
-        <img class="gen-result" id="imgResult" src="" alt="" onclick="openLightbox(this.src)">
+        <img class="gen-result" id="imgResult" src="" alt="" data-action="open-lightbox">
         <!-- 图生图对比滑块 -->
         <div class="img-compare" id="imgCompare">
           <img class="after" id="imgCompareAfter" src="" alt="">
@@ -422,9 +422,9 @@
         </div>
       </div>
       <div class="gen-toolbar" id="imgToolbar">
-        <button class="gen-toolbar-btn" id="btnCompare" style="display:none" onclick="toggleCompare()">🔄 对比原图</button>
-        <button class="gen-toolbar-btn" onclick="openLightbox(document.getElementById('imgResult').src)">🔍 查看大图</button>
-        <button class="gen-toolbar-btn" onclick="downloadImage()">⬇ 下载图片</button>
+        <button class="gen-toolbar-btn" id="btnCompare" style="display:none" data-action="toggle-compare">🔄 对比原图</button>
+        <button class="gen-toolbar-btn" data-action="open-lightbox" data-target="imgResult">🔍 查看大图</button>
+        <button class="gen-toolbar-btn" data-action="download-image">⬇ 下载图片</button>
       </div>
       <div id="imgRating"></div>
     </div>
@@ -479,12 +479,12 @@
       <div class="gen-label" style="margin-top:24px">补充要求</div>
       <textarea class="gen-textarea" id="copyExtra" placeholder="如：突出性价比、强调温和不刺激、200字左右..."></textarea>
 
-      <button class="gen-btn" id="copyBtn" onclick="genCopyStream()">生成文案</button>
+      <button class="gen-btn" id="copyBtn" data-action="gen-copy">生成文案</button>
     </div>
     <div class="copy-right">
       <div class="gen-label">
         生成结果
-        <button class="edit-toggle-btn" id="copyEditBtn" onclick="toggleCopyEdit()" style="display:none">编辑</button>
+        <button class="edit-toggle-btn" id="copyEditBtn" data-action="toggle-copy-edit" style="display:none">编辑</button>
       </div>
       <div class="copy-output empty" id="copyOutput">点击「生成文案」开始创作</div>
       <!-- 版本条 -->
@@ -492,23 +492,23 @@
       <!-- 继续优化 -->
       <div class="follow-up-bar" id="copyFollowUp" style="display:none">
         <div class="follow-up-actions">
-          <button class="quick-action-btn" onclick="quickRefine('更口语化')">更口语化</button>
-          <button class="quick-action-btn" onclick="quickRefine('更专业')">更专业</button>
-          <button class="quick-action-btn" onclick="quickRefine('增加种草感')">增加种草感</button>
-          <button class="quick-action-btn" onclick="quickRefine('增加3个标题')">增加3个标题</button>
-          <button class="quick-action-btn" onclick="quickRefine('缩短到300字以内')">缩短篇幅</button>
-          <button class="quick-action-btn" onclick="quickRefine('扩写内容')">扩写内容</button>
-          <button class="quick-action-btn" onclick="quickRefine('改成小红书风格')">小红书风格</button>
+          <button class="quick-action-btn" data-action="quick-refine" data-refine="更口语化">更口语化</button>
+          <button class="quick-action-btn" data-action="quick-refine" data-refine="更专业">更专业</button>
+          <button class="quick-action-btn" data-action="quick-refine" data-refine="增加种草感">增加种草感</button>
+          <button class="quick-action-btn" data-action="quick-refine" data-refine="增加3个标题">增加3个标题</button>
+          <button class="quick-action-btn" data-action="quick-refine" data-refine="缩短到300字以内">缩短篇幅</button>
+          <button class="quick-action-btn" data-action="quick-refine" data-refine="扩写内容">扩写内容</button>
+          <button class="quick-action-btn" data-action="quick-refine" data-refine="改成小红书风格">小红书风格</button>
         </div>
         <div class="follow-up-input-row">
           <input id="copyFollowUpInput" placeholder="输入修改要求，如：保留前半部分，把结尾改得更有种草感" onkeydown="if(event.key==='Enter')refineCopy()" />
-          <button class="gen-btn" id="copyRefineBtn" onclick="refineCopy()">继续优化</button>
+          <button class="gen-btn" id="copyRefineBtn" data-action="refine-copy">继续优化</button>
         </div>
       </div>
       <div class="copy-actions">
-        <button class="gen-btn" id="copyRetry" onclick="genCopyStream()" style="display:none">重新生成</button>
-        <button class="gen-btn secondary" onclick="copyText()">复制文案</button>
-        <button class="save-tpl-btn" id="copySaveTpl" onclick="saveAsTemplate('copy', document.getElementById('copyOutput').textContent)" style="display:none">保存为模板</button>
+        <button class="gen-btn" id="copyRetry" data-action="gen-copy" style="display:none">重新生成</button>
+        <button class="gen-btn secondary" data-action="copy-text">复制文案</button>
+        <button class="save-tpl-btn" id="copySaveTpl" data-action="save-as-template" data-type="copy" data-output="copyOutput" style="display:none">保存为模板</button>
       </div>
       <div id="copyRating"></div>
     </div>
@@ -529,7 +529,7 @@
   <div class="article-layout">
     <div class="article-left">
       <div class="gen-label">📎 上传客户需求文件</div>
-      <div class="article-upload" id="articleUpload" onclick="document.getElementById('articleFileInput').click()">
+      <div class="article-upload" id="articleUpload" data-action="open-file-input" data-target="articleFileInput">
         <input type="file" id="articleFileInput" accept=".pdf,.doc,.docx,.txt" style="display:none" onchange="handleArticleFileUpload(event)">
         <div class="article-upload-icon">📄</div>
         <div class="article-upload-text">点击或拖拽上传客户 Brief</div>
@@ -539,23 +539,23 @@
 
       <div class="gen-label" style="margin-top:24px">生成模式</div>
       <div class="article-mode-tabs">
-        <button class="article-mode-tab active" data-mode="outline" onclick="setArticleMode('outline',this)">📋 大纲</button>
-        <button class="article-mode-tab" data-mode="draft" onclick="setArticleMode('draft',this)">📝 初稿</button>
+        <button class="article-mode-tab active" data-mode="outline" data-action="set-article-mode" data-mode="outline">📋 大纲</button>
+        <button class="article-mode-tab" data-mode="draft" data-action="set-article-mode" data-mode="draft">📝 初稿</button>
       </div>
       <div class="article-mode-hint" id="articleModeHint">输出结构化大纲（800-1200字），包含标题、论点框架和要点展开</div>
 
       <div class="gen-label" style="margin-top:24px">补充说明（选填）</div>
       <textarea class="gen-textarea" id="articleExtra" placeholder="如有特殊要求可在此补充，如：语气轻松活泼、字数1500字左右..." style="min-height:100px"></textarea>
 
-      <button class="gen-btn" id="articleBtn" onclick="genArticleStream()">生成写稿</button>
+      <button class="gen-btn" id="articleBtn" data-action="gen-article">生成写稿</button>
     </div>
     <div class="article-right">
       <div class="gen-label">生成结果</div>
       <div class="article-output empty" id="articleOutput">点击「生成写稿」开始创作</div>
       <div class="article-actions">
-        <button class="gen-btn" id="articleRetry" onclick="genArticleStream()" style="display:none">重新生成</button>
-        <button class="gen-btn secondary" onclick="copyArticle()">复制全文</button>
-        <button class="save-tpl-btn" id="articleSaveTpl" onclick="saveAsTemplate('article', document.getElementById('articleOutput').textContent)" style="display:none">保存为模板</button>
+        <button class="gen-btn" id="articleRetry" data-action="gen-article" style="display:none">重新生成</button>
+        <button class="gen-btn secondary" data-action="copy-article">复制全文</button>
+        <button class="save-tpl-btn" id="articleSaveTpl" data-action="save-as-template" data-type="article" data-output="articleOutput" style="display:none">保存为模板</button>
       </div>
       <div id="articleRating"></div>
     </div>
@@ -578,10 +578,10 @@
     <div class="knowledge-section">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <h2 class="knowledge-title" style="margin-bottom:0">品牌调性</h2>
-        <button onclick="openAddBrandModal()" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer">＋ 添加品牌</button>
+        <button data-action="open-add-brand" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer">＋ 添加品牌</button>
       </div>
       <div class="knowledge-grid" id="brandGrid">
-        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+        <div class="knowledge-card" data-action="toggle-knowledge-card">
           <div class="knowledge-card-header">
             <span>萌力互动</span>
             <span class="knowledge-arrow">→</span>
@@ -600,7 +600,7 @@
     <div class="knowledge-section">
       <h2 class="knowledge-title">KOC 文案写作范式</h2>
       <div class="knowledge-grid">
-        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+        <div class="knowledge-card" data-action="toggle-knowledge-card">
           <div class="knowledge-card-header">
             <span>种草科普文</span>
             <span class="knowledge-arrow">→</span>
@@ -619,7 +619,7 @@
           </div>
         </div>
 
-        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+        <div class="knowledge-card" data-action="toggle-knowledge-card">
           <div class="knowledge-card-header">
             <span>误区纠正文</span>
             <span class="knowledge-arrow">→</span>
@@ -637,7 +637,7 @@
           </div>
         </div>
 
-        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+        <div class="knowledge-card" data-action="toggle-knowledge-card">
           <div class="knowledge-card-header">
             <span>场景种草文</span>
             <span class="knowledge-arrow">→</span>
@@ -656,7 +656,7 @@
           </div>
         </div>
 
-        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+        <div class="knowledge-card" data-action="toggle-knowledge-card">
           <div class="knowledge-card-header">
             <span>节点促销文</span>
             <span class="knowledge-arrow">→</span>
@@ -675,7 +675,7 @@
           </div>
         </div>
 
-        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+        <div class="knowledge-card" data-action="toggle-knowledge-card">
           <div class="knowledge-card-header">
             <span>送礼场景文</span>
             <span class="knowledge-arrow">→</span>
@@ -701,7 +701,7 @@
     <div class="knowledge-section">
       <h2 class="knowledge-title">合作品牌</h2>
       <div class="knowledge-grid">
-        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+        <div class="knowledge-card" data-action="toggle-knowledge-card">
           <div class="knowledge-card-header">
             <span>听研 BIOLAB</span>
             <span class="knowledge-arrow">→</span>
@@ -712,7 +712,7 @@
             <div class="knowledge-item"><span class="knowledge-label">文案库</span>272篇已发布小红书KOC稿件</div>
           </div>
         </div>
-        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+        <div class="knowledge-card" data-action="toggle-knowledge-card">
           <div class="knowledge-card-header">
             <span>汤臣倍健</span>
             <span class="knowledge-arrow">→</span>
@@ -723,7 +723,7 @@
             <div class="knowledge-item"><span class="knowledge-label">文案库</span>26篇实战文案</div>
           </div>
         </div>
-        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+        <div class="knowledge-card" data-action="toggle-knowledge-card">
           <div class="knowledge-card-header">
             <span>她多维</span>
             <span class="knowledge-arrow">→</span>
@@ -733,7 +733,7 @@
             <div class="knowledge-item"><span class="knowledge-label">文案库</span>24篇</div>
           </div>
         </div>
-        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+        <div class="knowledge-card" data-action="toggle-knowledge-card">
           <div class="knowledge-card-header">
             <span>SLIM蛋</span>
             <span class="knowledge-arrow">→</span>
@@ -743,7 +743,7 @@
             <div class="knowledge-item"><span class="knowledge-label">文案库</span>40篇</div>
           </div>
         </div>
-        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+        <div class="knowledge-card" data-action="toggle-knowledge-card">
           <div class="knowledge-card-header">
             <span>臻钻蛋白粉</span>
             <span class="knowledge-arrow">→</span>
@@ -753,7 +753,7 @@
             <div class="knowledge-item"><span class="knowledge-label">文案库</span>115篇</div>
           </div>
         </div>
-        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+        <div class="knowledge-card" data-action="toggle-knowledge-card">
           <div class="knowledge-card-header">
             <span>特医</span>
             <span class="knowledge-arrow">→</span>
@@ -770,7 +770,7 @@
     <div class="knowledge-section">
       <h2 class="knowledge-title">小红书卡审词避坑</h2>
       <div class="knowledge-grid">
-        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+        <div class="knowledge-card" data-action="toggle-knowledge-card">
           <div class="knowledge-card-header">
             <span>⚠️ 常见违禁词</span>
             <span class="knowledge-arrow">→</span>
@@ -782,7 +782,7 @@
             <div class="knowledge-item">❌ 诱导用语：不买就亏、错过再无、限时秒杀</div>
           </div>
         </div>
-        <div class="knowledge-card" onclick="toggleKnowledgeCard(this)">
+        <div class="knowledge-card" data-action="toggle-knowledge-card">
           <div class="knowledge-card-header">
             <span>✅ 安全替代表达</span>
             <span class="knowledge-arrow">→</span>
@@ -807,16 +807,16 @@
         <h1 class="page-title">素材库</h1>
         <p class="page-desc">管理你的图片和文案素材</p>
       </div>
-      <button id="batchToggleBtn" onclick="toggleBatchMode()" style="padding:8px 16px;background:var(--gray-100);border:1px solid var(--gray-200);border-radius:8px;font-size:13px;cursor:pointer">批量管理</button>
+      <button id="batchToggleBtn" data-action="toggle-batch-mode" style="padding:8px 16px;background:var(--gray-100);border:1px solid var(--gray-200);border-radius:8px;font-size:13px;cursor:pointer">批量管理</button>
     </div>
   </div>
 
   <div class="assets-tabs">
-    <button class="assets-tab active" onclick="switchAssetsTab('all',this)">全部</button>
-    <button class="assets-tab" onclick="switchAssetsTab('image',this)">图片</button>
-    <button class="assets-tab" onclick="switchAssetsTab('copy',this)">文案</button>
-    <button class="assets-tab" onclick="switchAssetsTab('article',this)">写稿</button>
-    <button class="assets-tab" onclick="switchAssetsTab('feedback',this)">⭐ 反馈库</button>
+    <button class="assets-tab active" data-action="switch-assets-tab" data-tab="all">全部</button>
+    <button class="assets-tab" data-action="switch-assets-tab" data-tab="image">图片</button>
+    <button class="assets-tab" data-action="switch-assets-tab" data-tab="copy">文案</button>
+    <button class="assets-tab" data-action="switch-assets-tab" data-tab="article">写稿</button>
+    <button class="assets-tab" data-action="switch-assets-tab" data-tab="feedback">⭐ 反馈库</button>
   </div>
 
   <!-- 搜索栏 -->
@@ -826,19 +826,19 @@
 
   <!-- 评分筛选（仅素材标签页显示） -->
   <div class="rating-filter" id="ratingFilter">
-    <button class="rating-filter-btn active" onclick="filterByRating('all',this)">全部</button>
-    <button class="rating-filter-btn" onclick="filterByRating(5,this)">★★★★★</button>
-    <button class="rating-filter-btn" onclick="filterByRating(4,this)">★★★★</button>
-    <button class="rating-filter-btn" onclick="filterByRating(3,this)">★★★</button>
-    <button class="rating-filter-btn" onclick="filterByRating(2,this)">★★</button>
-    <button class="rating-filter-btn" onclick="filterByRating(1,this)">★</button>
+    <button class="rating-filter-btn active" data-action="filter-by-rating" data-rating="'all'">全部</button>
+    <button class="rating-filter-btn" data-action="filter-by-rating" data-rating="5">★★★★★</button>
+    <button class="rating-filter-btn" data-action="filter-by-rating" data-rating="4">★★★★</button>
+    <button class="rating-filter-btn" data-action="filter-by-rating" data-rating="3">★★★</button>
+    <button class="rating-filter-btn" data-action="filter-by-rating" data-rating="2">★★</button>
+    <button class="rating-filter-btn" data-action="filter-by-rating" data-rating="1">★</button>
   </div>
 
   <!-- 批量操作工具栏 -->
   <div class="batch-toolbar" id="batchToolbar" style="display:none">
-    <button onclick="selectAllAssets()">全选/取消</button>
+    <button data-action="select-all-assets">全选/取消</button>
     <span id="batchCount">0</span> 项已选
-    <button class="batch-delete-btn" onclick="deleteSelectedAssets()">🗑 删除选中</button>
+    <button class="batch-delete-btn" data-action="delete-selected-assets">🗑 删除选中</button>
   </div>
 
   <!-- 素材列表 -->
@@ -873,10 +873,10 @@
     </div>
   </div>
   <div class="history-tabs">
-    <button class="history-tab active" onclick="filterHistory(this,'all')">全部</button>
-    <button class="history-tab" onclick="filterHistory(this,'image_gen')">图片</button>
-    <button class="history-tab" onclick="filterHistory(this,'copywriting')">文案</button>
-    <button class="history-tab" onclick="filterHistory(this,'article')">写稿</button>
+    <button class="history-tab active" data-action="filter-history" data-type="all">全部</button>
+    <button class="history-tab" data-action="filter-history" data-type="image_gen">图片</button>
+    <button class="history-tab" data-action="filter-history" data-type="copywriting">文案</button>
+    <button class="history-tab" data-action="filter-history" data-type="article">写稿</button>
   </div>
   <div class="history-list" id="historyList">
     <div class="asset-empty"><div class="icon">🔒</div><h3>请先登录</h3><p>登录后可查看生成历史</p></div>
@@ -927,7 +927,7 @@
   </div>
   <div id="pluginDetailView" style="display:none">
     <div class="plugin-detail-header">
-      <button class="plugin-back-btn" onclick="showPluginList()">← 返回列表</button>
+      <button class="plugin-back-btn" data-action="show-plugin-list">← 返回列表</button>
     </div>
     <div id="pluginDetail"></div>
   </div>
@@ -1013,34 +1013,34 @@
 </div>
 
 <!-- Image Lightbox -->
-<div class="img-lightbox" id="imgLightbox" onclick="closeLightbox(event)">
-  <button class="img-lightbox-close" onclick="closeLightbox(event)">✕</button>
-  <button class="lightbox-nav prev" onclick="event.stopPropagation();lightboxNav(-1)">‹</button>
-  <img id="lightboxImg" src="" onclick="event.stopPropagation()">
-  <button class="lightbox-nav next" onclick="event.stopPropagation();lightboxNav(1)">›</button>
-  <div class="lightbox-controls" onclick="event.stopPropagation()">
-    <button onclick="lightboxZoom(-1)" title="缩小">−</button>
-    <button onclick="lightboxZoom(0)" title="重置">⟳</button>
-    <button onclick="lightboxZoom(1)" title="放大">+</button>
+<div class="img-lightbox" id="imgLightbox" data-action="close-lightbox">
+  <button class="img-lightbox-close" data-action="close-lightbox">✕</button>
+  <button class="lightbox-nav prev" data-action="lightbox-nav" data-dir="-1">‹</button>
+  <img id="lightboxImg" src="" data-action="stop-propagation">
+  <button class="lightbox-nav next" data-action="lightbox-nav" data-dir="1">›</button>
+  <div class="lightbox-controls" data-action="stop-propagation">
+    <button data-action="lightbox-zoom" data-dir="-1" title="缩小">−</button>
+    <button data-action="lightbox-zoom" data-dir="0" title="重置">⟳</button>
+    <button data-action="lightbox-zoom" data-dir="1" title="放大">+</button>
   </div>
 </div>
 
 <!-- Text Modal -->
-<div class="text-modal" id="textModal" onclick="closeTextModal()">
-  <div class="text-modal-content" onclick="event.stopPropagation()">
-    <button class="text-modal-close" onclick="closeTextModal()">✕</button>
+<div class="text-modal" id="textModal" data-action="close-text-modal">
+  <div class="text-modal-content" data-action="stop-propagation">
+    <button class="text-modal-close" data-action="close-text-modal">✕</button>
     <h3 class="text-modal-title" id="textModalTitle"></h3>
     <div class="text-modal-body" id="textModalBody"></div>
-    <button class="text-modal-copy" onclick="copyModalText()">复制全文</button>
+    <button class="text-modal-copy" data-action="copy-modal-text">复制全文</button>
   </div>
 </div>
 
 <!-- Cart Sidebar -->
-<div class="overlay" id="overlay" onclick="closeCart()"></div>
+<div class="overlay" id="overlay" data-action="close-cart"></div>
 <div class="sidebar" id="cartSidebar">
   <div class="sidebar-header">
     <h2>询单车</h2>
-    <button class="sidebar-close" onclick="closeCart()">✕</button>
+    <button class="sidebar-close" data-action="close-cart">✕</button>
   </div>
   <div class="sidebar-body" id="cartBody"></div>
   <div class="sidebar-footer">
@@ -1048,7 +1048,7 @@
       <span class="total-label">预估总预算</span>
       <span class="total-num" id="cartTotal">¥0</span>
     </div>
-    <button class="submit-btn" onclick="submitInquiry()">发起询单（<span id="cartItemCount">0</span> 位达人）</button>
+    <button class="submit-btn" data-action="submit-inquiry">发起询单（<span id="cartItemCount">0</span> 位达人）</button>
   </div>
 </div>
 
@@ -1057,7 +1057,7 @@
   <div class="feedback-modal-content">
     <div class="feedback-modal-header">
       <h3>💬 反馈改进</h3>
-      <button class="feedback-modal-close" onclick="closeFeedbackModal()">&times;</button>
+      <button class="feedback-modal-close" data-action="close-feedback">&times;</button>
     </div>
     <div class="feedback-modal-body" id="feedbackInputSection">
       <label style="font-size:14px;color:#374151;font-weight:600;display:block;margin-bottom:8px">原始内容</label>
@@ -1075,9 +1075,9 @@
       <div class="feedback-learnings" id="feedbackLearnings"></div>
     </div>
     <div class="feedback-modal-footer">
-      <button class="feedback-cancel-btn" onclick="closeFeedbackModal()">关闭</button>
-      <button class="feedback-submit-btn" id="feedbackSubmitBtn" onclick="submitFeedback()">🚀 开始改进</button>
-      <button class="feedback-submit-btn" id="feedbackSaveBtn" onclick="saveFeedbackResult()" style="display:none;background:linear-gradient(135deg,#10B981,#059669)">💾 保存</button>
+      <button class="feedback-cancel-btn" data-action="close-feedback">关闭</button>
+      <button class="feedback-submit-btn" id="feedbackSubmitBtn" data-action="submit-feedback">🚀 开始改进</button>
+      <button class="feedback-submit-btn" id="feedbackSaveBtn" data-action="save-feedback-result" style="display:none;background:linear-gradient(135deg,#10B981,#059669)">💾 保存</button>
     </div>
   </div>
 </div>
@@ -1095,8 +1095,8 @@
     <label>核心卖点</label>
     <textarea id="brandPoints" rows="3" placeholder="如：30年品牌、蓝帽子认证、全球原料..."></textarea>
     <div class="brand-modal-actions">
-      <button class="brand-modal-cancel" onclick="closeAddBrandModal()">取消</button>
-      <button class="brand-modal-save" onclick="saveBrand()">保存</button>
+      <button class="brand-modal-cancel" data-action="close-add-brand">取消</button>
+      <button class="brand-modal-save" data-action="save-brand">保存</button>
     </div>
   </div>
 </div>
@@ -1106,7 +1106,7 @@
   <div class="register-modal-content">
     <div class="register-modal-header">
       <h3>注册账号</h3>
-      <button class="register-modal-close" onclick="closeRegisterModal()">×</button>
+      <button class="register-modal-close" data-action="close-register">×</button>
     </div>
     <form onsubmit="handleRegister(event)">
       <div class="register-field">
@@ -1137,7 +1137,7 @@
   <div class="mask-editor-content">
     <div class="mask-editor-header">
       <h3>🎨 局部重绘 — 涂抹修改区域</h3>
-      <button class="mask-editor-close" onclick="closeMaskEditor()">✕</button>
+      <button class="mask-editor-close" data-action="close-mask-editor">✕</button>
     </div>
     <div class="mask-editor-canvas-wrap" id="maskCanvasWrap">
       <canvas id="maskBaseCanvas"></canvas>
@@ -1145,8 +1145,8 @@
     </div>
     <div class="mask-editor-toolbar">
       <div class="mask-tools">
-        <button class="mask-tool-btn active" data-tool="brush" onclick="setMaskTool('brush')">🖌 画笔</button>
-        <button class="mask-tool-btn" data-tool="eraser" onclick="setMaskTool('eraser')">🧹 橡皮擦</button>
+        <button class="mask-tool-btn active" data-tool="brush" data-action="set-mask-tool" data-tool="brush">🖌 画笔</button>
+        <button class="mask-tool-btn" data-tool="eraser" data-action="set-mask-tool" data-tool="eraser">🧹 橡皮擦</button>
       </div>
       <div class="mask-size-control">
         <label>大小</label>
@@ -1154,23 +1154,28 @@
         <span id="maskBrushLabel">30</span>
       </div>
       <div class="mask-actions">
-        <button class="mask-action-btn" onclick="undoMask()">↩ 撤销</button>
-        <button class="mask-action-btn" onclick="clearMask()">🗑 清空</button>
+        <button class="mask-action-btn" data-action="undo-mask">↩ 撤销</button>
+        <button class="mask-action-btn" data-action="clear-mask">🗑 清空</button>
       </div>
     </div>
     <div class="mask-coverage" id="maskCoverage">遮罩覆盖率：0%</div>
     <div class="mask-editor-footer">
-      <button class="mask-footer-btn cancel" onclick="closeMaskEditor()">取消</button>
-      <button class="mask-footer-btn confirm" onclick="confirmMask()">✓ 确认遮罩</button>
+      <button class="mask-footer-btn cancel" data-action="close-mask-editor">取消</button>
+      <button class="mask-footer-btn confirm" data-action="confirm-mask">✓ 确认遮罩</button>
     </div>
   </div>
 </div>
 
-<script src="config.js?v=20260623"></script>
-<script src="boot.js?v=20260623"></script>
-<script src="api-client.js?v=20260623"></script>
-<script src="app.js?v=20260623"></script>
-<script src="find-page.js?v=20260623"></script>
-<script src="auth.js?v=20260623"></script>
+<!-- Vue 挂载点 -->
+<div id="vue-login-mount"></div>
+<div id="vue-copy-mount" style="display:none"></div>
+
+<script src="config.js"></script>
+<script src="boot.js"></script>
+<script src="api-client.js"></script>
+<script src="app.js"></script>
+<script src="find-page.js"></script>
+<script src="auth.js"></script>
+<script type="module" src="/src/main.js"></script>
 </body>
 </html>

@@ -1,12 +1,8 @@
 /**
  * 萌力互动 · 权限管理系统
- * 基于自建 API 的用户认证和权限控制
- * 已彻底移除 Supabase 依赖
+ * 基于 apiClient 统一 API 层
  * API_BASE 由 config.js 统一管理
  */
-
-// ===== 配置 =====
-const API_BASE = window.MENGLI ? window.MENGLI.API_BASE : '';
 
 // ===== 状态 =====
 let currentUser = null;
@@ -19,32 +15,6 @@ const PRESET_POSITIONS = [
     'AE（客户执行）', 'AM（客户经理）', '策划', '媒介',
     '设计师', '文案', '视频剪辑', '总监', '主管', '实习生', '运营'
 ];
-
-// ===== 通用 API 请求 =====
-async function apiCall(path, options = {}) {
-    const token = localStorage.getItem('mengli_token');
-    const headers = { 'Content-Type': 'application/json', ...options.headers };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    const resp = await fetch(`${API_BASE}${path}`, { ...options, headers });
-
-    if (resp.status === 401) {
-        localStorage.removeItem('mengli_token');
-        localStorage.removeItem('mengli_user');
-        localStorage.removeItem('session_token');
-        currentUser = null;
-        userProfile = null;
-        updateAuthUI();
-        if (!path.includes('/auth/login')) {
-            showToast('会话已过期，请重新登录', 'error');
-        }
-        throw new Error('未登录');
-    }
-
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || data.message || `请求失败 ${resp.status}`);
-    return data;
-}
 
 // ===== 初始化认证系统 =====
 async function initAuth() {
@@ -79,11 +49,11 @@ async function initAuth() {
 // ===== 加载功能配置 =====
 async function loadAllFeatures() {
     try {
-        allFeatures = await apiCall('/permissions/features');
-        if (Array.isArray(allFeatures)) {
-            allFeatures = allFeatures;
-        } else if (allFeatures.features) {
-            allFeatures = allFeatures.features;
+        const data = await apiClient.permissions.features();
+        if (Array.isArray(data)) {
+            allFeatures = data;
+        } else if (data.features) {
+            allFeatures = data.features;
         }
     } catch (error) {
         console.error('加载功能配置失败:', error);
@@ -104,7 +74,7 @@ async function loadAllFeatures() {
 async function loadUserPermissions() {
     if (!currentUser) return;
     try {
-        const data = await apiCall('/permissions/my');
+        const data = await apiClient.permissions.my();
         userPermissions = data.permissions || [];
     } catch (error) {
         console.error('加载用户权限失败:', error);
@@ -115,12 +85,7 @@ async function loadUserPermissions() {
 // ===== 登录 =====
 async function login(email, password) {
     try {
-        const data = await apiCall('/auth/login', {
-            method: 'POST',
-            body: JSON.stringify({ email, password })
-        });
-        localStorage.setItem('mengli_token', data.token);
-        localStorage.setItem('mengli_user', JSON.stringify(data.user));
+        const data = await apiClient.auth.login(email, password);
         return { success: true, user: data.user };
     } catch (error) {
         console.error('登录失败:', error);
@@ -131,7 +96,7 @@ async function login(email, password) {
 // ===== 登出 =====
 async function logout() {
     try {
-        await apiCall('/auth/logout', { method: 'POST' });
+        await apiClient.auth.logout();
     } catch (e) { /* 静默 */ }
     localStorage.removeItem('mengli_token');
     localStorage.removeItem('mengli_user');
@@ -175,7 +140,7 @@ async function handleLogin(user) {
 async function loadUserProfile() {
     if (!currentUser) return;
     try {
-        userProfile = await apiCall('/auth/me');
+        userProfile = await apiClient.auth.me();
     } catch (error) {
         console.error('加载用户配置失败:', error);
         userProfile = {
@@ -220,10 +185,7 @@ async function handleRegister(event) {
     btn.textContent = '注册中...';
 
     try {
-        await apiCall('/auth/register', {
-            method: 'POST',
-            body: JSON.stringify({ email, password, display_name: name, position })
-        });
+        await apiClient.auth.register({ email, password, display_name: name, position });
         showToast('注册成功，等待管理员审批', 'success');
         closeRegisterModal();
     } catch (error) {
@@ -238,10 +200,7 @@ async function handleRegister(event) {
 async function createUser(email, password, displayName, position) {
     if (!isAdmin()) return { success: false, error: '权限不足' };
     try {
-        await apiCall('/admin/users', {
-            method: 'POST',
-            body: JSON.stringify({ email, password, display_name: displayName, position })
-        });
+        await apiClient.admin.createUser({ email, password, display_name: displayName, position });
         return { success: true };
     } catch (error) {
         return { success: false, error: error.message };
@@ -252,10 +211,7 @@ async function createUser(email, password, displayName, position) {
 async function updateUserProfile(userId, updates) {
     if (!isAdmin()) return { success: false, error: '权限不足' };
     try {
-        await apiCall(`/admin/users/${userId}`, {
-            method: 'PUT',
-            body: JSON.stringify(updates)
-        });
+        await apiClient.admin.updateUser(userId, updates);
         return { success: true };
     } catch (error) {
         return { success: false, error: error.message };
@@ -266,10 +222,7 @@ async function updateUserProfile(userId, updates) {
 async function updateUserPermissions(userId, featureKeys) {
     if (!isAdmin()) return { success: false, error: '权限不足' };
     try {
-        await apiCall(`/admin/users/${userId}/permissions`, {
-            method: 'PUT',
-            body: JSON.stringify({ permissions: featureKeys })
-        });
+        await apiClient.admin.updatePermissions(userId, featureKeys);
         return { success: true };
     } catch (error) {
         return { success: false, error: error.message };
@@ -280,7 +233,7 @@ async function updateUserPermissions(userId, featureKeys) {
 async function getAllUsers() {
     if (!isAdmin()) return { success: false, error: '权限不足' };
     try {
-        const data = await apiCall('/admin/users');
+        const data = await apiClient.admin.listUsers();
         return { success: true, users: data.users || [] };
     } catch (error) {
         return { success: false, error: error.message };
@@ -291,7 +244,7 @@ async function getAllUsers() {
 async function getUserPermissions(userId) {
     if (!isAdmin()) return { success: false, error: '权限不足' };
     try {
-        const data = await apiCall(`/admin/users/${userId}/permissions`);
+        const data = await apiClient.admin.getPermissions(userId);
         return { success: true, permissions: data.permissions || [] };
     } catch (error) {
         return { success: false, error: error.message };
@@ -302,7 +255,7 @@ async function getUserPermissions(userId) {
 async function approveUser(userId) {
     if (!isAdmin()) return { success: false, error: '权限不足' };
     try {
-        await apiCall(`/admin/users/${userId}/approve`, { method: 'PUT' });
+        await apiClient.admin.approveUser(userId);
         return { success: true };
     } catch (error) {
         return { success: false, error: error.message };
@@ -312,7 +265,7 @@ async function approveUser(userId) {
 async function rejectUser(userId) {
     if (!isAdmin()) return { success: false, error: '权限不足' };
     try {
-        await apiCall(`/admin/users/${userId}/reject`, { method: 'PUT' });
+        await apiClient.admin.rejectUser(userId);
         return { success: true };
     } catch (error) {
         return { success: false, error: error.message };
@@ -323,7 +276,7 @@ async function rejectUser(userId) {
 async function deleteUserAccount(userId) {
     if (!isAdmin()) return { success: false, error: '权限不足' };
     try {
-        await apiCall(`/admin/users/${userId}`, { method: 'DELETE' });
+        await apiClient.admin.deleteUser(userId);
         return { success: true };
     } catch (error) {
         return { success: false, error: error.message };
@@ -334,7 +287,7 @@ async function deleteUserAccount(userId) {
 async function toggleUserStatus(userId) {
     if (!isAdmin()) return { success: false, error: '权限不足' };
     try {
-        await apiCall(`/admin/users/${userId}/toggle`, { method: 'PUT' });
+        await apiClient.admin.toggleUser(userId);
         return { success: true };
     } catch (error) {
         return { success: false, error: error.message };
@@ -544,15 +497,12 @@ async function migrateLocalStorageToSupabase() {
 async function saveGenerationHistory(genType, inputParams, outputContent, rating = null, extra = {}) {
     if (!isLoggedIn()) return null;
     try {
-        const data = await apiCall('/history', {
-            method: 'POST',
-            body: JSON.stringify({
-                gen_type: genType,
-                input_params: inputParams,
-                output_content: outputContent,
-                rating,
-                ...extra
-            })
+        const data = await apiClient.history.create({
+            gen_type: genType,
+            input_params: inputParams,
+            output_content: outputContent,
+            rating,
+            ...extra
         });
         return data.id;
     } catch (e) {
@@ -563,10 +513,7 @@ async function saveGenerationHistory(genType, inputParams, outputContent, rating
 
 async function updateGenerationRating(historyId, rating) {
     try {
-        await apiCall(`/history/${historyId}/rating`, {
-            method: 'PUT',
-            body: JSON.stringify({ rating })
-        });
+        await apiClient.history.updateRating(historyId, rating);
     } catch (e) {
         console.error('更新评分失败:', e);
     }
@@ -574,7 +521,7 @@ async function updateGenerationRating(historyId, rating) {
 
 async function softDeleteHistory(id) {
     try {
-        await apiCall(`/history/${id}/soft-delete`, { method: 'PUT' });
+        await apiClient.history.softDelete(id);
         return true;
     } catch (e) {
         console.error('删除历史失败:', e);
@@ -584,7 +531,7 @@ async function softDeleteHistory(id) {
 
 async function getHighRatedExamples(genType, limit = 3) {
     try {
-        const data = await apiCall(`/history/high-rated?gen_type=${genType}&limit=${limit}`);
+        const data = await apiClient.history.getHighRated(genType, limit);
         return data.examples || [];
     } catch (e) {
         console.error('获取高分示例失败:', e);
@@ -594,9 +541,7 @@ async function getHighRatedExamples(genType, limit = 3) {
 
 async function getGenerationHistoryList(genType = null, limit = 50) {
     try {
-        let url = `/history?limit=${limit}`;
-        if (genType && genType !== 'all') url += `&gen_type=${genType}`;
-        const data = await apiCall(url);
+        const data = await apiClient.history.list(genType, limit);
         return data.history || [];
     } catch (e) {
         console.error('获取历史列表失败:', e);
@@ -607,10 +552,7 @@ async function getGenerationHistoryList(genType = null, limit = 50) {
 // ===== 素材库 API =====
 async function saveUserAsset(asset) {
     try {
-        await apiCall('/assets', {
-            method: 'POST',
-            body: JSON.stringify(asset)
-        });
+        await apiClient.assets.create(asset);
     } catch (e) {
         console.error('保存素材失败:', e);
     }
@@ -618,7 +560,7 @@ async function saveUserAsset(asset) {
 
 async function getUserAssets() {
     try {
-        const data = await apiCall('/assets');
+        const data = await apiClient.assets.list();
         return data.assets || [];
     } catch (e) {
         console.error('获取素材失败:', e);
@@ -628,10 +570,7 @@ async function getUserAssets() {
 
 async function updateUserAssetRating(id, rating) {
     try {
-        await apiCall(`/assets/${id}/rating`, {
-            method: 'PUT',
-            body: JSON.stringify({ rating })
-        });
+        await apiClient.assets.updateRating(id, rating);
     } catch (e) {
         console.error('更新素材评分失败:', e);
     }
@@ -639,10 +578,7 @@ async function updateUserAssetRating(id, rating) {
 
 async function deleteUserAssets(ids) {
     try {
-        await apiCall('/assets/batch', {
-            method: 'DELETE',
-            body: JSON.stringify({ ids })
-        });
+        await apiClient.assets.batchDelete(ids);
     } catch (e) {
         console.error('删除素材失败:', e);
     }
@@ -651,10 +587,7 @@ async function deleteUserAssets(ids) {
 // ===== 品牌库 API =====
 async function saveUserBrand(brand) {
     try {
-        await apiCall('/brands', {
-            method: 'POST',
-            body: JSON.stringify(brand)
-        });
+        await apiClient.brands.save(brand);
     } catch (e) {
         console.error('保存品牌失败:', e);
     }
@@ -662,7 +595,7 @@ async function saveUserBrand(brand) {
 
 async function getUserBrands() {
     try {
-        const data = await apiCall('/brands');
+        const data = await apiClient.brands.list();
         return data.brands || [];
     } catch (e) {
         console.error('获取品牌失败:', e);
@@ -672,7 +605,7 @@ async function getUserBrands() {
 
 async function deleteUserBrand(id) {
     try {
-        await apiCall(`/brands/${id}`, { method: 'DELETE' });
+        await apiClient.brands.delete(id);
     } catch (e) {
         console.error('删除品牌失败:', e);
     }
@@ -681,10 +614,7 @@ async function deleteUserBrand(id) {
 // ===== 模板 API =====
 async function saveUserTemplate(template) {
     try {
-        await apiCall('/templates', {
-            method: 'POST',
-            body: JSON.stringify(template)
-        });
+        await apiClient.templates.save(template);
     } catch (e) {
         console.error('保存模板失败:', e);
     }
@@ -692,7 +622,7 @@ async function saveUserTemplate(template) {
 
 async function getUserTemplates() {
     try {
-        const data = await apiCall('/templates');
+        const data = await apiClient.templates.list();
         return data.templates || [];
     } catch (e) {
         console.error('获取模板失败:', e);
@@ -702,7 +632,7 @@ async function getUserTemplates() {
 
 async function deleteUserTemplate(id) {
     try {
-        await apiCall(`/templates/${id}`, { method: 'DELETE' });
+        await apiClient.templates.delete(id);
     } catch (e) {
         console.error('删除模板失败:', e);
     }
@@ -711,10 +641,7 @@ async function deleteUserTemplate(id) {
 // ===== 偏好 API =====
 async function savePreference(key, value) {
     try {
-        await apiCall('/preferences', {
-            method: 'POST',
-            body: JSON.stringify({ pref_key: key, pref_value: value })
-        });
+        await apiClient.preferences.save(key, value);
     } catch (e) {
         console.error('保存偏好失败:', e);
     }
@@ -722,7 +649,7 @@ async function savePreference(key, value) {
 
 async function getUserPreferences() {
     try {
-        const data = await apiCall('/preferences');
+        const data = await apiClient.preferences.list();
         return data.preferences || [];
     } catch (e) {
         console.error('获取偏好失败:', e);
@@ -733,10 +660,7 @@ async function getUserPreferences() {
 // ===== 反馈 API =====
 async function saveFeedback(feedback) {
     try {
-        await apiCall('/feedback', {
-            method: 'POST',
-            body: JSON.stringify(feedback)
-        });
+        await apiClient.feedback.save(feedback);
     } catch (e) {
         console.error('保存反馈失败:', e);
     }
@@ -744,7 +668,7 @@ async function saveFeedback(feedback) {
 
 async function getFeedbackList() {
     try {
-        const data = await apiCall('/feedback');
+        const data = await apiClient.feedback.list();
         return data.feedback || [];
     } catch (e) {
         console.error('获取反馈失败:', e);
@@ -755,10 +679,7 @@ async function getFeedbackList() {
 // ===== 插件反馈 API =====
 async function submitPluginFeedback(feedback) {
     try {
-        await apiCall('/plugin-feedback', {
-            method: 'POST',
-            body: JSON.stringify(feedback)
-        });
+        await apiClient.pluginFeedback.submit(feedback);
     } catch (e) {
         console.error('提交反馈失败:', e);
     }
@@ -766,10 +687,7 @@ async function submitPluginFeedback(feedback) {
 
 async function updateFeedbackStatus(id, status) {
     try {
-        await apiCall(`/plugin-feedback/${id}/status`, {
-            method: 'PUT',
-            body: JSON.stringify({ status })
-        });
+        await apiClient.pluginFeedback.updateStatus(id, status);
     } catch (e) {
         console.error('更新反馈状态失败:', e);
     }
@@ -777,7 +695,7 @@ async function updateFeedbackStatus(id, status) {
 
 async function deleteFeedback(id) {
     try {
-        await apiCall(`/plugin-feedback/${id}`, { method: 'DELETE' });
+        await apiClient.pluginFeedback.delete(id);
     } catch (e) {
         console.error('删除反馈失败:', e);
     }
@@ -785,12 +703,7 @@ async function deleteFeedback(id) {
 
 // ===== 管理员日志 =====
 async function logAdminAction(action, target = '', details = '') {
-    try {
-        await apiCall('/admin/log', {
-            method: 'POST',
-            body: JSON.stringify({ action, target, details })
-        });
-    } catch (e) { /* 静默 */ }
+    await apiClient.admin.logAction(action, target, details);
 }
 
 // ===== 页面权限检查 =====
