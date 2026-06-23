@@ -3179,7 +3179,7 @@ function extractAccountDistribution(text){
 function localAnalyzeBrief(brief, projectOverride){
   const text = String(brief || '');
   const project = projectOverride || getCurrentProject();
-  const brand = extractBriefLine(text, '品牌') || project?.brand || '';
+  const brand = extractBriefLine(text, '品牌') || project?.brand || (/yoga/i.test(text) ? 'YOGA电脑' : '');
   const background = extractBriefLine(text, '背景&档期') || extractBriefLine(text, '背景') || '';
   const launchWindow = extractBriefLine(text, '推广时间') || extractBriefLine(text, '档期') || background || (text.match(/(\d+月\d+日\s*(?:-|－|—|~|～|到|至)\s*\d+月\d+日|\d+月底?到\d+月底?前?|\d+月左右|五月底到6月底前)/)?.[0] || '');
   const cooperationPlatform = extractBriefLine(text, '合作平台') || extractBriefLine(text, '推广平台') || '';
@@ -3301,13 +3301,24 @@ function normalizeBriefAnalysis(data, brief){
   data = data || {};
   const local = localAnalyzeBrief(brief);
   const text = String(brief || '');
-  const keepLocalCreatorTypes = (local.creatorTypes || []).length;
-  const keepLocalRequiredTags = (local.requiredAudienceTags || []).length || !REQUIRED_TAG_CONTEXT.test(text);
-  const safeCreatorTypes = keepLocalCreatorTypes ? local.creatorTypes : (data.creatorTypes || local.creatorTypes);
-  const safeRequiredTags = keepLocalRequiredTags ? local.requiredAudienceTags : (data.requiredAudienceTags || local.requiredAudienceTags);
+  const modelReliable = !!data.intelligenceProvider && data.intelligenceProvider !== 'local-rules' && !data.intelligenceFallback;
+  const keepLocalCreatorTypes = !modelReliable && (local.creatorTypes || []).length;
+  const keepLocalRequiredTags = !modelReliable && ((local.requiredAudienceTags || []).length || !REQUIRED_TAG_CONTEXT.test(text));
+  const safeCreatorTypes = modelReliable
+    ? ((data.creatorTypes || []).length ? data.creatorTypes : local.creatorTypes)
+    : (keepLocalCreatorTypes ? local.creatorTypes : (data.creatorTypes || local.creatorTypes));
+  const safeRequiredTags = modelReliable
+    ? ((data.requiredAudienceTags || []).length ? data.requiredAudienceTags : local.requiredAudienceTags)
+    : (keepLocalRequiredTags ? local.requiredAudienceTags : (data.requiredAudienceTags || local.requiredAudienceTags));
   const budgetRisk = typeof data.budgetRisk === 'string'
     ? {level:'info', message:data.budgetRisk}
     : (data.budgetRisk || local.budgetRisk);
+  const preferModelList = (key) => modelReliable
+    ? (((data[key] || []).length ? data[key] : (local[key] || [])))
+    : (((local[key] || []).length ? local[key] : (data[key] || [])));
+  const preferModelText = (key) => modelReliable
+    ? (data[key] || local[key] || '')
+    : (local[key] || data[key] || '');
   const merged = {
     ...local,
     ...data,
@@ -3317,7 +3328,7 @@ function normalizeBriefAnalysis(data, brief){
     keywords: [...new Set([...(local.keywords || []), ...(data.keywords || []), ...(data.searchKeywords || [])])].filter(Boolean).slice(0, 40),
     searchKeywords: [...new Set([...(data.searchKeywords || []), ...(local.keywords || [])])].filter(Boolean).slice(0, 40),
     synonymGroups: data.synonymGroups || local.synonymGroups || {},
-    hardRequirements: local.hardRequirements || data.hardRequirements || [],
+    hardRequirements: preferModelList('hardRequirements'),
     relaxableRequirements: data.relaxableRequirements || local.relaxableRequirements || [],
     riskNotes: data.riskNotes || local.riskNotes || [],
     confirmQuestions: data.confirmQuestions || local.confirmQuestions || [],
@@ -3326,19 +3337,19 @@ function normalizeBriefAnalysis(data, brief){
     intelligenceModel: data.intelligenceModel || local.intelligenceModel || '',
     intelligenceFallback: !!data.intelligenceFallback,
     intelligenceError: data.intelligenceError || '',
-    creatorRequirementText: local.creatorRequirementText || data.creatorRequirementText || '',
+    creatorRequirementText: preferModelText('creatorRequirementText'),
     creatorTypes: safeCreatorTypes,
-    creatorTypeDetails: local.creatorTypeDetails || data.creatorTypeDetails || [],
+    creatorTypeDetails: preferModelList('creatorTypeDetails'),
     requiredAudienceTags: safeRequiredTags,
-    contentAngles: local.contentAngles || data.contentAngles || [],
-    contentAngleNote: local.contentAngleNote || data.contentAngleNote || '',
-    accountDistribution: local.accountDistribution || data.accountDistribution || [],
-    coreRequirements: local.coreRequirements || data.coreRequirements || '',
-    otherRequirements: local.otherRequirements || data.otherRequirements || '',
-    syncRequirement: local.syncRequirement || data.syncRequirement || '',
-    contentQualityRequirement: local.contentQualityRequirement || data.contentQualityRequirement || '',
-    requirementNote: local.requirementNote || data.requirementNote || '',
-    forms: local.forms || data.forms || [],
+    contentAngles: preferModelList('contentAngles'),
+    contentAngleNote: preferModelText('contentAngleNote'),
+    accountDistribution: preferModelList('accountDistribution'),
+    coreRequirements: preferModelText('coreRequirements'),
+    otherRequirements: preferModelText('otherRequirements'),
+    syncRequirement: preferModelText('syncRequirement'),
+    contentQualityRequirement: preferModelText('contentQualityRequirement'),
+    requirementNote: preferModelText('requirementNote'),
+    forms: modelReliable ? ((data.forms || []).length ? data.forms : local.forms) : (local.forms || data.forms || []),
     scoringFocus: data.scoringFocus || local.scoringFocus,
     exclusions: data.exclusions || local.exclusions,
     explanation: data.explanation || local.explanation
@@ -3346,9 +3357,9 @@ function normalizeBriefAnalysis(data, brief){
   if(!merged.platforms.length) merged.platforms = local.platforms;
   return {
     ...merged,
-    totalBudget: Number(local.totalBudget || 0),
-    budgetMin: Number(local.budgetMin || merged.budgetMin || 0),
-    budgetMax: Number(local.budgetMax || merged.budgetMax || 0),
+    totalBudget: Number((modelReliable ? data.totalBudget : local.totalBudget) || merged.totalBudget || 0),
+    budgetMin: Number((modelReliable ? data.budgetMin : local.budgetMin) || merged.budgetMin || 0),
+    budgetMax: Number((modelReliable ? data.budgetMax : local.budgetMax) || merged.budgetMax || 0),
     targetCount: Number(merged.targetCount || merged.reportCountMin || local.targetCount),
     reportCountMin: Number(merged.reportCountMin || merged.targetCount || local.reportCountMin),
     rebateMinPct: Number(local.rebateMinPct || 0)

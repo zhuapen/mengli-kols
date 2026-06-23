@@ -1071,7 +1071,7 @@ def analyze_brief(brief: str) -> dict[str, Any]:
     brand = ""
     brand = extract_brief_line(text, ["品牌"])
     if not brand:
-        brand = "未命名品牌"
+        brand = "YOGA电脑" if re.search(r"yoga", text, re.I) else "未命名品牌"
 
     background = extract_brief_block(text, ["背景&档期", "背景"])
     launch_window = ""
@@ -1445,6 +1445,8 @@ def merge_model_analysis(fallback: dict[str, Any], model_data: dict[str, Any], p
     ]
     for key in override_keys:
         value = model_data.get(key)
+        if key == "brand" and str(value or "").strip() in {"未命名品牌", "未写明", "品牌未写明"}:
+            continue
         if value not in (None, "", [], {}):
             merged[key] = value
 
@@ -1487,6 +1489,7 @@ def build_brief_intelligence_prompt(brief: str, local_analysis: dict[str, Any]) 
 必须遵守：
 - 不要把不同 brief 套用成固定行业模板。
 - 识别客户真正要的达人赛道、人群标签、内容切入、粉丝量级、预算、CPM/CPE 和风险。
+- 如果没有明确【品牌】，但 brief 出现产品线/系列名（例如 YOGA、ThinkPad、Mitoto），brand 可用“系列名+品类”，不要轻易写“未命名品牌”。
 - searchKeywords 要能直接拿去蒲公英搜索。
 - synonymGroups 要用于标题匹配，例如零食可扩展到小零食、小零嘴、下午茶、便利店、山姆、低卡零食等。
 - 不要让 AI 直接决定推荐名单，只输出策略。
