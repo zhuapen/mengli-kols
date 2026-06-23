@@ -1536,7 +1536,7 @@ def call_codex_brief_intelligence(brief: str, local_analysis: dict[str, Any]) ->
     if not executable:
         raise RuntimeError("找不到 Codex CLI，请确认已安装并登录 Codex")
     prompt = build_brief_intelligence_prompt(brief, local_analysis)
-    cmd = [executable, "exec", "--ephemeral", prompt]
+    cmd = [executable, "exec", "--skip-git-repo-check", "--ephemeral", "-C", str(ROOT_DIR), prompt]
     if BRIEF_MODEL_NAME:
         cmd[2:2] = ["--model", BRIEF_MODEL_NAME]
     completed = subprocess.run(
