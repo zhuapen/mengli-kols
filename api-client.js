@@ -58,6 +58,15 @@
         data.detail
       );
     }
+    // 统一响应格式 {code, msg, data} → 返回 data 字段
+    if (data && typeof data.code !== 'undefined' && data.code === 0) {
+      return data.data;
+    }
+    // 错误响应
+    if (data && typeof data.code !== 'undefined' && data.code !== 0) {
+      throw new ApiError(data.code, data.msg || '请求失败');
+    }
+    // 兼容旧格式
     return data;
   }
 
