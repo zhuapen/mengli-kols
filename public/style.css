@@ -2500,3 +2500,18 @@ tbody tr:hover{
   .entry-card{min-height:180px}
   .entry-title{font-size:24px}
 }
+
+/* 登录弹窗 */
+.login-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;animation:fadeIn 0.3s ease}
+.login-modal-content{background:white;border-radius:16px;padding:32px;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3)}
+.login-modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
+.login-modal-header h3{margin:0;font-size:24px}
+.login-modal-close{background:none;border:none;font-size:28px;cursor:pointer;color:#666}
+.login-modal .form-group{margin-bottom:20px}
+.login-modal .form-group label{display:block;margin-bottom:8px;font-weight:600;color:#374151}
+.login-modal .form-group input{width:100%;padding:12px 16px;border:2px solid #E5E7EB;border-radius:8px;font-size:16px;transition:border-color 0.3s;box-sizing:border-box}
+.login-modal .form-group input:focus{outline:none;border-color:var(--accent)}
+.login-error{color:#EF4444;font-size:14px;margin-bottom:16px;min-height:20px}
+.login-submit-btn{width:100%;padding:14px;background:var(--accent);color:white;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;transition:all 0.3s}
+.login-submit-btn:hover{background:var(--accent-light)}
+.login-submit-btn:disabled{opacity:0.6;cursor:not-allowed}
