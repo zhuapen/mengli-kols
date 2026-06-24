@@ -131,42 +131,83 @@ function restoreRecentResults(){
   } catch(e){}
 }
 
+// ========== PAGE REGISTRY ==========
+const pages = {
+  home: 'pageHome',
+  find: 'pageFind',
+  image: 'pageImage',
+  copy: 'pageCopy',
+  article: 'pageArticle',
+  assets: 'pageAssets',
+  history: 'pageHistory',
+  datacenter: 'pageDatacenter',
+  plugin: 'pagePlugin',
+  analysis: 'pageAnalysis',
+  admin: 'pageAdmin',
+  knowledge: 'pageKnowledge'
+};
+
 // ========== PAGE NAVIGATION ==========
 function showPage(page){
-  // 检查页面权限（首页始终允许）
+  // 1. 检查页面是否注册
+  const pageId = pages[page];
+  if (!pageId) {
+    console.warn('[showPage] 页面未注册:', page);
+    return;
+  }
+
+  // 2. 检查页面权限（首页始终允许）
   if (page !== 'home' && typeof hasPermission === 'function' && !hasPermission(page)) {
     showUpgradePrompt(page);
     return;
   }
 
-  // 子页面映射（plugin 和 analysis 都属于 datacenter 导航）
+  // 3. 获取 DOM 元素
+  const el = document.getElementById(pageId);
+  if (!el) {
+    console.warn('[showPage] DOM 不存在:', pageId);
+    return;
+  }
+
+  // 4. 子页面映射（plugin 和 analysis 都属于 datacenter 导航）
   const navPage = (page === 'plugin' || page === 'analysis') ? 'datacenter' : page;
 
+  // 5. 切换页面
   currentPage = page;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  const pageEl = document.getElementById('page' + page.charAt(0).toUpperCase() + page.slice(1)); if(pageEl) pageEl.classList.add('active');
+  el.classList.add('active');
+
+  // 6. 更新导航高亮
   document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
   const navLink = document.querySelector(`.nav-link[data-page="${navPage}"]`);
   if(navLink) navLink.classList.add('active');
 
-  if(page === 'find'){
-    if(typeof initFindWorkbench === 'function') initFindWorkbench();
-  }
-  if(page === 'assets'){
-    loadAssets().then(() => renderAssets());
-  }
-  if(page === 'history'){
-    renderHistory();
-  }
-  if(page === 'datacenter'){
-    initDataCenter();
-    resetDataCenterState();
-  }
-  if(page === 'plugin'){
-    initPluginPage();
-  }
-  if(page === 'analysis'){
-    initDataCenter();
+  // 7. 页面初始化（每个页面独立 try/catch）
+  try {
+    if(page === 'find'){
+      if(typeof initFindWorkbench === 'function') initFindWorkbench();
+    }
+    if(page === 'assets'){
+      if(typeof loadAssets === 'function') loadAssets().then(() => { if(typeof renderAssets === 'function') renderAssets(); });
+    }
+    if(page === 'history'){
+      if(typeof renderHistory === 'function') renderHistory();
+    }
+    if(page === 'datacenter'){
+      if(typeof initDataCenter === 'function') initDataCenter();
+      if(typeof resetDataCenterState === 'function') resetDataCenterState();
+    }
+    if(page === 'plugin'){
+      if(typeof initPluginPage === 'function') initPluginPage();
+    }
+    if(page === 'analysis'){
+      if(typeof initDataCenter === 'function') initDataCenter();
+    }
+    if(page === 'admin'){
+      if(typeof renderAdminPanel === 'function') renderAdminPanel();
+    }
+  } catch(e) {
+    console.error('[showPage] 页面初始化失败:', page, e);
   }
 }
 

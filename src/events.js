@@ -110,7 +110,7 @@ const actions = {
   'stop-propagation': (e) => e.stopPropagation(),
 };
 
-// ===== 全局事件委托 =====
+// ===== 全局事件委托（try/catch 防崩溃）=====
 document.addEventListener('click', (e) => {
   const target = e.target.closest('[data-action]');
   if (!target) return;
@@ -118,15 +118,19 @@ document.addEventListener('click', (e) => {
   const action = target.dataset.action;
   if (!action) return;
 
-  const handler = actions[action];
-  if (handler) {
-    // 某些 action 不需要 preventDefault（如外部链接）
-    if (action !== 'stop-propagation') {
-      e.preventDefault();
+  try {
+    const handler = actions[action];
+    if (handler) {
+      // 某些 action 不需要 preventDefault（如外部链接）
+      if (action !== 'stop-propagation') {
+        e.preventDefault();
+      }
+      handler(e, target);
+    } else {
+      console.warn('[events] 未注册的 action:', action);
     }
-    handler(e, target);
-  } else {
-    console.warn('[events] 未注册的 action:', action);
+  } catch (err) {
+    console.error('[events] Action 执行失败:', action, err);
   }
 });
 

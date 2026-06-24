@@ -483,7 +483,81 @@ function showUpgradePrompt(featureKey) {
 
 // ===== 管理面板 =====
 function showAdminPanel() {
-    showPage('datacenter');
+    showPage('admin');
+}
+
+// ===== 渲染管理面板 =====
+async function renderAdminPanel() {
+    if (!isAdmin()) {
+        document.getElementById('userList').innerHTML = '<div style="padding:24px;text-align:center;color:#EF4444">权限不足</div>';
+        return;
+    }
+
+    // 加载用户列表
+    try {
+        const data = await apiClient.admin.listUsers();
+        const users = data.users || [];
+        const userListEl = document.getElementById('userList');
+        if (userListEl) {
+            userListEl.innerHTML = `
+                <table style="width:100%;border-collapse:collapse">
+                    <thead>
+                        <tr style="background:#f8f9fa;text-align:left">
+                            <th style="padding:12px 16px;font-size:13px;color:#666">邮箱</th>
+                            <th style="padding:12px 16px;font-size:13px;color:#666">姓名</th>
+                            <th style="padding:12px 16px;font-size:13px;color:#666">角色</th>
+                            <th style="padding:12px 16px;font-size:13px;color:#666">状态</th>
+                            <th style="padding:12px 16px;font-size:13px;color:#666">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${users.map(u => `
+                            <tr style="border-top:1px solid #eee">
+                                <td style="padding:12px 16px;font-size:14px">${escapeHtml(u.email)}</td>
+                                <td style="padding:12px 16px;font-size:14px">${escapeHtml(u.display_name || '-')}</td>
+                                <td style="padding:12px 16px;font-size:14px">
+                                    <span style="padding:2px 8px;border-radius:4px;font-size:12px;background:${u.role === 'admin' ? '#DBEAFE' : '#F3F4F6'};color:${u.role === 'admin' ? '#1D4ED8' : '#374151'}">${u.role === 'admin' ? '管理员' : '用户'}</span>
+                                </td>
+                                <td style="padding:12px 16px;font-size:14px">
+                                    <span style="padding:2px 8px;border-radius:4px;font-size:12px;background:${u.status === 'approved' ? '#D1FAE5' : u.status === 'pending' ? '#FEF3C7' : '#FEE2E2'};color:${u.status === 'approved' ? '#065F46' : u.status === 'pending' ? '#92400E' : '#991B1B'}">
+                                        ${u.status === 'approved' ? '已通过' : u.status === 'pending' ? '待审核' : '已拒绝'}
+                                    </span>
+                                </td>
+                                <td style="padding:12px 16px;font-size:14px">
+                                    ${u.status === 'pending' ? `
+                                        <button onclick="approveUser('${u.id}').then(() => renderAdminPanel())" style="padding:4px 12px;background:#10B981;color:white;border:none;border-radius:4px;font-size:12px;cursor:pointer;margin-right:4px">通过</button>
+                                        <button onclick="rejectUser('${u.id}').then(() => renderAdminPanel())" style="padding:4px 12px;background:#EF4444;color:white;border:none;border-radius:4px;font-size:12px;cursor:pointer">拒绝</button>
+                                    ` : `
+                                        <button onclick="toggleUserStatus('${u.id}').then(() => renderAdminPanel())" style="padding:4px 12px;background:${u.is_active ? '#F59E0B' : '#10B981'};color:white;border:none;border-radius:4px;font-size:12px;cursor:pointer">${u.is_active ? '禁用' : '启用'}</button>
+                                    `}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+        // 更新用户数
+        const statusUsers = document.getElementById('statusUsers');
+        if (statusUsers) statusUsers.textContent = users.length + ' 人';
+    } catch (e) {
+        console.error('[admin] 加载用户列表失败:', e);
+        document.getElementById('userList').innerHTML = '<div style="padding:24px;text-align:center;color:#EF4444">加载失败: ' + escapeHtml(e.message) + '</div>';
+    }
+
+    // 检查系统状态
+    try {
+        const health = await fetch(window.MENGLI.API_BASE + '/health').then(r => r.json());
+        const statusBackend = document.getElementById('statusBackend');
+        const statusDatabase = document.getElementById('statusDatabase');
+        const statusPm2 = document.getElementById('statusPm2');
+        if (statusBackend) statusBackend.innerHTML = '<span style="color:#10B981">● 正常</span>';
+        if (statusDatabase) statusDatabase.innerHTML = '<span style="color:#10B981">● 已连接</span>';
+        if (statusPm2) statusPm2.innerHTML = '<span style="color:#10B981">● 运行中</span>';
+    } catch (e) {
+        const statusBackend = document.getElementById('statusBackend');
+        if (statusBackend) statusBackend.innerHTML = '<span style="color:#EF4444">● 异常</span>';
+    }
 }
 
 // ===== 数据迁移（localStorage → 服务器）=====

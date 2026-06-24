@@ -1166,6 +1166,60 @@
   </div>
 </div>
 
+<!-- ========== ADMIN PAGE ========== -->
+<div class="page" id="pageAdmin">
+  <div class="page-header">
+    <div class="page-header-inner">
+      <div>
+        <h1 class="page-title">⚙️ 管理员面板</h1>
+        <p class="page-desc">用户管理 · 权限管理 · 系统状态</p>
+      </div>
+    </div>
+  </div>
+  <div class="admin-container" style="padding:0 24px 24px;max-width:1200px;margin:0 auto">
+    <!-- 用户管理 -->
+    <div class="admin-section" style="margin-bottom:32px">
+      <h3 style="margin-bottom:16px;font-size:18px">👥 用户管理</h3>
+      <div id="userList" style="background:white;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1)">
+        <div style="padding:24px;text-align:center;color:#999">加载中...</div>
+      </div>
+    </div>
+
+    <!-- 权限管理 -->
+    <div class="admin-section" style="margin-bottom:32px">
+      <h3 style="margin-bottom:16px;font-size:18px">🔐 权限管理</h3>
+      <div id="permissionPanel" style="background:white;border-radius:12px;padding:24px;box-shadow:0 1px 3px rgba(0,0,0,0.1)">
+        <div style="text-align:center;color:#999">选择用户后显示权限配置</div>
+      </div>
+    </div>
+
+    <!-- 系统状态 -->
+    <div class="admin-section">
+      <h3 style="margin-bottom:16px;font-size:18px">📊 系统状态</h3>
+      <div id="systemStatus" style="background:white;border-radius:12px;padding:24px;box-shadow:0 1px 3px rgba(0,0,0,0.1)">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px">
+          <div class="status-card" style="padding:16px;background:#f8f9fa;border-radius:8px">
+            <div style="font-size:13px;color:#666;margin-bottom:4px">后端状态</div>
+            <div id="statusBackend" style="font-size:16px;font-weight:600">检查中...</div>
+          </div>
+          <div class="status-card" style="padding:16px;background:#f8f9fa;border-radius:8px">
+            <div style="font-size:13px;color:#666;margin-bottom:4px">数据库</div>
+            <div id="statusDatabase" style="font-size:16px;font-weight:600">检查中...</div>
+          </div>
+          <div class="status-card" style="padding:16px;background:#f8f9fa;border-radius:8px">
+            <div style="font-size:13px;color:#666;margin-bottom:4px">PM2 进程</div>
+            <div id="statusPm2" style="font-size:16px;font-weight:600">检查中...</div>
+          </div>
+          <div class="status-card" style="padding:16px;background:#f8f9fa;border-radius:8px">
+            <div style="font-size:13px;color:#666;margin-bottom:4px">注册用户数</div>
+            <div id="statusUsers" style="font-size:16px;font-weight:600">检查中...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Vue 挂载点 -->
 <div id="vue-login-mount"></div>
 <div id="vue-copy-mount" style="display:none"></div>
