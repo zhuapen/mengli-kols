@@ -483,7 +483,7 @@ function showUpgradePrompt(featureKey) {
 
 // ===== 管理面板 =====
 function showAdminPanel() {
-    showPage('admin');
+    showPage('datacenter');
 }
 
 // ===== 数据迁移（localStorage → 服务器）=====

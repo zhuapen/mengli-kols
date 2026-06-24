@@ -144,7 +144,7 @@ function showPage(page){
 
   currentPage = page;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById('page' + page.charAt(0).toUpperCase() + page.slice(1)).classList.add('active');
+  const pageEl = document.getElementById('page' + page.charAt(0).toUpperCase() + page.slice(1)); if(pageEl) pageEl.classList.add('active');
   document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
   const navLink = document.querySelector(`.nav-link[data-page="${navPage}"]`);
   if(navLink) navLink.classList.add('active');
