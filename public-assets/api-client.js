@@ -44,9 +44,7 @@
       localStorage.removeItem('mengli_token');
       localStorage.removeItem('mengli_user');
       localStorage.removeItem('session_token');
-      if (!path.includes('/auth/login') && !path.includes('/auth/register')) {
-        window.location.reload();
-      }
+      // 不自动刷新，避免无限循环
       throw new ApiError(401, '会话已过期，请重新登录');
     }
 
