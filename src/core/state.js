@@ -88,6 +88,21 @@ export function subscribe(key, callback) {
 }
 
 export function initState() {
-  // 初始化状态（从 localStorage 恢复等）
+  // 从 localStorage 恢复登录状态
+  const token = localStorage.getItem('mengli_token');
+  const userStr = localStorage.getItem('mengli_user');
+
+  if (token && userStr) {
+    try {
+      const user = JSON.parse(userStr);
+      state.currentUser = user;
+      console.log('[state] 已恢复登录状态:', user.email);
+    } catch (e) {
+      console.warn('[state] 恢复登录状态失败:', e);
+      localStorage.removeItem('mengli_token');
+      localStorage.removeItem('mengli_user');
+    }
+  }
+
   console.log('[state] 状态初始化完成');
 }
