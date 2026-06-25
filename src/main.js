@@ -1,66 +1,24 @@
 /**
- * 萌力互动 · 模块入口
- * Vite 入口文件，按依赖顺序导入所有模块
+ * 萌力互动 · Vue 应用挂载
+ * 被 bootstrap.js 调用
  */
+import { createApp } from 'vue';
+import App from './App.vue';
 
-// ===== 状态管理 =====
-import './store/state.js';
+export function mountApp() {
+  const app = createApp(App);
 
-// ===== 工具函数 =====
-import './utils/toast.js';
-import './utils/markdown.js';
+  // 全局错误处理
+  app.config.errorHandler = (err, instance, info) => {
+    console.error('[Vue 错误]', err, info);
+  };
 
-// ===== 功能模块 =====
-import './features/register.js';
-
-// ===== 事件委托 =====
-import './events.js';
-
-// ===== Vue 应用 =====
-import './vue/app.js';
-
-// ===== 状态同步 =====
-(function syncGlobalState() {
-  if (typeof window.appState === 'undefined') return;
-  const state = window.appState;
-
-  // 初始化 state
-  if (typeof currentPage !== 'undefined') state.currentPage = currentPage;
-  if (typeof currentPlatform !== 'undefined') state.currentPlatform = currentPlatform;
-  if (typeof activeTag !== 'undefined') state.activeTag = activeTag;
-  if (typeof currentUser !== 'undefined') state.currentUser = currentUser;
-  if (typeof userProfile !== 'undefined') state.userProfile = userProfile;
-
-  // 拦截 showPage
-  if (typeof showPage === 'function') {
-    const _origShowPage = showPage;
-    window.showPage = function(page) {
-      state.currentPage = page;
-      return _origShowPage(page);
-    };
+  // 挂载到 #app
+  const mountEl = document.getElementById('app');
+  if (mountEl) {
+    app.mount(mountEl);
+    console.log('[main] Vue 应用已挂载');
+  } else {
+    console.error('[main] 找不到 #app 元素');
   }
-
-  // 拦截 handleLogin
-  if (typeof handleLogin === 'function') {
-    const _origHandleLogin = handleLogin;
-    window.handleLogin = function(user) {
-      state.currentUser = user;
-      return _origHandleLogin(user);
-    };
-  }
-
-  // 拦截 handleLogout
-  if (typeof handleLogout === 'function') {
-    const _origHandleLogout = handleLogout;
-    window.handleLogout = function() {
-      state.currentUser = null;
-      state.userProfile = null;
-      state.userPermissions = [];
-      return _origHandleLogout();
-    };
-  }
-
-  console.log('[main] 全局状态同步完成');
-})();
-
-console.log('[main] 模块入口已加载');
+}

@@ -1226,16 +1226,20 @@
 </div>
 
 <!-- Vue 挂载点 -->
+<div id="app"></div>
 <div id="vue-login-mount"></div>
 <div id="vue-media-mount" style="display:none"></div>
 <div id="vue-copy-mount" style="display:none"></div>
 
+<!-- 旧脚本（向后兼容，后续逐步移除）-->
 <script src="config.js"></script>
 <script src="boot.js"></script>
 <script src="api-client.js"></script>
 <script src="app.js"></script>
 <script src="find-page.js"></script>
 <script src="auth.js"></script>
-<script type="module" src="/src/main.js"></script>
+
+<!-- 新入口（Vue 应用）-->
+<script type="module" src="/src/core/app.js"></script>
 </body>
 </html>
