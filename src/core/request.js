@@ -3,6 +3,7 @@
  * 所有 HTTP 请求通过此文件
  */
 import { API } from './config.js';
+import { handleError } from './error.js';
 
 let getToken = () => localStorage.getItem('mengli_token');
 let onUnauthorized = null;
@@ -57,9 +58,18 @@ export async function request(path, options = {}) {
 
     return data;
   } catch (err) {
-    if (err instanceof ApiError) throw err;
-    console.error('[request] 网络错误:', err);
-    throw new ApiError(0, '网络连接失败');
+    if (err instanceof ApiError) {
+      // 401 不提示（已处理）
+      if (err.status !== 401) {
+        handleError(err, 'API', { silent: false });
+      }
+      throw err;
+    }
+
+    // 网络错误
+    const networkError = new ApiError(0, '网络连接失败');
+    handleError(networkError, 'API', { silent: false });
+    throw networkError;
   }
 }
 
@@ -102,6 +112,7 @@ export async function stream(path, body, onChunk, onDone, onError) {
     }
     onDone();
   } catch (err) {
+    handleError(err, 'Stream', { silent: true });
     onError(err);
   }
 }

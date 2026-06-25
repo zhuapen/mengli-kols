@@ -1,10 +1,12 @@
 /**
  * 萌力互动 · 系统启动控制器
- * 控制启动顺序，错误隔离
+ * 控制启动顺序，错误隔离，竞态锁
  */
 import { initRequest } from './request.js';
 import { initState } from './state.js';
 import { initToast } from './utils/toast.js';
+import { setReady } from './initLock.js';
+import { handleError } from './error.js';
 import { API } from './config.js';
 
 export function bootstrap() {
@@ -12,12 +14,12 @@ export function bootstrap() {
 
   // 全局错误兜底
   window.onerror = function (msg, src, line, col, err) {
-    console.error('[全局错误]', msg, src, line, err);
+    handleError(err || new Error(msg), 'Global', { silent: true });
     return false;
   };
 
   window.addEventListener('unhandledrejection', (event) => {
-    console.error('[Promise 错误]', event.reason);
+    handleError(event.reason, 'Promise', { silent: true });
   });
 
   try {
@@ -45,9 +47,13 @@ export function bootstrap() {
     mountApp();
     console.log('[boot] 5/5 Vue 应用挂载');
 
-    console.log('[boot] 初始化完成');
+    // 6. 设置就绪锁（下一事件循环，确保 Vue 已挂载）
+    setTimeout(() => {
+      setReady();
+      console.log('[boot] 初始化完成');
+    }, 0);
   } catch (err) {
-    console.error('[boot] 启动失败:', err);
+    handleError(err, 'Boot', { silent: true });
     // 不白屏，显示错误信息
     const app = document.getElementById('app');
     if (app) {
@@ -71,6 +77,6 @@ function mountApp() {
       module.mountApp();
     }
   }).catch(err => {
-    console.error('[boot] Vue 应用加载失败:', err);
+    handleError(err, 'Vue', { silent: true });
   });
 }

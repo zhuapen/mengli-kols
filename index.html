@@ -18,6 +18,11 @@
 </head>
 <body>
 
+<!-- Vue 应用挂载点（唯一入口）-->
+<div id="app"></div>
+
+<!-- 旧系统（向后兼容，后续逐步移除）-->
+<div id="legacy-app" style="display:none">
 <!-- Page Loader -->
 <div class="page-loader" id="pageLoader">
   <div style="text-align:center">
@@ -1225,13 +1230,13 @@
   </div>
 </div>
 
-<!-- Vue 挂载点 -->
-<div id="app"></div>
+<!-- 旧系统挂载点 -->
 <div id="vue-login-mount"></div>
 <div id="vue-media-mount" style="display:none"></div>
 <div id="vue-copy-mount" style="display:none"></div>
+</div><!-- /legacy-app -->
 
-<!-- 旧脚本（向后兼容，后续逐步移除）-->
+<!-- CDN 库（保持加载，Vue 组件会用到）-->
 <script src="config.js"></script>
 <script src="boot.js"></script>
 <script src="api-client.js"></script>

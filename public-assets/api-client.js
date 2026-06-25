@@ -368,6 +368,74 @@
     },
   };
 
+  // ===== 任务调度模块 =====
+  var tasks = {
+    list: function(params) {
+      var url = '/tasks';
+      var query = [];
+      if (params && params.status) query.push('status=' + params.status);
+      if (params && params.type) query.push('type=' + params.type);
+      if (params && params.limit) query.push('limit=' + params.limit);
+      if (query.length) url += '?' + query.join('&');
+      return get(url);
+    },
+    create: function(data) {
+      return post('/tasks', data);
+    },
+    get: function(id) {
+      return get('/tasks/' + id);
+    },
+    submitResult: function(id, result) {
+      return post('/tasks/' + id + '/result', result);
+    },
+  };
+
+  // ===== Brief 分析模块 =====
+  var briefs = {
+    list: function(params) {
+      var url = '/briefs';
+      var query = [];
+      if (params && params.status) query.push('status=' + params.status);
+      if (params && params.limit) query.push('limit=' + params.limit);
+      if (query.length) url += '?' + query.join('&');
+      return get(url);
+    },
+    create: function(data) {
+      return post('/briefs', data);
+    },
+    get: function(id) {
+      return get('/briefs/' + id);
+    },
+    updateAnalysis: function(id, analysis) {
+      return put('/briefs/' + id + '/analysis', { analysis: analysis });
+    },
+    confirm: function(id) {
+      return put('/briefs/' + id + '/confirm');
+    },
+  };
+
+  // ===== KOL 数据模块 =====
+  var kols = {
+    list: function(params) {
+      var url = '/kols';
+      var query = [];
+      if (params && params.platform) query.push('platform=' + params.platform);
+      if (params && params.search) query.push('search=' + params.search);
+      if (params && params.limit) query.push('limit=' + params.limit);
+      if (query.length) url += '?' + query.join('&');
+      return get(url);
+    },
+    create: function(data) {
+      return post('/kols', data);
+    },
+    get: function(id) {
+      return get('/kols/' + id);
+    },
+    batchImport: function(kolsData) {
+      return post('/kols/batch', { kols: kolsData });
+    },
+  };
+
   // ===== 组装 apiClient =====
   window.apiClient = {
     request: apiRequest,
@@ -391,6 +459,9 @@
     plugins: plugins,
     ai: ai,
     upload: upload,
+    tasks: tasks,
+    briefs: briefs,
+    kols: kols,
   };
 
   // ===== 向后兼容 =====
