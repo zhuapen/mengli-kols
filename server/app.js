@@ -43,6 +43,11 @@ app.use('/plugins', require('./routes/plugins'));
 app.use('/plugin-feedback', require('./routes/plugin-feedback'));
 app.use('/upload', require('./routes/upload'));
 
+// 任务调度系统路由
+app.use('/tasks', require('./routes/tasks'));
+app.use('/briefs', require('./routes/briefs'));
+app.use('/kols', require('./routes/kols'));
+
 // 健康检查
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', version: '2.0.0', runtime: 'node.js' });
