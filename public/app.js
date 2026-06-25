@@ -135,6 +135,7 @@ function restoreRecentResults(){
 const pages = {
   home: 'pageHome',
   find: 'pageFind',
+  media: 'vue-media-mount',
   image: 'pageImage',
   copy: 'pageCopy',
   article: 'pageArticle',
