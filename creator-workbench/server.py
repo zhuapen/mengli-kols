@@ -13,22 +13,29 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import html
 import io
 import json
 import math
+import os
 import random
 import re
+import shutil
 import sqlite3
+import subprocess
 import time
 import uuid
 import zipfile
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, Union
+from urllib.error import HTTPError
 from urllib.parse import quote
+from urllib.request import Request as UrlRequest, urlopen
 from xml.etree import ElementTree as ET
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -43,27 +50,37 @@ ROOT_DIR = APP_DIR.parent
 STATIC_DIR = APP_DIR / "static"
 DATA_DIR = APP_DIR / "data"
 EXPORT_DIR = APP_DIR / "exports"
-BACKUP_DIR = APP_DIR / "backups"
 DB_PATH = DATA_DIR / "mengli_creator_selection.sqlite3"
+BRIEF_MODEL_PROVIDER = os.getenv("BRIEF_MODEL_PROVIDER", "codex").strip().lower() or "codex"
+BRIEF_MODEL_NAME = os.getenv("BRIEF_MODEL_NAME", "").strip()
+DEEPSEEK_MODEL_NAME = os.getenv("DEEPSEEK_MODEL_NAME", "deepseek-chat").strip()
+DEEPSEEK_API_BASE = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com").rstrip("/")
+KIMI_MODEL_NAME = os.getenv("KIMI_MODEL_NAME", "kimi-latest").strip()
+KIMI_API_BASE = os.getenv("KIMI_API_BASE", "https://api.moonshot.cn/v1").rstrip("/")
+BRIEF_COMPAT_MODEL_NAME = os.getenv("BRIEF_COMPAT_MODEL_NAME", "").strip()
+BRIEF_COMPAT_API_BASE = os.getenv("BRIEF_COMPAT_API_BASE", "").rstrip("/")
+BRIEF_COMPAT_PROVIDER_NAME = os.getenv("BRIEF_COMPAT_PROVIDER_NAME", "openai-compatible").strip() or "openai-compatible"
+CODEX_EXECUTABLE = os.getenv("CODEX_EXECUTABLE", "codex").strip() or "codex"
+BRIEF_INTELLIGENCE_TIMEOUT = int(os.getenv("BRIEF_INTELLIGENCE_TIMEOUT", "180"))
+MENGLI_SERVER_BASE = os.getenv("MENGLI_SERVER", "http://127.0.0.1:8890").rstrip("/")
+COLLECTOR_WORKER_POLL_SECONDS = float(os.getenv("MENGLI_COLLECTOR_WORKER_POLL_SECONDS", "3"))
+COLLECTOR_TASK_MAX_AGE_HOURS = float(os.getenv("MENGLI_COLLECTOR_TASK_MAX_AGE_HOURS", "24"))
+COLLECTOR_SCRIPT_PATH = APP_DIR / "scripts" / "run-pgy-task.mjs"
 
 DATA_DIR.mkdir(exist_ok=True)
 EXPORT_DIR.mkdir(exist_ok=True)
-BACKUP_DIR.mkdir(exist_ok=True)
 
-# ===== 可配置项（环境变量） =====
-import os
-SERVER_HOST = os.environ.get("MENGLI_HOST", "0.0.0.0")
-SERVER_PORT = int(os.environ.get("MENGLI_PORT", "8890"))
-PUBLIC_URL = os.environ.get("MENGLI_PUBLIC_URL", "")  # 如 https://media-api.xxx.com，留空则自动拼接
-DATABASE_URL = os.environ.get("DATABASE_URL", "")  # 留空=SQLite，设为 postgresql://... 则走 PG
 
-def get_public_url():
-    """获取对外可访问的 URL（用于生成采集脚本中的回调地址）"""
-    if PUBLIC_URL:
-        return PUBLIC_URL.rstrip("/")
-    return f"http://127.0.0.1:{SERVER_PORT}"
+@asynccontextmanager
+async def app_lifespan(app_instance: FastAPI):
+    await start_collector_worker()
+    try:
+        yield
+    finally:
+        await stop_collector_worker()
 
-app = FastAPI(title="萌力互动本地 AI 选号系统", version="0.1.0")
+
+app = FastAPI(title="萌力互动本地 AI 选号系统", version="0.1.0", lifespan=app_lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -72,24 +89,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+COLLECTOR_WORKER_TASK: asyncio.Task | None = None
+COLLECTOR_WORKER_STATE: dict[str, Any] = {
+    "enabled": False,
+    "running": False,
+    "currentTaskId": "",
+    "lastMessage": "",
+    "lastExitCode": None,
+    "lastStartedAt": "",
+    "lastFinishedAt": "",
+}
+
 
 @app.middleware("http")
 async def add_private_network_header(request: Request, call_next):
     response = await call_next(request)
     response.headers["Access-Control-Allow-Private-Network"] = "true"
     return response
-
-
-# ===== 定时备份（每小时自动备份一次） =====
-import asyncio
-@app.on_event("startup")
-async def start_periodic_backup():
-    async def _backup_loop():
-        while True:
-            await asyncio.sleep(3600)  # 每小时
-            if DB_PATH.exists():
-                backup_db()
-    asyncio.create_task(_backup_loop())
 
 
 PLATFORMS = {
@@ -157,6 +173,14 @@ class ProjectCreate(BaseModel):
 
 class AnalysisUpdate(BaseModel):
     analysis: dict[str, Any]
+    name: str = ""
+    brief: str = ""
+
+
+class BriefIntelligenceRequest(BaseModel):
+    brief: str
+    project: str = ""
+    provider: str = ""
 
 
 class CandidateStatusUpdate(BaseModel):
@@ -167,6 +191,7 @@ class CandidateStatusUpdate(BaseModel):
 class RecommendationStatusUpdate(BaseModel):
     locked: Optional[bool] = None
     status: Optional[str] = None
+    note: str = ""
 
 
 class FeedbackCreate(BaseModel):
@@ -220,42 +245,25 @@ def make_id(prefix: str) -> str:
 
 
 def db() -> sqlite3.Connection:
-    """获取数据库连接。
-    当前使用 SQLite，后续迁移 PostgreSQL 时只需：
-    1. 设置环境变量 DATABASE_URL=postgresql://user:pass@host:5432/dbname
-    2. pip install psycopg2-binary
-    3. 此函数自动切换为 PG 连接
-    """
-    if DATABASE_URL and DATABASE_URL.startswith("postgresql"):
-        # PG 迁移时启用：import psycopg2; return psycopg2.connect(DATABASE_URL)
-        raise NotImplementedError("PostgreSQL 支持待启用，请安装 psycopg2-binary")
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 
-def backup_db() -> str:
-    """SQLite 自动备份 — 拷贝数据库文件到 backups/ 目录，返回备份路径"""
-    import shutil
-    if not DB_PATH.exists():
-        return ""
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = BACKUP_DIR / f"mengli_{ts}.sqlite3"
-    shutil.copy2(DB_PATH, backup_path)
-    # 保留最近 30 个备份，清理旧的
-    backups = sorted(BACKUP_DIR.glob("mengli_*.sqlite3"), reverse=True)
-    for old in backups[30:]:
-        old.unlink()
-    return str(backup_path)
-
-
-# 启动时自动备份一次
-if DB_PATH.exists():
-    backup_db()
+def clean_unicode(value: Any) -> Any:
+    if isinstance(value, str):
+        return value.encode("utf-8", "replace").decode("utf-8")
+    if isinstance(value, list):
+        return [clean_unicode(item) for item in value]
+    if isinstance(value, tuple):
+        return [clean_unicode(item) for item in value]
+    if isinstance(value, dict):
+        return {clean_unicode(key): clean_unicode(item) for key, item in value.items()}
+    return value
 
 
 def jdump(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return json.dumps(clean_unicode(value), ensure_ascii=False, separators=(",", ":"))
 
 
 def jload(value: Optional[str], fallback: Any = None) -> Any:
@@ -359,11 +367,18 @@ def init_db() -> None:
             create table if not exists creator_metrics (
               id text primary key,
               profile_id text not null,
-              exposure_median integer not null default 0,
-              read_median integer not null default 0,
-              interaction_median integer not null default 0,
-              cpm real not null default 0,
-              cpe real not null default 0,
+              exposure_median integer,
+              read_median integer,
+              interaction_median integer,
+              cpm real,
+              cpe real,
+              estimated_cpm real,
+              estimated_read_unit_price real,
+              estimated_interaction_unit_price real,
+              metric_status text not null default '',
+              metric_error text not null default '',
+              metric_filter_json text not null default '{}',
+              metric_source_json text not null default '{}',
               vertical_score real not null default 0,
               recent_titles_json text not null,
               title_status text not null default '',
@@ -464,13 +479,93 @@ def init_db() -> None:
             );
             """
         )
-        metric_columns = {row["name"] for row in conn.execute("pragma table_info(creator_metrics)").fetchall()}
+        metric_info = {row["name"]: row for row in conn.execute("pragma table_info(creator_metrics)").fetchall()}
+        metric_columns = set(metric_info)
         if "exposure_median" not in metric_columns:
-            conn.execute("alter table creator_metrics add column exposure_median integer not null default 0")
+            conn.execute("alter table creator_metrics add column exposure_median integer")
         if "title_status" not in metric_columns:
             conn.execute("alter table creator_metrics add column title_status text not null default ''")
         if "title_error" not in metric_columns:
             conn.execute("alter table creator_metrics add column title_error text not null default ''")
+        if "estimated_cpm" not in metric_columns:
+            conn.execute("alter table creator_metrics add column estimated_cpm real")
+        if "estimated_read_unit_price" not in metric_columns:
+            conn.execute("alter table creator_metrics add column estimated_read_unit_price real")
+        if "estimated_interaction_unit_price" not in metric_columns:
+            conn.execute("alter table creator_metrics add column estimated_interaction_unit_price real")
+        if "metric_status" not in metric_columns:
+            conn.execute("alter table creator_metrics add column metric_status text not null default ''")
+        if "metric_error" not in metric_columns:
+            conn.execute("alter table creator_metrics add column metric_error text not null default ''")
+        if "metric_filter_json" not in metric_columns:
+            conn.execute("alter table creator_metrics add column metric_filter_json text not null default '{}'")
+        if "metric_source_json" not in metric_columns:
+            conn.execute("alter table creator_metrics add column metric_source_json text not null default '{}'")
+        metric_info = {row["name"]: row for row in conn.execute("pragma table_info(creator_metrics)").fetchall()}
+        if any(metric_info.get(name) and metric_info[name]["notnull"] for name in ["exposure_median", "read_median", "interaction_median", "cpm", "cpe"]):
+            conn.executescript(
+                """
+                create table creator_metrics_new (
+                  id text primary key,
+                  profile_id text not null,
+                  exposure_median integer,
+                  read_median integer,
+                  interaction_median integer,
+                  cpm real,
+                  cpe real,
+                  estimated_cpm real,
+                  estimated_read_unit_price real,
+                  estimated_interaction_unit_price real,
+                  metric_status text not null default '',
+                  metric_error text not null default '',
+                  metric_filter_json text not null default '{}',
+                  metric_source_json text not null default '{}',
+                  vertical_score real not null default 0,
+                  recent_titles_json text not null,
+                  title_status text not null default '',
+                  title_error text not null default '',
+                  collected_at text not null
+                );
+                insert into creator_metrics_new(
+                  id,profile_id,exposure_median,read_median,interaction_median,cpm,cpe,
+                  estimated_cpm,estimated_read_unit_price,estimated_interaction_unit_price,
+                  metric_status,metric_error,metric_filter_json,metric_source_json,
+                  vertical_score,recent_titles_json,title_status,title_error,collected_at
+                )
+                select
+                  id,
+                  profile_id,
+                  nullif(exposure_median, 0),
+                  nullif(read_median, 0),
+                  nullif(interaction_median, 0),
+                  case when estimated_cpm is null then null else nullif(cpm, 0) end,
+                  case when estimated_interaction_unit_price is null then null else nullif(cpe, 0) end,
+                  estimated_cpm,
+                  estimated_read_unit_price,
+                  estimated_interaction_unit_price,
+                  coalesce(metric_status, ''),
+                  coalesce(metric_error, ''),
+                  coalesce(metric_filter_json, '{}'),
+                  coalesce(metric_source_json, '{}'),
+                  coalesce(vertical_score, 0),
+                  coalesce(recent_titles_json, '[]'),
+                  coalesce(title_status, ''),
+                  coalesce(title_error, ''),
+                  collected_at
+                from creator_metrics;
+                drop table creator_metrics;
+                alter table creator_metrics_new rename to creator_metrics;
+                """
+            )
+        conn.execute(
+            """
+            update creator_repair_records
+            set action=?
+            where status='pending'
+              and reason like '%指标待修复%'
+            """,
+            ("自动重新打开蒲公英详情页，进入笔记数据，按规模/按成本补采官网指标",),
+        )
         invalid_rows = conn.execute(
             """
             select
@@ -492,11 +587,18 @@ def init_db() -> None:
               cr.name,
               cr.primary_category,
               cr.persona,
-              coalesce(m.exposure_median, 0) exposure_median,
-              coalesce(m.read_median, 0) read_median,
-              coalesce(m.interaction_median, 0) interaction_median,
-              coalesce(m.cpm, 0) cpm,
-              coalesce(m.cpe, 0) cpe,
+              m.exposure_median,
+              m.read_median,
+              m.interaction_median,
+              m.cpm,
+              m.cpe,
+              m.estimated_cpm,
+              m.estimated_read_unit_price,
+              m.estimated_interaction_unit_price,
+              coalesce(m.metric_status, '') metric_status,
+              coalesce(m.metric_error, '') metric_error,
+              coalesce(m.metric_filter_json, '{}') metric_filter_json,
+              coalesce(m.metric_source_json, '{}') metric_source_json,
               coalesce(m.vertical_score, 0) vertical_score,
               coalesce(m.recent_titles_json, '[]') recent_titles_json,
               coalesce(m.title_status, '') title_status,
@@ -510,6 +612,12 @@ def init_db() -> None:
                 p.platform_id='' or p.platform_id=cr.name
                 or p.home_url=''
                 or p.home_url not like '%pgy.xiaohongshu.com%/blogger-detail/%'
+                or coalesce(m.exposure_median, 0)=0
+                or coalesce(m.read_median, 0)=0
+                or coalesce(m.interaction_median, 0)=0
+                or m.estimated_cpm is null
+                or m.estimated_read_unit_price is null
+                or m.estimated_interaction_unit_price is null
               )
             """
         ).fetchall()
@@ -519,6 +627,18 @@ def init_db() -> None:
                 issues.append("缺小红书号")
             if not row["home_url"] or "pgy.xiaohongshu.com" not in row["home_url"] or "/blogger-detail/" not in row["home_url"]:
                 issues.append("缺蒲公英主页")
+            if not row["exposure_median"]:
+                issues.append("指标待修复：缺曝光中位数")
+            if not row["read_median"]:
+                issues.append("指标待修复：缺阅读中位数")
+            if not row["interaction_median"]:
+                issues.append("指标待修复：缺互动中位数")
+            if row["estimated_cpm"] is None:
+                issues.append("指标待修复：缺预估CPM")
+            if row["estimated_read_unit_price"] is None:
+                issues.append("指标待修复：缺预估阅读单价")
+            if row["estimated_interaction_unit_price"] is None:
+                issues.append("指标待修复：缺预估互动单价")
             repair_exists = conn.execute(
                 "select 1 from creator_repair_records where candidate_id=? limit 1",
                 (row["candidate_id"],),
@@ -544,6 +664,13 @@ def init_db() -> None:
                     "interaction_median": row["interaction_median"],
                     "cpm": row["cpm"],
                     "cpe": row["cpe"],
+                    "estimated_cpm": row["estimated_cpm"],
+                    "estimated_read_unit_price": row["estimated_read_unit_price"],
+                    "estimated_interaction_unit_price": row["estimated_interaction_unit_price"],
+                    "metric_status": row["metric_status"],
+                    "metric_error": row["metric_error"],
+                    "metric_filter_json": row["metric_filter_json"],
+                    "metric_source_json": row["metric_source_json"],
                     "vertical_score": row["vertical_score"],
                     "recent_titles": jload(row["recent_titles_json"], []),
                     "title_status": row["title_status"] or "missing",
@@ -670,87 +797,207 @@ def dedupe(items: list[str]) -> list[str]:
     return out
 
 
-def analyze_brief(brief: str) -> dict[str, Any]:
-    text = brief.strip()
-    compact = re.sub(r"\s+", "", text)
+BRIEF_TOP_LABELS = [
+    "品牌",
+    "背景&档期",
+    "背景",
+    "档期",
+    "推广时间",
+    "合作平台",
+    "推广平台",
+    "合作形式",
+    "内容形式",
+    "博主类型",
+    "达人类型",
+    "账号类型",
+    "KOL类型",
+    "核心要求",
+    "与上一轮投放的关联",
+    "计划推广数量",
+    "推广数量",
+    "投放数量",
+    "提报数量",
+    "推荐数量",
+    "各赛道账号分布",
+    "账号分布",
+    "粉丝量级",
+    "其他要求",
+    "提报要求",
+    "量级数量&单个预算",
+    "单个预算",
+    "单博主预算",
+    "单人预算",
+    "总预算",
+    "项目预算",
+    "预算总额",
+    "数据要求",
+    "TA",
+    "Brief",
+]
+REQUIRED_TAG_CONTEXT = re.compile(r"必须覆盖|每个标签都需要|每个标签都要|都需要合作|需要有[^。\n]*标签|每类都要")
 
-    brand = ""
-    brand_match = re.search(r"(?:【品牌】|品牌[：:])\s*([^\n【]+)", text)
-    if brand_match:
-        brand = brand_match.group(1).strip()
-    if not brand:
-        brand = "未命名品牌"
 
-    background = pick_between(text, ["【背景&档期】", "背景&档期", "背景：", "档期："], ["【合作平台】", "合作平台", "【合作形式】"])
-    launch_window = ""
-    window_match = re.search(r"(五月底到6月底前|5月底到6月底前|6月左右|[一二三四五六七八九十0-9]+月底?[到至\\-][一二三四五六七八九十0-9]+月底?前?)", text)
-    if window_match:
-        launch_window = window_match.group(1)
+def clean_brief_line(line: str) -> str:
+    text = str(line or "").strip()
+    text = re.sub(r"^[\s\-•*·]+", "", text)
+    text = re.sub(r"^[0-9]+[、.)）]\s*", "", text)
+    text = re.sub(r"^[❗️!！]+", "", text)
+    return text.strip()
 
-    platforms: list[str] = []
-    if "小红书" in text or "蒲公英" in text:
-        platforms.append("pgy" if re.search(r"报备|返点|挂链|产品链接|蒲公英", text) else "xhs")
-    if "星图" in text or "巨量" in text:
-        platforms.append("xingtu")
-    if "抖音" in text:
-        platforms.append("douyin")
-    if "腾讯互选" in text or "视频号" in text or "互选" in text:
-        platforms.append("huxuan")
-    if not platforms:
-        platforms = ["pgy"]
-    platforms = dedupe(platforms)
 
-    forms = []
-    if "图文" in text:
-        forms.append("报备图文")
-    if "视频" in text:
-        forms.append("报备视频")
-    preferred_form = "视频" if "优先视频" in text else (forms[0] if forms else "按 brief 确认")
+def starts_with_brief_label(line: str) -> bool:
+    clean = clean_brief_line(line)
+    if not clean:
+        return False
+    if re.match(r"Brief[：:]", clean, re.I):
+        return True
+    if re.match(r"^【[^】]+】", clean):
+        return True
+    return any(clean == label or clean.startswith(f"{label}：") or clean.startswith(f"{label}:") for label in BRIEF_TOP_LABELS)
 
-    total_budget = 0
-    budget_match = re.search(r"(?:总预算|预算)[^0-9一二三四五六七八九十]*(\d+(?:\.\d+)?\s*(?:w|万|k|千)?)", compact, re.I)
-    if budget_match:
-        total_budget = parse_money(budget_match.group(1))
 
-    budget_min = 0
-    budget_max = 0
-    single_match = re.search(
-        r"单个预算[^0-9]*(\d+(?:\.\d+)?(?:w|万|k|千)?)(?:-|－|—|~|到|至)(\d+(?:\.\d+)?(?:w|万|k|千)?)",
-        compact,
+def extract_brief_block(text: str, labels: list[str]) -> str:
+    lines = str(text or "").splitlines()
+    for index, line in enumerate(lines):
+        clean = clean_brief_line(line)
+        for label in labels:
+            patterns = [
+                rf"^【\s*{re.escape(label)}\s*】\s*(.*)$",
+                rf"^{re.escape(label)}\s*[：:]\s*(.*)$",
+                rf"^{re.escape(label)}\s*$",
+            ]
+            match = next((re.match(pattern, clean) for pattern in patterns if re.match(pattern, clean)), None)
+            if not match:
+                continue
+            out: list[str] = []
+            inline = (match.group(1) if match.lastindex else "").strip()
+            if inline:
+                out.append(inline)
+            for next_line in lines[index + 1 :]:
+                if not next_line.strip():
+                    continue
+                if starts_with_brief_label(next_line):
+                    break
+                out.append(next_line.strip())
+            return "\n".join(out).strip()
+    return ""
+
+
+def extract_brief_line(text: str, labels: list[str]) -> str:
+    block = extract_brief_block(text, labels)
+    return block.splitlines()[0].strip() if block else ""
+
+
+def parse_money_range_text(text: str) -> tuple[int, int] | None:
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*(w|万|k|千)?\s*(?:-|－|—|~|～|到|至)\s*(\d+(?:\.\d+)?)\s*(w|万|k|千)?",
+        text,
         re.I,
     )
-    if single_match:
-        budget_min = parse_money(single_match.group(1))
-        budget_max = parse_money(single_match.group(2))
+    if match:
+        unit = match.group(4) or match.group(2) or ""
+        return parse_money(match.group(1) + (match.group(2) or unit)), parse_money(match.group(3) + unit)
+    single = re.search(r"(\d+(?:\.\d+)?)\s*(w|万|k|千)?", text, re.I)
+    if single:
+        return 0, parse_money(single.group(1) + (single.group(2) or ""))
+    return None
 
-    report_count_min = 0
-    count_match = re.search(r"(?:提报数量|数量)[^0-9]*(?:不低于|不少于|至少|>=|＞=|≥)?(\d+)个?", compact)
-    if not count_match:
-        count_match = re.search(r"(?:不低于|不少于|至少|>=|＞=|≥)(\d+)个", compact)
-    if count_match:
-        report_count_min = int(count_match.group(1))
 
-    rebate_min_pct = 0.0
-    rebate_match = re.search(r"返点[^0-9]*(?:不低于|不少于|至少|>=|＞=|≥)?(\d+(?:\.\d+)?)%", compact)
-    if rebate_match:
-        rebate_min_pct = float(rebate_match.group(1))
+def parse_money_range_for_labels(text: str, labels: list[str]) -> tuple[int, int] | None:
+    for label in labels:
+        block = extract_brief_block(text, [label])
+        if not block:
+            continue
+        parsed = parse_money_range_text(block)
+        if parsed:
+            return parsed
+    return None
 
-    creator_block = pick_between(text, ["达人类型：", "达人类型:", "达人类型"], ["TA：", "TA:", "【数据要求】", "数据要求"])
-    creator_block_no_note = re.sub(r"（.*?）|\(.*?\)", "", creator_block)
-    creator_types = dedupe(
-        [part for part in re.split(r"[、,，/；;]+", creator_block_no_note) if "需要" not in part and "标签" not in part]
-    )
+
+def parse_percent_for_labels(text: str, labels: list[str]) -> float:
+    for label in labels:
+        block = extract_brief_block(text, [label])
+        if not block:
+            continue
+        match = re.search(r"(\d+(?:\.\d+)?)\s*%", block)
+        if match:
+            return float(match.group(1))
+    return 0.0
+
+
+def split_brief_parts(value: str) -> list[str]:
+    parts = []
+    for item in re.split(r"[、,，/；;\n|]+", str(value or "")):
+        clean = clean_brief_line(item).strip().rstrip("等").strip()
+        if clean:
+            parts.append(clean)
+    return dedupe(parts)
+
+
+def parse_report_count(text: str) -> int:
+    block = extract_brief_block(text, ["计划推广数量", "推广数量", "投放数量", "提报数量", "推荐数量"])
+    if block:
+        match = re.search(r"(?:共投放|不低于|不少于|至少)?\s*(\d+)\s*(?:位|个|名|人)?", block)
+        if match:
+            return int(match.group(1))
+    compact = re.sub(r"\s+", "", text)
+    match = re.search(r"(?:计划推广数量|推广数量|投放数量|提报数量|推荐数量)[^0-9]*(?:共投放|不低于|不少于|至少)?(\d+)(?:位|个|名|人)?", compact)
+    return int(match.group(1)) if match else 0
+
+
+def extract_creator_category_segments(line: str) -> list[dict[str, Any]]:
+    pattern = re.compile(r"((?:P\d+\s*)?[^：:；;]{1,28}?(?:类|博主|达人|KOL))\s*[：:]", re.I)
+    matches = list(pattern.finditer(line))
+    segments: list[dict[str, Any]] = []
+    for index, match in enumerate(matches):
+        category = match.group(1).strip()
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(line)
+        examples = split_brief_parts(line[start:end])
+        if category:
+            segments.append({"category": category, "examples": examples})
+    return segments
+
+
+def extract_creator_details(text: str) -> tuple[list[str], list[dict[str, Any]]]:
+    block = extract_brief_block(text, ["博主类型", "达人类型", "账号类型", "KOL类型"])
+    creator_types: list[str] = []
+    details: list[dict[str, Any]] = []
+    if block:
+        for raw_line in block.splitlines():
+            line = clean_brief_line(raw_line)
+            no_note = re.sub(r"（.*?）|\(.*?\)", "", line).strip()
+            segments = extract_creator_category_segments(no_note)
+            if segments:
+                for segment in segments:
+                    creator_types.append(segment["category"])
+                    details.append(segment)
+                continue
+            for part in split_brief_parts(no_note):
+                if not re.search(r"需要|标签|TA|预算|CPM|CPE", part):
+                    creator_types.append(part)
     if not creator_types:
-        if "美食" in text:
-            creator_types.extend(["美食种草类", "美食开箱测评类"])
-        if "数码" in text:
-            creator_types.append("数码测评类")
-        if "母婴" in text:
-            creator_types.append("母婴种草类")
+        fallbacks = [
+            (r"种草", "种草类"),
+            (r"时尚|穿搭|优衣库", "时尚类"),
+            (r"设计|绘画|手工|拼豆", "设计类"),
+            (r"美食|零食|坚果", "美食种草类"),
+            (r"开箱|测评", "开箱测评类"),
+            (r"数码|科技|AI|电脑", "数码测评类"),
+            (r"母婴|育儿|宝妈", "母婴种草类"),
+        ]
+        for pattern, label in fallbacks:
+            if re.search(pattern, text):
+                creator_types.append(label)
+    return dedupe(creator_types)[:12], details
 
+
+def extract_required_audience_tags(text: str) -> list[str]:
     possible_tags = [
         "上班族",
         "学生党",
+        "学生",
+        "毕业学生",
         "养生党",
         "精致妈妈",
         "宝妈",
@@ -760,8 +1007,153 @@ def analyze_brief(brief: str) -> dict[str, Any]:
         "健身党",
         "成分党",
         "数码党",
+        "宠物",
+        "家庭内容",
+        "乐迷",
+        "情侣",
+        "有梗",
     ]
-    required_audience_tags = [tag for tag in possible_tags if tag in text]
+    context = "\n".join(
+        filter(
+            None,
+            [
+                extract_brief_block(text, ["必须覆盖标签"]),
+                extract_brief_block(text, ["达人类型", "博主类型"]),
+                extract_brief_block(text, ["提报要求"]),
+                extract_brief_block(text, ["量级数量&单个预算"]),
+            ],
+        )
+    )
+    if not REQUIRED_TAG_CONTEXT.search(context):
+        return []
+    return [tag for tag in possible_tags if tag in context]
+
+
+def extract_content_angles(text: str) -> tuple[list[str], str]:
+    block = extract_brief_block(text, ["与上一轮投放的关联", "内容切入标签", "内容偏好", "人设标签"])
+    source = block or extract_brief_block(text, ["核心要求"])
+    if not source:
+        return [], ""
+    normalized = source.replace("（毕业）学生", "毕业学生").replace("“", "").replace("”", "")
+    known = ["宠物", "家庭内容", "毕业学生", "学生", "乐迷", "情侣", "有梗", "新鲜事物", "购物分享", "开箱测评", "好物推荐", "穿搭", "绘画", "手工", "拼豆", "裸辞创业者"]
+    found = [tag for tag in known if tag in normalized]
+    for part in split_brief_parts(normalized):
+        clean = re.sub(r"^达人本身", "", part).strip()
+        clean = re.sub(r"^(拥有|愿意表达)", "", clean).strip()
+        if 1 < len(clean) <= 12 and not re.search(r"关联|切入|制作衣服|元素|种草力|粉丝信任|带货|转化|基础|核心要求", clean):
+            if any(clean != tag and tag in clean for tag in found):
+                continue
+            found.append(clean)
+    found = dedupe(found)
+    if "毕业学生" in found:
+        found = [item for item in found if item != "学生"]
+    return found[:12], source
+
+
+def extract_account_distribution(text: str) -> list[str]:
+    block = extract_brief_block(text, ["各赛道账号分布", "账号分布", "粉丝量级", "量级数量"])
+    source = block or text
+    rows: list[str] = []
+    pattern = re.compile(r"([^，,；;\n]{1,24}?)(\d+(?:\.\d+)?)%\s*(?:[（(]([^）)]*)[）)])?")
+    for match in pattern.finditer(source):
+        label = clean_brief_line(match.group(1))
+        label = re.sub(r"^.*[：:]", "", label).strip()
+        ratio = float(match.group(2))
+        ratio_text = f"{ratio:g}%"
+        followers = (match.group(3) or "").strip()
+        if label:
+            rows.append(f"{label}{ratio_text}{f'（{followers}）' if followers else ''}")
+    out: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        if row not in seen:
+            seen.add(row)
+            out.append(row)
+    return out
+
+
+def analyze_brief(brief: str) -> dict[str, Any]:
+    text = brief.strip()
+    compact = re.sub(r"\s+", "", text)
+
+    brand = ""
+    brand = extract_brief_line(text, ["品牌"])
+    if not brand:
+        brand = "YOGA电脑" if re.search(r"yoga", text, re.I) else "未命名品牌"
+
+    background = extract_brief_block(text, ["背景&档期", "背景"])
+    launch_window = ""
+    launch_window = extract_brief_line(text, ["推广时间", "档期"])
+    window_match = re.search(r"(五月底到6月底前|5月底到6月底前|6月左右|\d+月\d+日\s*(?:-|－|—|~|～|到|至)\s*\d+月\d+日|[一二三四五六七八九十0-9]+月底?[到至\\-][一二三四五六七八九十0-9]+月底?前?)", text)
+    if window_match:
+        launch_window = window_match.group(1)
+
+    cooperation_platform = extract_brief_line(text, ["合作平台", "推广平台"])
+    cooperation_form = extract_brief_line(text, ["合作形式", "内容形式"])
+    content_form = extract_brief_line(text, ["内容形式"]) or cooperation_form
+    requirement_line = extract_brief_block(text, ["提报要求"])
+    core_requirements = extract_brief_block(text, ["核心要求"])
+    other_requirements = extract_brief_block(text, ["其他要求"])
+    content_angles, content_angle_note = extract_content_angles(text)
+    account_distribution = extract_account_distribution(text)
+
+    platforms: list[str] = []
+    platform_source = cooperation_platform or text
+    if "小红书" in platform_source or "蒲公英" in platform_source:
+        platforms.append("pgy")
+    if "星图" in platform_source or "巨量" in platform_source:
+        platforms.append("xingtu")
+    if "抖音" in platform_source:
+        platforms.append("douyin")
+    if "腾讯互选" in platform_source or "视频号" in platform_source or "互选" in platform_source:
+        platforms.append("huxuan")
+    if not platforms:
+        platforms = ["pgy"]
+    platforms = dedupe(platforms)
+
+    forms = []
+    form_source = content_form or text
+    if "不限" in form_source:
+        forms.append("不限")
+    if "图文" in form_source:
+        forms.append("报备图文" if "报备图文" in form_source else "图文")
+    if "视频" in form_source and "视频号" not in form_source:
+        forms.append("报备视频" if "报备视频" in form_source else "视频")
+    if "口播" in form_source:
+        forms.append("口播")
+    if "植入" in form_source:
+        forms.append("植入")
+    preferred_form = "视频优先" if re.search(r"优先视频|视频合作", text) else ("不限" if "不限" in form_source else (forms[0] if forms else "按 brief 确认"))
+
+    total_budget_range = parse_money_range_for_labels(text, ["总预算", "项目预算", "预算总额", "整体预算"])
+    total_budget = total_budget_range[1] if total_budget_range else 0
+    single_budget_range = parse_money_range_for_labels(text, ["单个预算", "单博主预算", "单人预算", "单个达人预算", "单账号预算", "单博主报价"])
+    budget_min = single_budget_range[0] if single_budget_range else 0
+    budget_max = single_budget_range[1] if single_budget_range else 0
+
+    report_count_min = parse_report_count(text)
+
+    rebate_min_pct = 0.0
+    if re.search(r"返点|返佣|佣金", text):
+        rebate_min_pct = parse_percent_for_labels(text, ["返点", "返佣", "佣金", "提报要求"])
+
+    creator_types, creator_type_details = extract_creator_details(text)
+    required_audience_tags = extract_required_audience_tags(text)
+    if creator_type_details:
+        creator_requirement_text = "\n".join(
+            f"{item.get('category', '')}{'：' + '、'.join(item.get('examples') or []) if item.get('examples') else ''}"
+            for item in creator_type_details
+            if item.get("category")
+        )
+    else:
+        creator_requirement_text = "\n".join(
+            part
+            for part in [
+                "、".join(creator_types),
+                f"必须覆盖：{'、'.join(required_audience_tags)}" if required_audience_tags else "",
+            ]
+            if part
+        )
 
     ta = ""
     ta_match = re.search(r"TA[：:]\s*([^\n【]+)", text)
@@ -784,10 +1176,15 @@ def analyze_brief(brief: str) -> dict[str, Any]:
     keywords = []
     keywords.extend(creator_types)
     keywords.extend(required_audience_tags)
+    keywords.extend(content_angles)
     if brand and brand != "未命名品牌":
         keywords.append(brand)
     if "美食" in text:
         keywords.extend(["美食", "零食", "坚果", "开箱", "测评", "办公室零食", "早餐", "轻食", "养生"])
+    if re.search(r"时尚|穿搭|优衣库", text):
+        keywords.extend(["时尚", "穿搭", "新鲜事物体验"])
+    if re.search(r"设计|绘画|手工|拼豆", text):
+        keywords.extend(["设计", "绘画", "手工", "拼豆"])
     if "新品" in text:
         keywords.append("新品")
     if "视频" in text:
@@ -797,13 +1194,15 @@ def analyze_brief(brief: str) -> dict[str, Any]:
     hard_requirements = []
     if report_count_min:
         hard_requirements.append(f"提报数量不低于 {report_count_min} 个")
+    if account_distribution:
+        hard_requirements.append("粉丝量级分布：" + "、".join(account_distribution))
     if required_audience_tags:
         hard_requirements.append("必须覆盖标签：" + "、".join(required_audience_tags))
     if cpm_max is not None:
         hard_requirements.append(f"CPM < {cpm_max:g}")
     if cpe_max is not None:
         hard_requirements.append(f"CPE < {cpe_max:g}")
-    if preferred_form == "视频":
+    if preferred_form == "视频优先":
         hard_requirements.append("优先视频合作")
 
     budget_risk = ""
@@ -816,23 +1215,46 @@ def analyze_brief(brief: str) -> dict[str, Any]:
             )
         else:
             budget_risk = "数量和单价按最低值测算可以进入总预算。"
+    elif not total_budget:
+        budget_risk = "brief 未写明总预算，只能按单博主预算筛选。"
+    requirement_note = "\n".join(
+        dedupe(
+            [
+                content_form if re.search(r"好看|好玩|精致|有趣|创意", content_form) else "",
+                core_requirements,
+                other_requirements,
+            ]
+        )
+    )
 
     return {
         "brand": brand,
         "background": background,
         "launchWindow": launch_window,
+        "cooperationPlatform": cooperation_platform,
         "platforms": platforms,
-        "platformStrategy": "首版仅跑小红书蒲公英，其他平台保留底层适配器入口。" if platforms == ["pgy"] else "本地首版优先蒲公英；其他平台任务暂不自动运行。",
+        "platformStrategy": "首版仅跑小红书蒲公英，其他平台保留底层适配器入口。" if platforms == ["pgy"] else "按 brief 保留多平台需求；本地首版优先蒲公英，视频号/星图暂作同步或人工补充。",
         "forms": forms or ["待确认"],
         "preferredForm": preferred_form,
         "totalBudget": total_budget,
         "budgetMin": budget_min,
         "budgetMax": budget_max,
         "reportCountMin": report_count_min,
-        "recommendationTarget": 10,
+        "targetCount": report_count_min,
+        "recommendationTarget": report_count_min or 10,
         "rebateMinPct": rebate_min_pct,
+        "creatorRequirementText": creator_requirement_text,
         "creatorTypes": creator_types,
+        "creatorTypeDetails": creator_type_details,
         "requiredAudienceTags": required_audience_tags,
+        "contentAngles": content_angles,
+        "contentAngleNote": content_angle_note,
+        "accountDistribution": account_distribution,
+        "coreRequirements": core_requirements,
+        "otherRequirements": other_requirements,
+        "syncRequirement": other_requirements if re.search(r"同步|分发", other_requirements) else "",
+        "contentQualityRequirement": content_form if re.search(r"好看|好玩|精致|有趣|创意", content_form) else "",
+        "requirementNote": requirement_note,
         "ta": ta,
         "metrics": {"cpmMax": cpm_max, "cpeMax": cpe_max},
         "linkRequired": link_required,
@@ -843,7 +1265,474 @@ def analyze_brief(brief: str) -> dict[str, Any]:
     }
 
 
-def insert_ai_log(conn: sqlite3.Connection, project_id: str, action: str, request: Any, response: Any) -> None:
+BRIEF_INTELLIGENCE_JSON_SCHEMA = {
+    "brand": "品牌名",
+    "platforms": ["pgy"],
+    "reportCountMin": 25,
+    "budgetMin": 5000,
+    "budgetMax": 10000,
+    "preferredForm": "视频优先",
+    "creatorTypes": ["美食种草类"],
+    "requiredAudienceTags": ["上班族"],
+    "accountDistribution": ["中腰部博主10%（10万粉以上）"],
+    "contentAngles": ["办公室零食"],
+    "searchKeywords": ["零食测评"],
+    "synonymGroups": {"零食": ["小零食", "小零嘴", "下午茶"]},
+    "hardRequirements": ["CPM < 70"],
+    "relaxableRequirements": ["免费同步分发需人工确认"],
+    "riskNotes": ["挂链要求暂不自动判断"],
+    "executionNotes": ["新品链接上线时间属于发布执行确认，不作为选号筛选条件"],
+    "confirmQuestions": ["视频报价缺失账号是否允许作为备选？"],
+    "metrics": {"cpmMax": 70, "cpeMax": 8},
+    "strategySummary": "一句话概括本次找号策略",
+}
+
+
+def extract_json_object(text: str) -> dict[str, Any]:
+    raw = str(text or "").strip()
+    if not raw:
+        raise ValueError("模型未返回内容")
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+    match = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", raw, re.I)
+    if match:
+        return json.loads(match.group(1))
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start >= 0 and end > start:
+        parsed = json.loads(raw[start : end + 1])
+        if isinstance(parsed, dict):
+            return parsed
+    raise ValueError("模型返回不是合法 JSON 对象")
+
+
+def normalize_string_list(value: Any, limit: int = 24) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        items = split_brief_parts(value)
+    elif isinstance(value, list):
+        items = []
+        for item in value:
+            if isinstance(item, dict):
+                text = item.get("label") or item.get("name") or item.get("value") or ""
+            else:
+                text = str(item or "")
+            if text.strip():
+                items.append(text.strip())
+    else:
+        items = [str(value).strip()] if str(value).strip() else []
+    return dedupe([item.strip() for item in items if item.strip()])[:limit]
+
+
+def normalize_synonym_groups(value: Any) -> dict[str, list[str]]:
+    groups: dict[str, list[str]] = {}
+    if isinstance(value, dict):
+        for key, items in value.items():
+            clean_key = str(key or "").strip()
+            synonyms = normalize_string_list(items, 30)
+            if clean_key and synonyms:
+                groups[clean_key] = synonyms
+    elif isinstance(value, list):
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get("term") or item.get("keyword") or item.get("name") or "").strip()
+            synonyms = normalize_string_list(item.get("synonyms") or item.get("values") or item.get("items"), 30)
+            if key and synonyms:
+                groups[key] = synonyms
+    return groups
+
+
+PUBLISH_EXECUTION_QUESTION_RE = re.compile(
+    r"链接.*上线|产品链接|新品链接|挂链|发布时间|发布排期|内容发布|发布档期|上新时间|排期|卖点|口味|包装|脚本|审稿|寄样|样品|素材交付|拍摄要求|成片|发布时"
+)
+SELECTION_CONFIRM_QUESTION_RE = re.compile(
+    r"账号|达人|博主|KOL|KOC|粉丝|报价|预算|CPM|CPE|阅读|互动|曝光|平台|蒲公英|小红盟|图文报价|视频报价|标签|人群|赛道|类型|头部|腰部|尾部|初级|微型|学生群体|排除|备选|分布|数据|内容相关|垂直",
+    re.I,
+)
+
+
+def split_selection_confirm_questions(questions: list[str]) -> tuple[list[str], list[str]]:
+    selection: list[str] = []
+    execution: list[str] = []
+    for question in questions:
+        text = str(question or "").strip()
+        if not text:
+            continue
+        if PUBLISH_EXECUTION_QUESTION_RE.search(text):
+            execution.append(text)
+            continue
+        if SELECTION_CONFIRM_QUESTION_RE.search(text):
+            selection.append(text)
+        else:
+            execution.append(text)
+    return dedupe(selection), dedupe(execution)
+
+
+def default_synonym_groups(analysis: dict[str, Any]) -> dict[str, list[str]]:
+    text = " ".join(
+        [
+            str(analysis.get("creatorRequirementText") or ""),
+            " ".join(analysis.get("creatorTypes") or []),
+            " ".join(analysis.get("keywords") or []),
+            " ".join(analysis.get("contentAngles") or []),
+        ]
+    )
+    groups: dict[str, list[str]] = {}
+    if re.search(r"零食|坚果|美食|早餐|轻食|养生|食品", text):
+        groups["零食/食品"] = [
+            "小零食",
+            "小零嘴",
+            "零嘴",
+            "下午茶",
+            "办公室下午茶",
+            "办公室零食",
+            "便利店",
+            "山姆",
+            "低卡零食",
+            "健康零食",
+            "每日坚果",
+            "麦片",
+            "燕麦",
+            "试吃",
+            "囤货",
+        ]
+    if re.search(r"开箱|测评|体验|种草|推荐", text):
+        groups["开箱测评"] = ["试吃", "实测", "体验", "上手", "开箱", "横评", "安利", "清单"]
+    if re.search(r"时尚|穿搭|精致日常|购物分享", text):
+        groups["时尚种草"] = ["OOTD", "通勤穿搭", "日常穿搭", "搭配", "衣橱", "好物推荐"]
+    if re.search(r"设计|绘画|手工|拼豆|创意", text):
+        groups["设计手作"] = ["创意", "手作", "插画", "定制", "审美", "灵感", "改造"]
+    return groups
+
+
+def ensure_strategy_fields(analysis: dict[str, Any]) -> dict[str, Any]:
+    out = dict(analysis)
+    keywords = normalize_string_list(out.get("searchKeywords") or out.get("keywords"), 40)
+    if not keywords:
+        keywords = normalize_string_list(
+            [
+                *(out.get("creatorTypes") or []),
+                *(out.get("requiredAudienceTags") or []),
+                *(out.get("contentAngles") or []),
+            ],
+            40,
+        )
+    out["searchKeywords"] = keywords
+    out["keywords"] = dedupe([*(out.get("keywords") or []), *keywords])[:40]
+    synonym_groups = default_synonym_groups(out)
+    synonym_groups.update(normalize_synonym_groups(out.get("synonymGroups")))
+    out["synonymGroups"] = synonym_groups
+    out["riskNotes"] = normalize_string_list(out.get("riskNotes") or out.get("risks"), 20)
+    explicit_execution = normalize_string_list(out.get("executionNotes") or out.get("publishNotes"), 16)
+    raw_confirm_questions = normalize_string_list(out.get("confirmQuestions") or out.get("questions"), 16)
+    selection_questions, execution_questions = split_selection_confirm_questions(raw_confirm_questions)
+    out["confirmQuestions"] = selection_questions[:12]
+    out["executionNotes"] = dedupe([*explicit_execution, *execution_questions])[:16]
+    out["relaxableRequirements"] = normalize_string_list(out.get("relaxableRequirements"), 16)
+    if not out.get("strategySummary"):
+        out["strategySummary"] = f"{out.get('brand') or '本项目'}：按达人类型、内容标题、预算和官方数据分层推荐。"
+    return out
+
+
+def merge_model_analysis(fallback: dict[str, Any], model_data: dict[str, Any], provider: str, model: str, fallback_used: bool = False, error: str = "") -> dict[str, Any]:
+    merged = dict(fallback)
+    override_keys = [
+        "brand",
+        "background",
+        "launchWindow",
+        "cooperationPlatform",
+        "platformStrategy",
+        "forms",
+        "preferredForm",
+        "totalBudget",
+        "budgetMin",
+        "budgetMax",
+        "reportCountMin",
+        "targetCount",
+        "recommendationTarget",
+        "rebateMinPct",
+        "creatorRequirementText",
+        "creatorTypes",
+        "creatorTypeDetails",
+        "requiredAudienceTags",
+        "contentAngles",
+        "contentAngleNote",
+        "accountDistribution",
+        "coreRequirements",
+        "otherRequirements",
+        "syncRequirement",
+        "contentQualityRequirement",
+        "requirementNote",
+        "ta",
+        "metrics",
+        "linkRequired",
+        "keywords",
+        "searchKeywords",
+        "synonymGroups",
+        "hardRequirements",
+        "relaxableRequirements",
+        "riskNotes",
+        "executionNotes",
+        "confirmQuestions",
+        "strategySummary",
+        "budgetRisk",
+    ]
+    for key in override_keys:
+        value = model_data.get(key)
+        if key == "brand" and str(value or "").strip() in {"未命名品牌", "未写明", "品牌未写明"}:
+            continue
+        if value not in (None, "", [], {}):
+            merged[key] = value
+
+    merged["platforms"] = [item for item in normalize_string_list(merged.get("platforms"), 8) if item in PLATFORMS] or fallback.get("platforms") or ["pgy"]
+    if "pgy" not in merged["platforms"]:
+        merged["platforms"] = ["pgy", *merged["platforms"]]
+    merged["forms"] = normalize_string_list(merged.get("forms"), 8) or fallback.get("forms") or ["待确认"]
+    merged["creatorTypes"] = normalize_string_list(merged.get("creatorTypes"), 16) or fallback.get("creatorTypes") or []
+    merged["requiredAudienceTags"] = normalize_string_list(merged.get("requiredAudienceTags"), 20) or fallback.get("requiredAudienceTags") or []
+    merged["contentAngles"] = normalize_string_list(merged.get("contentAngles"), 20) or fallback.get("contentAngles") or []
+    merged["accountDistribution"] = normalize_string_list(merged.get("accountDistribution"), 12) or fallback.get("accountDistribution") or []
+    merged["hardRequirements"] = normalize_string_list(merged.get("hardRequirements"), 24) or fallback.get("hardRequirements") or []
+    metrics = merged.get("metrics") if isinstance(merged.get("metrics"), dict) else {}
+    merged["metrics"] = {
+        "cpmMax": metric_limit(metrics.get("cpmMax")) or 0,
+        "cpeMax": metric_limit(metrics.get("cpeMax")) or 0,
+    }
+    for key in ["totalBudget", "budgetMin", "budgetMax", "reportCountMin", "targetCount", "recommendationTarget"]:
+        try:
+            merged[key] = int(float(merged.get(key) or 0))
+        except (TypeError, ValueError):
+            merged[key] = int(fallback.get(key) or 0)
+    merged["reportCountMin"] = merged["reportCountMin"] or merged["targetCount"] or fallback.get("reportCountMin") or 0
+    merged["targetCount"] = merged["targetCount"] or merged["reportCountMin"]
+    merged["recommendationTarget"] = merged["recommendationTarget"] or merged["reportCountMin"] or fallback.get("recommendationTarget") or 10
+    merged = ensure_strategy_fields(merged)
+    merged["intelligenceProvider"] = provider
+    merged["intelligenceModel"] = model
+    merged["intelligenceFallback"] = fallback_used
+    merged["intelligenceError"] = error
+    merged["version"] = f"{provider}-brief-intelligence-0.1" if not fallback_used else "local-rules-fallback-0.1"
+    return merged
+
+
+def blank_brief_analysis() -> dict[str, Any]:
+    return {
+        "brand": "",
+        "background": "",
+        "launchWindow": "",
+        "cooperationPlatform": "",
+        "platforms": ["pgy"],
+        "platformStrategy": "首版只自动采集小红书蒲公英，其他平台作为人工同步或后续接入。",
+        "forms": [],
+        "preferredForm": "",
+        "totalBudget": 0,
+        "budgetMin": 0,
+        "budgetMax": 0,
+        "reportCountMin": 0,
+        "targetCount": 0,
+        "recommendationTarget": 0,
+        "rebateMinPct": 0,
+        "creatorRequirementText": "",
+        "creatorTypes": [],
+        "creatorTypeDetails": [],
+        "requiredAudienceTags": [],
+        "contentAngles": [],
+        "contentAngleNote": "",
+        "accountDistribution": [],
+        "coreRequirements": "",
+        "otherRequirements": "",
+        "syncRequirement": "",
+        "contentQualityRequirement": "",
+        "requirementNote": "",
+        "ta": "",
+        "metrics": {"cpmMax": 0, "cpeMax": 0},
+        "linkRequired": False,
+        "keywords": [],
+        "searchKeywords": [],
+        "synonymGroups": {},
+        "hardRequirements": [],
+        "relaxableRequirements": [],
+        "riskNotes": [],
+        "executionNotes": [],
+        "confirmQuestions": [],
+        "strategySummary": "",
+        "budgetRisk": "",
+    }
+
+
+def build_brief_intelligence_prompt(brief: str) -> str:
+    return f"""你是萌力互动的资深媒介选号策略分析器。请只输出一个合法 JSON 对象，不要 Markdown，不要解释。
+
+目标：把客户 brief 拆成可执行的找号策略，用于小红书蒲公英采集和后端推荐引擎。
+
+必须遵守：
+- 不要把不同 brief 套用成固定行业模板。
+- 识别客户真正要的达人赛道、人群标签、内容切入、粉丝量级、预算、CPM/CPE 和风险。
+- 如果没有明确【品牌】，但 brief 出现产品线/系列名（例如 YOGA、ThinkPad、Mitoto），brand 可用“系列名+品类”，不要轻易写“未命名品牌”。
+- searchKeywords 要能直接拿去蒲公英搜索。
+- synonymGroups 要用于标题匹配，例如零食可扩展到小零食、小零嘴、下午茶、便利店、山姆、低卡零食等。
+- confirmQuestions 只能放“影响选号筛选”的待确认问题，例如是否接受报价缺失账号、粉丝量级是否必须严格、某类达人是否可作为备选。
+- 新品链接上线时间、发布时间/排期、内容发布时间、卖点/口味/包装、脚本/审稿/寄样、素材交付、挂链执行等发布执行问题，不要放进 confirmQuestions；这类内容只能放到 executionNotes。
+- 不要让 AI 直接决定推荐名单，只输出策略。
+- 字段缺失时用空数组、空字符串或 0。
+
+固定 JSON 形状示例：
+{json.dumps(BRIEF_INTELLIGENCE_JSON_SCHEMA, ensure_ascii=False, indent=2)}
+
+客户 brief：
+{brief}
+"""
+
+
+def call_chat_completion_brief_intelligence(
+    brief: str,
+    provider_label: str,
+    api_key: str,
+    api_base: str,
+    model: str,
+) -> tuple[dict[str, Any], str]:
+    if not api_key:
+        raise RuntimeError(f"未配置 {provider_label} API Key")
+    if not api_base:
+        raise RuntimeError(f"未配置 {provider_label} API Base")
+    if not model:
+        raise RuntimeError(f"未配置 {provider_label} 模型名")
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "你是萌力互动的资深媒介选号策略分析器。你只输出合法 JSON，不要 Markdown，不要解释。"},
+            {"role": "user", "content": build_brief_intelligence_prompt(brief)},
+        ],
+        "temperature": 0.2,
+        "response_format": {"type": "json_object"},
+    }
+    def post_chat_completion(body: dict[str, Any]) -> dict[str, Any]:
+        req = UrlRequest(
+            f"{api_base.rstrip('/')}/chat/completions",
+            data=json.dumps(body).encode("utf-8"),
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urlopen(req, timeout=BRIEF_INTELLIGENCE_TIMEOUT) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except HTTPError as exc:
+            error_body = exc.read().decode("utf-8", errors="ignore")[:600]
+            raise RuntimeError(f"{provider_label} HTTP {exc.code}: {error_body}") from exc
+
+    try:
+        data = post_chat_completion(payload)
+    except RuntimeError as exc:
+        if ("HTTP 400" not in str(exc) and "HTTP 422" not in str(exc)) or "response_format" not in payload:
+            raise
+        fallback_payload = {key: value for key, value in payload.items() if key != "response_format"}
+        data = post_chat_completion(fallback_payload)
+    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    return extract_json_object(content), model
+
+
+def call_deepseek_brief_intelligence(brief: str, local_analysis: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    return call_chat_completion_brief_intelligence(
+        brief,
+        "DeepSeek",
+        os.getenv("DEEPSEEK_API_KEY", "").strip(),
+        DEEPSEEK_API_BASE,
+        BRIEF_MODEL_NAME or DEEPSEEK_MODEL_NAME,
+    )
+
+
+def call_kimi_brief_intelligence(brief: str, local_analysis: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    return call_chat_completion_brief_intelligence(
+        brief,
+        "Kimi",
+        os.getenv("KIMI_API_KEY", "").strip(),
+        KIMI_API_BASE,
+        BRIEF_MODEL_NAME or KIMI_MODEL_NAME,
+    )
+
+
+def call_compatible_brief_intelligence(brief: str, local_analysis: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    return call_chat_completion_brief_intelligence(
+        brief,
+        BRIEF_COMPAT_PROVIDER_NAME,
+        os.getenv("BRIEF_COMPAT_API_KEY", "").strip(),
+        BRIEF_COMPAT_API_BASE,
+        BRIEF_MODEL_NAME or BRIEF_COMPAT_MODEL_NAME,
+    )
+
+
+def call_codex_brief_intelligence(brief: str, local_analysis: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    executable = shutil.which(CODEX_EXECUTABLE)
+    if not executable and "/" in CODEX_EXECUTABLE:
+        executable = CODEX_EXECUTABLE if Path(CODEX_EXECUTABLE).exists() else ""
+    if not executable:
+        raise RuntimeError("找不到 Codex CLI，请确认已安装并登录 Codex")
+    prompt = build_brief_intelligence_prompt(brief)
+    cmd = [executable, "exec", "--skip-git-repo-check", "--ephemeral", "-C", str(ROOT_DIR), prompt]
+    if BRIEF_MODEL_NAME:
+        cmd[2:2] = ["--model", BRIEF_MODEL_NAME]
+    completed = subprocess.run(
+        cmd,
+        cwd=str(ROOT_DIR),
+        text=True,
+        capture_output=True,
+        timeout=BRIEF_INTELLIGENCE_TIMEOUT,
+        check=False,
+    )
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip()[-600:]
+        raise RuntimeError(stderr or f"Codex exec 退出码 {completed.returncode}")
+    return extract_json_object(completed.stdout), (BRIEF_MODEL_NAME or "codex-exec")
+
+
+async def run_brief_intelligence(brief: str, project: str = "", provider: str = "") -> dict[str, Any]:
+    base_analysis = blank_brief_analysis()
+    selected = (provider or BRIEF_MODEL_PROVIDER or "codex").strip().lower()
+    provider_callers = {
+        "codex": call_codex_brief_intelligence,
+        "deepseek": call_deepseek_brief_intelligence,
+        "kimi": call_kimi_brief_intelligence,
+        "moonshot": call_kimi_brief_intelligence,
+        "openai-compatible": call_compatible_brief_intelligence,
+        "compatible": call_compatible_brief_intelligence,
+        "custom": call_compatible_brief_intelligence,
+    }
+    caller = provider_callers.get(selected)
+    if not caller:
+        raise HTTPException(status_code=400, detail=f"未知 brief provider：{selected}，可选 codex/deepseek/kimi/openai-compatible")
+
+    errors: list[str] = []
+    for attempt in range(2):
+        try:
+            model_data, model = await asyncio.to_thread(caller, brief, base_analysis)
+            return merge_model_analysis(base_analysis, model_data, selected, model)
+        except Exception as exc:
+            errors.append(f"第{attempt + 1}次{selected}拆解失败：{exc}")
+            await asyncio.sleep(0.5)
+    raise HTTPException(status_code=502, detail=f"{selected} 拆解失败：" + "；".join(errors))
+
+
+def planned_collection_target(analysis: dict[str, Any], default: int = 30) -> int:
+    requested = int(analysis.get("reportCountMin") or analysis.get("targetCount") or analysis.get("recommendationTarget") or default)
+    requested = max(1, requested)
+    return requested + max(10, math.ceil(requested * 0.3))
+
+
+def insert_ai_log(
+    conn: sqlite3.Connection,
+    project_id: str,
+    action: str,
+    request: Any,
+    response: Any,
+    provider: str = "local-rules",
+    cache_hit: int = 1,
+) -> None:
     prompt_hash = hashlib.sha256(jdump(request).encode("utf-8")).hexdigest()[:16]
     conn.execute(
         """
@@ -854,13 +1743,13 @@ def insert_ai_log(conn: sqlite3.Connection, project_id: str, action: str, reques
             make_id("ai"),
             project_id,
             action,
-            "local-rules",
+            provider,
             prompt_hash,
             jdump(request),
             jdump(response),
             0,
             0,
-            1,
+            cache_hit,
             now(),
         ),
     )
@@ -884,24 +1773,32 @@ async def root() -> RedirectResponse:
     return RedirectResponse("/index.html?page=find", status_code=302)
 
 
+def resolve_site_asset(filename: str) -> Path:
+    for base in (ROOT_DIR, APP_DIR, STATIC_DIR):
+        candidate = base / filename
+        if candidate.exists():
+            return candidate
+    raise HTTPException(status_code=404, detail=f"{filename} 不存在")
+
+
 @app.get("/index.html")
 async def site_index() -> FileResponse:
-    return FileResponse(ROOT_DIR / "index.html", headers={"Cache-Control": "no-store"})
+    return FileResponse(resolve_site_asset("index.html"), headers={"Cache-Control": "no-store"})
 
 
 @app.get("/kols-dashboard.html")
 async def site_dashboard() -> FileResponse:
-    return FileResponse(ROOT_DIR / "kols-dashboard.html", headers={"Cache-Control": "no-store"})
+    return FileResponse(resolve_site_asset("kols-dashboard.html"), headers={"Cache-Control": "no-store"})
 
 
 @app.get("/logo.jpg")
 async def site_logo() -> FileResponse:
-    return FileResponse(ROOT_DIR / "logo.jpg")
+    return FileResponse(resolve_site_asset("logo.jpg"))
 
 
 @app.get("/kols.json")
 async def site_kols() -> FileResponse:
-    return FileResponse(ROOT_DIR / "kols.json")
+    return FileResponse(resolve_site_asset("kols.json"))
 
 
 @app.post("/api")
@@ -910,20 +1807,34 @@ async def legacy_site_api(body: dict[str, Any]) -> dict[str, Any]:
     action = body.get("action")
     if action == "brief_analysis":
         brief = str(body.get("brief") or "")
-        return analyze_brief(brief)
+        project = str(body.get("project") or "")
+        provider = str(body.get("provider") or "")
+        return await run_brief_intelligence(brief, project, provider)
     return {"error": "本地选号服务暂只接入 brief_analysis"}
+
+
+@app.post("/api/brief-intelligence")
+async def brief_intelligence(req: BriefIntelligenceRequest) -> dict[str, Any]:
+    brief = req.brief.strip()
+    if not brief:
+        raise HTTPException(status_code=400, detail="brief 不能为空")
+    analysis = await run_brief_intelligence(brief, req.project, req.provider)
+    with db() as conn:
+        insert_ai_log(
+            conn,
+            "",
+            "brief_intelligence",
+            {"brief": brief, "project": req.project, "provider": req.provider or BRIEF_MODEL_PROVIDER},
+            analysis,
+            provider=analysis.get("intelligenceProvider") or "local-rules",
+            cache_hit=1 if analysis.get("intelligenceFallback") else 0,
+        )
+    return analysis
 
 
 @app.get("/api/health")
 async def health() -> dict[str, Any]:
-    return {"status": "ok", "version": "1.0.0"}
-
-
-@app.post("/api/backup")
-async def manual_backup() -> dict[str, Any]:
-    """手动触发数据库备份"""
-    path = backup_db()
-    return {"ok": True, "path": path, "time": now()}
+    return {"ok": True, "db": str(DB_PATH), "time": now(), "collectorWorker": collector_worker_public_state()}
 
 
 @app.post("/api/tools/parse-xlsx")
@@ -998,15 +1909,20 @@ async def get_project(project_id: str) -> dict[str, Any]:
 
 def collector_keywords(analysis: dict[str, Any]) -> list[str]:
     base = []
+    base.extend(analysis.get("searchKeywords") or [])
     base.extend(analysis.get("creatorTypes") or [])
     base.extend(analysis.get("requiredAudienceTags") or [])
+    base.extend(analysis.get("contentAngles") or [])
     base.extend(analysis.get("keywords") or [])
+    synonym_groups = analysis.get("synonymGroups") if isinstance(analysis.get("synonymGroups"), dict) else {}
+    for values in synonym_groups.values():
+        base.extend(values if isinstance(values, list) else [values])
     compact = []
     for item in base:
         clean = str(item).replace("类", "").strip()
         if clean and clean not in compact:
             compact.append(clean)
-    return compact[:10] or ["美食", "种草", "开箱测评"]
+    return compact[:18] or ["美食", "种草", "开箱测评"]
 
 
 DEFAULT_PGY_TARGET_COUNT = 30
@@ -1019,9 +1935,9 @@ def collector_payload(project_id: str, analysis: dict[str, Any], target_count: i
         "targetCount": target_count,
         "keywords": collector_keywords(analysis),
         "pgyUrl": "https://pgy.xiaohongshu.com/solar/pre-trade/note/kol",
-        "ingestUrl": f"{get_public_url()}/api/collector/ingest",
-        "progressUrl": f"{get_public_url()}/api/projects/{project_id}/real-collection/progress",
-        "scriptUrl": f"{get_public_url()}/api/projects/{project_id}/collector-script.js",
+        "ingestUrl": f"{MENGLI_SERVER_BASE}/api/collector/ingest",
+        "progressUrl": f"{MENGLI_SERVER_BASE}/api/projects/{project_id}/real-collection/progress",
+        "scriptUrl": f"{MENGLI_SERVER_BASE}/api/projects/{project_id}/collector-script.js",
     }
 
 
@@ -1071,6 +1987,15 @@ def create_codex_find_task(conn: sqlite3.Connection, project_id: str, target_cou
         raise HTTPException(status_code=404, detail="项目不存在")
     analysis = jload(row["analysis_json"], {})
     collector = collector_payload(project_id, analysis, target_count)
+    clear_project_selection(conn, project_id)
+    conn.execute(
+        """
+        update codex_tasks
+        set status='error', error='已被新的找号任务替代', updated_at=?
+        where project_id=? and type='pgy_find' and status in ('queued','running','searching','login_required')
+        """,
+        (now(), project_id),
+    )
     task_id = make_id("codex")
     payload = {
         "projectId": project_id,
@@ -1079,8 +2004,8 @@ def create_codex_find_task(conn: sqlite3.Connection, project_id: str, target_cou
         "brief": row["brief"],
         "analysis": analysis,
         "collector": collector,
-        "runner": "codex_chrome_background_tab",
-        "runnerNote": "Codex 使用用户已登录的 Chrome 后台标签采集蒲公英，不依赖插件。",
+        "runner": "collector_worker_playwright_chrome",
+        "runnerNote": "后台采集器使用已登录的 Chrome 自动采集蒲公英，不需要复制待办给 Codex。",
     }
     conn.execute(
         """
@@ -1096,9 +2021,9 @@ def create_codex_find_task(conn: sqlite3.Connection, project_id: str, target_cou
         "queued",
         target_count,
         0,
-        f"等待 Codex 使用已登录 Chrome 后台采集：在对话里发送 处理网站待办 {task_id}",
+        f"等待后台采集器接收任务：{task_id}",
     )
-    conn.execute("update projects set status='codex_queued', updated_at=? where id=?", (now(), project_id))
+    conn.execute("update projects set status='collector_queued', updated_at=? where id=?", (now(), project_id))
     task = conn.execute("select * from codex_tasks where id=?", (task_id,)).fetchone()
     return task, collection_task, collector
 
@@ -1139,8 +2064,175 @@ async def get_codex_task(task_id: str) -> dict[str, Any]:
     with db() as conn:
         row = conn.execute("select * from codex_tasks where id=?", (task_id,)).fetchone()
         if not row:
-            raise HTTPException(status_code=404, detail="Codex 待办不存在")
+            raise HTTPException(status_code=404, detail="采集任务不存在")
     return {"task": row_codex_task(row)}
+
+
+def collector_worker_enabled() -> bool:
+    explicit = os.getenv("MENGLI_COLLECTOR_WORKER_ENABLED")
+    if explicit is not None:
+        return explicit.strip().lower() not in {"0", "false", "no", "off"}
+    # Railway/普通 Web 服务默认不启采集器，避免无浏览器环境反复拉起 Playwright。
+    if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_SERVICE_NAME"):
+        return False
+    return True
+
+
+def collector_worker_public_state() -> dict[str, Any]:
+    return {key: value for key, value in COLLECTOR_WORKER_STATE.items() if key != "process"}
+
+
+def reserve_next_collector_task() -> dict[str, Any] | None:
+    with db() as conn:
+        cutoff = datetime.fromtimestamp(time.time() - COLLECTOR_TASK_MAX_AGE_HOURS * 3600).strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            """
+            update codex_tasks
+            set status='error', error='历史排队任务已过期，请在页面重新点击开始找号', updated_at=?
+            where type='pgy_find' and platform='pgy' and status='queued' and created_at < ?
+            """,
+            (now(), cutoff),
+        )
+        row = conn.execute(
+            """
+            select * from codex_tasks
+            where type='pgy_find' and platform='pgy' and status='queued'
+            order by created_at asc
+            limit 1
+            """
+        ).fetchone()
+        if not row:
+            return None
+        conn.execute(
+            "update codex_tasks set status='running', error='', updated_at=? where id=?",
+            (now(), row["id"]),
+        )
+        upsert_collection_task(
+            conn,
+            row["project_id"],
+            row["platform"],
+            "running",
+            int(row["target_count"] or DEFAULT_PGY_TARGET_COUNT),
+            0,
+            f"后台采集器已接收任务：{row['id']}，正在打开 Chrome。",
+        )
+        conn.execute("update projects set status='collector_running', updated_at=? where id=?", (now(), row["project_id"]))
+        updated = conn.execute("select * from codex_tasks where id=?", (row["id"],)).fetchone()
+        return row_codex_task(updated)
+
+
+def mark_collector_task_error(task_id: str, message: str) -> None:
+    with db() as conn:
+        row = conn.execute("select * from codex_tasks where id=?", (task_id,)).fetchone()
+        if not row:
+            return
+        if row["status"] in {"done", "login_required", "error"}:
+            return
+        conn.execute(
+            "update codex_tasks set status='error', error=?, updated_at=? where id=?",
+            (message, now(), task_id),
+        )
+        upsert_collection_task(
+            conn,
+            row["project_id"],
+            row["platform"],
+            "error",
+            int(row["target_count"] or DEFAULT_PGY_TARGET_COUNT),
+            0,
+            message,
+        )
+        conn.execute("update projects set status='collector_error', updated_at=? where id=?", (now(), row["project_id"]))
+
+
+async def run_collector_script(task: dict[str, Any]) -> None:
+    task_id = task["id"]
+    node_bin = os.getenv("MENGLI_NODE_BIN") or shutil.which("node")
+    if not node_bin:
+        raise RuntimeError("找不到 Node.js，无法启动蒲公英采集脚本")
+    if not COLLECTOR_SCRIPT_PATH.exists():
+        raise RuntimeError(f"找不到采集脚本：{COLLECTOR_SCRIPT_PATH}")
+    env = os.environ.copy()
+    env["MENGLI_SERVER"] = MENGLI_SERVER_BASE
+    COLLECTOR_WORKER_STATE.update(
+        {
+            "running": True,
+            "currentTaskId": task_id,
+            "lastMessage": "正在启动蒲公英采集脚本",
+            "lastStartedAt": now(),
+            "lastFinishedAt": "",
+            "lastExitCode": None,
+        }
+    )
+    process = await asyncio.create_subprocess_exec(
+        node_bin,
+        str(COLLECTOR_SCRIPT_PATH),
+        task_id,
+        cwd=str(ROOT_DIR),
+        env=env,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await process.communicate()
+    stdout_text = stdout.decode("utf-8", "ignore").strip()
+    stderr_text = stderr.decode("utf-8", "ignore").strip()
+    tail = (stderr_text or stdout_text)[-1000:]
+    COLLECTOR_WORKER_STATE.update(
+        {
+            "running": False,
+            "currentTaskId": "",
+            "lastMessage": tail or "采集脚本已退出",
+            "lastFinishedAt": now(),
+            "lastExitCode": process.returncode,
+        }
+    )
+    if process.returncode != 0:
+        raise RuntimeError(tail or f"采集脚本退出码 {process.returncode}")
+
+
+async def collector_worker_loop() -> None:
+    COLLECTOR_WORKER_STATE.update({"enabled": True, "lastMessage": "后台采集器已启动"})
+    while True:
+        try:
+            task = await asyncio.to_thread(reserve_next_collector_task)
+            if not task:
+                await asyncio.sleep(COLLECTOR_WORKER_POLL_SECONDS)
+                continue
+            try:
+                await run_collector_script(task)
+            except Exception as exc:
+                message = str(exc)[:1200]
+                COLLECTOR_WORKER_STATE.update({"running": False, "currentTaskId": "", "lastMessage": message, "lastFinishedAt": now()})
+                await asyncio.to_thread(mark_collector_task_error, task["id"], message)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            COLLECTOR_WORKER_STATE.update({"running": False, "lastMessage": f"worker异常：{exc}", "lastFinishedAt": now()})
+            await asyncio.sleep(max(COLLECTOR_WORKER_POLL_SECONDS, 5))
+
+
+async def start_collector_worker() -> None:
+    global COLLECTOR_WORKER_TASK
+    if not collector_worker_enabled():
+        COLLECTOR_WORKER_STATE.update({"enabled": False, "running": False, "lastMessage": "后台采集器未启用"})
+        return
+    if COLLECTOR_WORKER_TASK and not COLLECTOR_WORKER_TASK.done():
+        return
+    COLLECTOR_WORKER_TASK = asyncio.create_task(collector_worker_loop())
+
+
+async def stop_collector_worker() -> None:
+    global COLLECTOR_WORKER_TASK
+    if COLLECTOR_WORKER_TASK and not COLLECTOR_WORKER_TASK.done():
+        COLLECTOR_WORKER_TASK.cancel()
+        try:
+            await COLLECTOR_WORKER_TASK
+        except asyncio.CancelledError:
+            pass
+
+
+@app.get("/api/collector-worker/status")
+async def collector_worker_status() -> dict[str, Any]:
+    return {"worker": collector_worker_public_state()}
 
 
 @app.post("/api/codex-tasks/{task_id}/status")
@@ -1149,7 +2241,7 @@ async def update_codex_task_status(task_id: str, req: CodexTaskStatusUpdate) -> 
     with db() as conn:
         row = conn.execute("select * from codex_tasks where id=?", (task_id,)).fetchone()
         if not row:
-            raise HTTPException(status_code=404, detail="Codex 待办不存在")
+            raise HTTPException(status_code=404, detail="采集任务不存在")
         result = req.result or jload(row["result_json"], {})
         error = req.message if status in {"login_required", "error"} else ""
         conn.execute(
@@ -1162,16 +2254,16 @@ async def update_codex_task_status(task_id: str, req: CodexTaskStatusUpdate) -> 
         )
         target_count = int(row["target_count"] or DEFAULT_PGY_TARGET_COUNT)
         collected = int(req.collected_count if req.collected_count is not None else (result.get("collected") or 0))
-        task_error = req.message if status in {"login_required", "error"} else (f"Codex 待办 {task_id}" if status != "done" else "")
+        task_error = req.message if status in {"login_required", "error"} else (f"后台采集器任务 {task_id}" if status != "done" else "")
         collection_task = upsert_collection_task(conn, row["project_id"], row["platform"], status, target_count, collected, task_error)
         project_status = {
-            "queued": "codex_queued",
-            "running": "codex_running",
-            "searching": "codex_running",
-            "login_required": "codex_login_required",
+            "queued": "collector_queued",
+            "running": "collector_running",
+            "searching": "collector_running",
+            "login_required": "collector_login_required",
             "done": "recommended",
-            "error": "codex_error",
-        }.get(status, "codex_running")
+            "error": "collector_error",
+        }.get(status, "collector_running")
         conn.execute("update projects set status=?, updated_at=? where id=?", (project_status, now(), row["project_id"]))
         updated = conn.execute("select * from codex_tasks where id=?", (task_id,)).fetchone()
     return {"codexTask": row_codex_task(updated), "task": dict(collection_task)}
@@ -1378,14 +2470,22 @@ async def update_analysis(project_id: str, req: AnalysisUpdate) -> dict[str, Any
     if not isinstance(analysis, dict):
         raise HTTPException(status_code=400, detail="analysis 必须是对象")
     brand = str(analysis.get("brand") or "未命名品牌")
+    project_name = req.name.strip()
+    brief = req.brief.strip()
     with db() as conn:
         row = conn.execute("select id from projects where id=?", (project_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="项目不存在")
-        conn.execute(
-            "update projects set brand=?, analysis_json=?, status='confirmed', updated_at=? where id=?",
-            (brand, jdump(analysis), now(), project_id),
-        )
+        fields = ["brand=?", "analysis_json=?", "status='confirmed'", "updated_at=?"]
+        params: list[Any] = [brand, jdump(analysis), now()]
+        if project_name:
+            fields.append("name=?")
+            params.append(project_name)
+        if brief:
+            fields.append("brief=?")
+            params.append(brief)
+        params.append(project_id)
+        conn.execute(f"update projects set {', '.join(fields)} where id=?", params)
         project = row_project(conn.execute("select * from projects where id=?", (project_id,)).fetchone())
         project["counts"] = get_project_counts(conn, project_id)
     return {"project": project}
@@ -1412,7 +2512,7 @@ async def create_collection_tasks(project_id: str) -> dict[str, Any]:
             raise HTTPException(status_code=404, detail="项目不存在")
         analysis = jload(project["analysis_json"], {})
         platforms = analysis.get("platforms") or ["pgy"]
-        target = max(200, int(analysis.get("reportCountMin") or 0) * 8 or 200)
+        target = planned_collection_target(analysis)
         conn.execute("delete from collection_tasks where project_id=?", (project_id,))
         for platform in platforms:
             status = "queued" if platform == "pgy" else "paused"
@@ -1439,16 +2539,16 @@ async def get_collection_tasks(project_id: str) -> dict[str, Any]:
 FOOD_NAME_LEFT = ["饭饭", "栗子", "阿柚", "小满", "安安", "小鹿", "乔乔", "叮当", "米粒", "桃桃", "南瓜", "小椰", "姜姜", "白桃", "悠悠"]
 FOOD_NAME_RIGHT = ["零食铺", "开箱记", "办公室餐桌", "轻食日记", "妈妈厨房", "早餐研究所", "测评局", "好物手帐", "养生食堂", "追剧零食柜"]
 TITLE_TEMPLATES = [
-    "{tag}也能放心囤的坚果零食清单",
-    "新品零食开箱，办公室下午茶真实测评",
-    "这一袋坚果我连吃一周，配料表先看这里",
-    "学生党宿舍零食怎么选，便携和饱腹都要",
-    "精致妈妈的早餐备货，省时间但不糊弄",
-    "上班族抽屉里常备什么，低负担零食分享",
-    "养生党看过来，坚果和酸奶这样搭更方便",
-    "礼盒零食到底值不值，拆给你看",
-    "视频实测：一周早餐坚果搭配不重样",
-    "不想做饭的时候，办公室轻食怎么搭",
+    "{tag}真实体验，哪些细节最打动我",
+    "新品开箱测评，从外观到使用感完整记录",
+    "近期好物推荐，适合收藏的灵感清单",
+    "{tag}人群会喜欢吗，实际使用后说说优缺点",
+    "生活方式分享：把新鲜体验做得更好看",
+    "视频实测：这个创意点到底有没有记忆点",
+    "购物分享和开箱测评，哪些卖点更容易种草",
+    "从内容质感看转化，真实体验比硬广重要",
+    "适合日常发布的内容切入角度复盘",
+    "同类产品怎么拍更有趣，给你几个参考点",
 ]
 
 
@@ -1471,8 +2571,8 @@ def generate_titles(rng: random.Random, tags: list[str], brand: str, count: int 
 
 def generate_pgy_rows(project_id: str, analysis: dict[str, Any], target_count: int) -> list[dict[str, Any]]:
     rng = seeded_random(project_id, analysis)
-    required_tags = analysis.get("requiredAudienceTags") or ["上班族", "学生党", "养生党", "精致妈妈"]
-    creator_types = analysis.get("creatorTypes") or ["美食种草类", "美食开箱测评类"]
+    required_tags = analysis.get("requiredAudienceTags") or analysis.get("contentAngles") or ["内容匹配"]
+    creator_types = analysis.get("creatorTypes") or ["种草类"]
     brand = analysis.get("brand") or ""
     budget_min = int(analysis.get("budgetMin") or 3500)
     budget_max = int(analysis.get("budgetMax") or 12000)
@@ -1481,7 +2581,8 @@ def generate_pgy_rows(project_id: str, analysis: dict[str, Any], target_count: i
     for index in range(target_count):
         audience = required_tags[index % len(required_tags)] if required_tags else rng.choice(["上班族", "学生党", "养生党", "精致妈妈"])
         creator_type = creator_types[index % len(creator_types)] if creator_types else "美食种草类"
-        side_tag = rng.choice(["坚果", "零食", "早餐", "轻食", "开箱测评", "办公室零食", "健康食品"])
+        side_candidates = dedupe((analysis.get("contentAngles") or []) + (analysis.get("keywords") or []) + ["开箱测评", "好物推荐", "生活方式"])
+        side_tag = rng.choice(side_candidates)
         tags = dedupe([creator_type.replace("类", ""), side_tag, audience])
         base = max(2500, budget_min - 2500)
         top = max(base + 2000, budget_max + 3500)
@@ -1571,9 +2672,60 @@ def text_overlap_score(keywords: list[str], fields: list[str]) -> int:
     return hits
 
 
-CONTENT_ACTION_TERMS = {"种草", "开箱", "测评"}
+CONTENT_ACTION_TERMS = {"种草", "开箱", "测评", "体验", "分享", "推荐"}
 CONTENT_STOP_TERMS = {"新品", "视频", "视频种草", "报备图文", "报备视频", "图文", "小红书", "蒲公英"}
+CORE_DOMAIN_TERM_RE = re.compile(
+    r"电脑|笔记本|轻薄本|办公本|数码|科技|国补|YOGA|联想|"
+    r"美食|零食|坚果|食品|早餐|轻食|养生|"
+    r"拖鞋|鞋履|鞋子|凉鞋|凉拖|"
+    r"AI|美图|修图|设计|绘画|手工|拼豆|"
+    r"母婴|育儿|宝妈|护肤|美妆|彩妆|家居|日用|宠物"
+)
+BROAD_AUXILIARY_CONTENT_TERMS = {
+    "时尚",
+    "穿搭",
+    "潮流穿搭",
+    "精致日常",
+    "购物分享",
+    "好物",
+    "好物推荐",
+    "单品",
+    "单品直推",
+    "生活方式",
+    "高级感",
+    "质感",
+    "职场生活",
+    "都市青年生活",
+}
+BROAD_ALIAS_TRIGGER_TERMS = {"好物", "好物推荐", "单品", "单品直推", "日用", "分享", "推荐"}
+WEAK_CORE_DOMAIN_HIT_TERMS = {"科技", "科技数码", "桌面搭配", "桌面美学", "办公好物", "办公效率", "生产力工具"}
+ACTION_TERM_ALIASES = {
+    "种草": {"种草", "安利", "推荐", "分享", "好物", "清单", "值得买", "入手", "晒单"},
+    "开箱": {"开箱", "拆箱", "试用", "实测", "体验", "上手", "测评"},
+    "测评": {"测评", "实测", "试吃", "试用", "体验", "横评", "对比", "避雷"},
+    "体验": {"体验", "试用", "上手", "实测", "感受", "记录", "vlog"},
+    "分享": {"分享", "安利", "清单", "合集", "日常", "记录"},
+    "推荐": {"推荐", "安利", "好物", "清单", "值得买", "种草"},
+}
 KNOWN_CONTENT_TERMS = [
+    "电脑",
+    "笔记本",
+    "笔记本电脑",
+    "轻薄本",
+    "办公本",
+    "办公电脑",
+    "电脑推荐",
+    "电脑测评",
+    "数码",
+    "科技",
+    "国补",
+    "电脑国补",
+    "国补笔记本",
+    "YOGA",
+    "联想YOGA",
+    "桌面搭配",
+    "办公好物",
+    "生产力工具",
     "美食",
     "零食",
     "坚果",
@@ -1586,6 +2738,9 @@ KNOWN_CONTENT_TERMS = [
     "咖啡",
     "穿搭",
     "潮流穿搭",
+    "时尚",
+    "精致日常",
+    "购物分享",
     "拖鞋",
     "鞋履",
     "鞋",
@@ -1595,11 +2750,63 @@ KNOWN_CONTENT_TERMS = [
     "家居",
     "日用",
     "好物",
+    "好物推荐",
     "单品",
     "单品直推",
+    "设计",
+    "绘画",
+    "手工",
+    "拼豆",
+    "AI",
+    "修图",
+    "新鲜事物",
+    "宠物",
+    "家庭",
+    "学生",
+    "乐迷",
+    "情侣",
+    "有梗",
     "种草",
     "开箱",
     "测评",
+    "体验",
+    "分享",
+    "推荐",
+]
+CONTENT_ADJACENCY_GROUPS = [
+    {
+        "triggers": {"电脑", "笔记本", "笔记本电脑", "轻薄本", "办公本", "办公电脑", "电脑推荐", "电脑测评", "数码", "科技", "国补", "电脑国补", "国补笔记本", "YOGA", "联想YOGA"},
+        "aliases": {
+            "电脑", "笔记本", "笔记本电脑", "轻薄本", "办公本", "办公电脑", "电脑推荐", "电脑测评",
+            "数码", "数码测评", "数码好物", "科技", "科技数码", "电子产品", "智能设备",
+            "国补", "电脑国补", "国补笔记本", "以旧换新", "换新补贴",
+            "YOGA", "联想YOGA", "高端轻薄本", "生产力工具", "办公效率", "桌面搭配", "桌面美学", "办公好物"
+        },
+    },
+    {
+        "triggers": {"美食", "零食", "坚果", "办公室零食", "早餐", "轻食", "养生", "饮品", "烘焙"},
+        "aliases": {
+            "美食", "零食", "坚果", "食品", "食品饮料", "吃播", "探店", "美食探店", "美食测评",
+            "美食教程", "低脂低卡", "轻食", "减脂", "减脂餐", "减脂塑形", "健康养生", "饮品",
+            "咖啡", "茶", "早餐", "烘焙", "山姆", "便利店", "办公室零食", "办公室下午茶",
+            "下午茶", "小零食", "小零嘴", "零嘴", "追剧零食", "健康零食", "低卡零食",
+            "坚果礼盒", "每日坚果", "麦片", "燕麦", "能量棒", "代餐", "营养", "早餐搭配",
+            "开袋即食", "囤货", "零食测评", "试吃", "吃货", "好吃", "甜品", "面包", "贝果",
+            "酸奶", "牛奶", "好物"
+        },
+    },
+    {
+        "triggers": {"穿搭", "潮流穿搭", "时尚", "精致日常", "购物分享"},
+        "aliases": {"穿搭", "时尚", "ootd", "服饰", "搭配", "购物分享", "好物推荐", "精致日常", "日常穿搭", "通勤穿搭", "衣橱", "买手", "新鲜事物"},
+    },
+    {
+        "triggers": {"设计", "绘画", "手工", "拼豆", "AI", "修图", "新鲜事物"},
+        "aliases": {"设计", "绘画", "手工", "拼豆", "创意", "AI", "修图", "新鲜事物", "体验", "定制", "手作", "插画", "审美", "灵感", "改造"},
+    },
+    {
+        "triggers": {"家居", "日用", "好物", "好物推荐"},
+        "aliases": {"家居", "日用", "收纳", "清洁", "生活好物", "家居好物", "好物推荐"},
+    },
 ]
 AUDIENCE_TAG_ALIASES = {
     "上班族": ["上班族", "职场", "白领", "打工人", "通勤", "上班"],
@@ -1619,6 +2826,14 @@ def metric_limit(value: Any) -> Optional[float]:
     return number if number > 0 else None
 
 
+def metric_number_text(value: Any) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return ""
+    return f"{number:g}" if number > 0 else ""
+
+
 def candidate_haystack(row: dict[str, Any]) -> str:
     tags = row.get("tags") or row.get("contentTags") or []
     audience_tags = row.get("audienceTags") or row.get("audience_tags") or []
@@ -1635,6 +2850,55 @@ def candidate_haystack(row: dict[str, Any]) -> str:
     )
 
 
+def candidate_title_haystack(row: dict[str, Any]) -> str:
+    titles = row.get("recentTitles") or row.get("recent_titles") or []
+    return " ".join(str(title or "") for title in titles[:50])
+
+
+def expand_domain_terms_with_aliases(terms: list[str]) -> list[str]:
+    expanded: list[str] = []
+    for term in terms:
+        clean = str(term or "").strip()
+        if not clean:
+            continue
+        expanded.append(clean)
+        for group in CONTENT_ADJACENCY_GROUPS:
+            triggers = set(group["triggers"])
+            aliases = set(group["aliases"])
+            if clean in triggers or clean in aliases or any(
+                trigger
+                and trigger not in BROAD_ALIAS_TRIGGER_TERMS
+                and (trigger in clean or clean in trigger)
+                for trigger in triggers
+            ):
+                expanded.extend(sorted(aliases))
+    return dedupe(expanded)
+
+
+def expand_action_terms_with_aliases(terms: list[str]) -> list[str]:
+    expanded: list[str] = []
+    for term in terms:
+        clean = str(term or "").strip()
+        if not clean:
+            continue
+        expanded.append(clean)
+        expanded.extend(sorted(ACTION_TERM_ALIASES.get(clean, set())))
+    return dedupe(expanded)
+
+
+def select_core_domain_terms(domain_terms: list[str]) -> list[str]:
+    core = []
+    for term in domain_terms:
+        clean = str(term or "").strip()
+        if clean and CORE_DOMAIN_TERM_RE.search(clean):
+            core.append(clean)
+    return dedupe(core)
+
+
+def strong_core_domain_hits(hits: list[str]) -> list[str]:
+    return [hit for hit in hits if str(hit or "").strip() not in WEAK_CORE_DOMAIN_HIT_TERMS]
+
+
 def audience_tag_hits(row: dict[str, Any], required_tags: list[str]) -> list[str]:
     haystack = candidate_haystack(row)
     hits = []
@@ -1648,12 +2912,20 @@ def audience_tag_hits(row: dict[str, Any], required_tags: list[str]) -> list[str
 def content_relevance_terms(analysis: dict[str, Any]) -> dict[str, list[str]]:
     brand = str(analysis.get("brand") or "").strip()
     audience_terms = set(analysis.get("requiredAudienceTags") or [])
-    raw_terms = [brand, *(analysis.get("creatorTypes") or []), *(analysis.get("keywords") or [])]
+    requirement_text = str(analysis.get("creatorRequirementText") or "")
+    raw_terms = [
+        brand,
+        *(analysis.get("creatorTypes") or []),
+        *(analysis.get("keywords") or []),
+        *(analysis.get("contentAngles") or []),
+        *re.split(r"[\n、，,；;：:（）()\s]+", requirement_text),
+    ]
     domain_terms: list[str] = []
     action_terms: list[str] = []
 
     for raw in raw_terms:
         clean = str(raw or "").strip(" ，,、。；;（）()[]【】\n\t")
+        clean = re.sub(r"^P\d+\s*", "", clean, flags=re.IGNORECASE)
         clean = re.sub(r"(达人|账号|博主)$", "", clean)
         clean = clean.removesuffix("类")
         if not clean or clean == brand or clean in audience_terms or clean in CONTENT_STOP_TERMS:
@@ -1670,33 +2942,106 @@ def content_relevance_terms(analysis: dict[str, Any]) -> dict[str, list[str]]:
             else:
                 domain_terms.append(piece)
 
-    return {"domain": dedupe(domain_terms), "action": dedupe(action_terms)}
+    domain_terms = dedupe(domain_terms)
+    action_terms = dedupe(action_terms)
+    core_terms = select_core_domain_terms(domain_terms)
+    if core_terms:
+        domain_terms = dedupe([*core_terms, *[term for term in domain_terms if term not in BROAD_AUXILIARY_CONTENT_TERMS]])
+    return {"domain": domain_terms, "action": action_terms, "coreDomain": core_terms}
+
+
+def title_relevance_summary(row: dict[str, Any], analysis: dict[str, Any]) -> dict[str, Any]:
+    terms = content_relevance_terms(analysis)
+    title_text = candidate_title_haystack(row)
+    titles = row.get("recentTitles") or row.get("recent_titles") or []
+    core_match_terms = expand_domain_terms_with_aliases(terms.get("coreDomain") or [])
+    domain_match_terms = expand_domain_terms_with_aliases(terms["domain"])
+    action_match_terms = expand_action_terms_with_aliases(terms["action"])
+    core_hits = [term for term in core_match_terms if term in title_text]
+    strong_core_hits = strong_core_domain_hits(core_hits)
+    domain_hits = [term for term in domain_match_terms if term in title_text]
+    action_hits = [term for term in action_match_terms if term in title_text]
+    required_terms = terms["domain"] or terms["action"]
+    passes = bool(strong_core_hits) if core_match_terms else (not required_terms or bool(domain_hits if terms["domain"] else action_hits))
+    matched_titles = []
+    title_match_terms = [*(core_match_terms or domain_match_terms), *action_match_terms]
+    for title in titles[:50]:
+        title_text_item = str(title or "")
+        if any(term and term in title_text_item for term in title_match_terms):
+            matched_titles.append(title_text_item)
+    if core_match_terms:
+        hit_score = min(100, len(core_hits) * 24 + len(action_hits) * 6 + min(30, len(matched_titles) * 6))
+    else:
+        hit_score = min(100, len(domain_hits) * 18 + len(action_hits) * 10 + min(30, len(matched_titles) * 6))
+    if required_terms and not titles:
+        hit_score = 0
+    elif not required_terms:
+        hit_score = 72 if titles else 50
+    return {
+        "terms": terms,
+        "coreDomainHits": core_hits,
+        "strongCoreDomainHits": strong_core_hits,
+        "domainHits": domain_hits,
+        "actionHits": action_hits,
+        "matchedTitles": matched_titles[:5],
+        "pass": passes,
+        "score": hit_score,
+        "expandedCoreDomainTerms": core_match_terms,
+        "expandedDomainTerms": domain_match_terms,
+        "expandedActionTerms": action_match_terms,
+    }
 
 
 def content_relevance_summary(row: dict[str, Any], analysis: dict[str, Any]) -> dict[str, Any]:
     terms = content_relevance_terms(analysis)
     haystack = candidate_haystack(row)
-    domain_hits = [term for term in terms["domain"] if term in haystack]
-    action_hits = [term for term in terms["action"] if term in haystack]
+    core_match_terms = expand_domain_terms_with_aliases(terms.get("coreDomain") or [])
+    domain_match_terms = expand_domain_terms_with_aliases(terms["domain"])
+    action_match_terms = expand_action_terms_with_aliases(terms["action"])
+    core_hits = [term for term in core_match_terms if term in haystack]
+    strong_core_hits = strong_core_domain_hits(core_hits)
+    domain_hits = [term for term in domain_match_terms if term in haystack]
+    action_hits = [term for term in action_match_terms if term in haystack]
     required_terms = terms["domain"] or terms["action"]
-    passes = not required_terms or bool(domain_hits if terms["domain"] else action_hits)
+    passes = bool(strong_core_hits) if core_match_terms else (not required_terms or bool(domain_hits if terms["domain"] else action_hits))
     return {
         "terms": terms,
+        "coreDomainHits": core_hits,
+        "strongCoreDomainHits": strong_core_hits,
         "domainHits": domain_hits,
         "actionHits": action_hits,
         "pass": passes,
+        "expandedCoreDomainTerms": core_match_terms,
+        "expandedDomainTerms": domain_match_terms,
+        "expandedActionTerms": action_match_terms,
     }
 
 
+def adjacent_content_relevance_summary(row: dict[str, Any], analysis: dict[str, Any]) -> dict[str, Any]:
+    terms = content_relevance_terms(analysis)
+    wanted = set(terms["domain"]) | set(terms["action"])
+    haystack = candidate_haystack(row)
+    hits: list[str] = []
+    for group in CONTENT_ADJACENCY_GROUPS:
+        if not wanted.intersection(group["triggers"]):
+            continue
+        for alias in group["aliases"]:
+            if alias and alias in haystack:
+                hits.append(alias)
+    return {"pass": bool(hits), "hits": dedupe(hits)}
+
+
 def evaluate_row(row: dict[str, Any], analysis: dict[str, Any], memories: list[sqlite3.Row]) -> tuple[dict[str, int], str, str, str]:
-    form_text = str(analysis.get("preferredForm") or "") + " " + " ".join(analysis.get("forms") or [])
-    preferred_video = "视频" in form_text
-    if preferred_video:
-        quote = int(row.get("video_quote") or row.get("quote_high") or row.get("image_quote") or 0)
+    form_mode = form_requirement_mode(analysis)
+    if form_mode == "video":
+        quote = int(row.get("video_quote") or row.get("quote_high") or 0)
         quote_label = "视频报价"
-    else:
-        quote = int(row.get("image_quote") or row.get("quote_low") or row.get("video_quote") or 0)
+    elif form_mode == "image":
+        quote = int(row.get("image_quote") or row.get("quote_low") or 0)
         quote_label = "图文报价"
+    else:
+        quote = int(row.get("video_quote") or row.get("quote_high") or row.get("image_quote") or row.get("quote_low") or 0)
+        quote_label = "视频报价" if row.get("video_quote") or row.get("quote_high") else "图文报价"
     budget_min = int(analysis.get("budgetMin") or 0)
     budget_max = int(analysis.get("budgetMax") or 0)
     metrics = analysis.get("metrics") or {}
@@ -1719,15 +3064,21 @@ def evaluate_row(row: dict[str, Any], analysis: dict[str, Any], memories: list[s
     budget_score = max(0, min(100, budget_score))
 
     titles = row.get("recent_titles") or []
-    tags = row.get("tags") or []
     relevance = content_relevance_summary(row, analysis)
-    content_hits = len(relevance["domainHits"]) * 2 + len(relevance["actionHits"])
+    title_relevance = title_relevance_summary(row, analysis)
+    core_hits = len(relevance.get("strongCoreDomainHits") or relevance.get("coreDomainHits") or [])
+    content_hits = core_hits * 3 + len(relevance["domainHits"]) * 2 + len(relevance["actionHits"])
     matched_audience_tags = audience_tag_hits(row, required_tags)
     audience_hits = len(matched_audience_tags)
-    content_score = min(100, 42 + content_hits * 8 + audience_hits * 16)
-    if relevance["terms"]["domain"] and not relevance["domainHits"]:
+    title_score = int(title_relevance["score"])
+    content_score = min(100, 36 + content_hits * 7 + audience_hits * 14 + min(24, title_score // 4))
+    if relevance["terms"].get("coreDomain") and not (relevance.get("strongCoreDomainHits") or []):
+        content_score -= 36
+    elif relevance["terms"]["domain"] and not relevance["domainHits"]:
         content_score -= 26
     elif relevance["terms"]["action"] and not relevance["actionHits"]:
+        content_score -= 16
+    if (relevance["terms"]["domain"] or relevance["terms"]["action"]) and not title_relevance["pass"]:
         content_score -= 16
     if required_tags and not audience_hits:
         content_score -= 10
@@ -1767,15 +3118,17 @@ def evaluate_row(row: dict[str, Any], analysis: dict[str, Any], memories: list[s
 
     vertical_score = int(round(float(row.get("vertical_score") or 75)))
     total = round(
-        budget_score * 0.2
-        + content_score * 0.3
-        + performance_score * 0.3
-        + history_score * 0.1
+        budget_score * 0.18
+        + content_score * 0.22
+        + title_score * 0.18
+        + performance_score * 0.27
+        + history_score * 0.05
         + vertical_score * 0.1
     )
     scores = {
         "budget": int(budget_score),
         "content": int(content_score),
+        "title": int(title_score),
         "performance": int(performance_score),
         "history": int(history_score),
         "vertical": int(vertical_score),
@@ -1783,7 +3136,15 @@ def evaluate_row(row: dict[str, Any], analysis: dict[str, Any], memories: list[s
     }
 
     reasons = []
-    if relevance["domainHits"]:
+    if title_relevance.get("strongCoreDomainHits"):
+        reasons.append("标题命中核心品类" + "、".join(title_relevance["strongCoreDomainHits"][:3]))
+    elif title_relevance.get("coreDomainHits"):
+        reasons.append("标题命中弱相关词" + "、".join(title_relevance["coreDomainHits"][:3]))
+    elif title_relevance["domainHits"]:
+        reasons.append("标题命中" + "、".join(title_relevance["domainHits"][:3]))
+    elif relevance.get("strongCoreDomainHits"):
+        reasons.append("内容命中核心品类" + "、".join(relevance["strongCoreDomainHits"][:3]))
+    elif relevance["domainHits"]:
         reasons.append("内容命中" + "、".join(relevance["domainHits"][:3]))
     if matched_audience_tags:
         reasons.append("覆盖" + "、".join(matched_audience_tags))
@@ -1812,7 +3173,7 @@ def evaluate_row(row: dict[str, Any], analysis: dict[str, Any], memories: list[s
             risks.append(f"CPE {cpe:g} 超出 {float(cpe_max):g}")
     risk = "；".join(risks) if risks else "暂无明显硬性风险"
 
-    matched_titles = [title for title in titles if text_overlap_score(keywords, [title]) > 0][:3]
+    matched_titles = title_relevance["matchedTitles"][:3] or [title for title in titles if text_overlap_score(keywords, [title]) > 0][:3]
     title_evidence = " / ".join(matched_titles) if matched_titles else (titles[0] if titles else "暂未采集最近标题")
     evidence = (
         f"最近标题 {len(titles)} 条；阅读中位数 {read_median}，互动中位数 {interaction_median}；"
@@ -1828,7 +3189,7 @@ def insert_candidate_row(conn: sqlite3.Connection, project_id: str, row: dict[st
     candidate_id = make_id("candidate")
     conn.execute(
         "insert into creators(id,name,primary_category,persona,created_at) values(?,?,?,?,?)",
-        (creator_id, row["name"], row.get("primary_category", ""), row.get("persona", ""), now()),
+        (creator_id, clean_unicode(row["name"]), clean_unicode(row.get("primary_category", "")), clean_unicode(row.get("persona", "")), now()),
     )
     conn.execute(
         """
@@ -1840,9 +3201,9 @@ def insert_candidate_row(conn: sqlite3.Connection, project_id: str, row: dict[st
         (
             profile_id,
             creator_id,
-            row.get("platform", "pgy"),
-            row.get("platform_id", ""),
-            row.get("home_url", ""),
+            clean_unicode(row.get("platform", "pgy")),
+            clean_unicode(row.get("platform_id", "")),
+            clean_unicode(row.get("home_url", "")),
             float(row.get("followers") or 0),
             jdump(row.get("tags") or []),
             jdump(row.get("audience_tags") or []),
@@ -1859,22 +3220,31 @@ def insert_candidate_row(conn: sqlite3.Connection, project_id: str, row: dict[st
         """
         insert into creator_metrics(
           id,profile_id,exposure_median,read_median,interaction_median,cpm,cpe,
+          estimated_cpm,estimated_read_unit_price,estimated_interaction_unit_price,
+          metric_status,metric_error,metric_filter_json,metric_source_json,
           vertical_score,recent_titles_json,title_status,title_error,collected_at
         )
-        values(?,?,?,?,?,?,?,?,?,?,?,?)
+        values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             metric_id,
             profile_id,
-            int(row.get("exposure_median") or 0),
-            int(row.get("read_median") or 0),
-            int(row.get("interaction_median") or 0),
-            float(row.get("cpm") or 0),
-            float(row.get("cpe") or 0),
+            row.get("exposure_median"),
+            row.get("read_median"),
+            row.get("interaction_median"),
+            row.get("cpm"),
+            row.get("cpe"),
+            row.get("estimated_cpm"),
+            row.get("estimated_read_unit_price"),
+            row.get("estimated_interaction_unit_price"),
+            clean_unicode(row.get("metric_status") or ""),
+            clean_unicode(row.get("metric_error") or ""),
+            row.get("metric_filter_json") or "{}",
+            row.get("metric_source_json") or "{}",
             float(row.get("vertical_score") or 0),
             jdump(row.get("recent_titles") or []),
-            row.get("title_status") or ("collected" if row.get("recent_titles") else "missing"),
-            row.get("title_error") or ("" if row.get("recent_titles") else "采集器未返回最近标题"),
+            clean_unicode(row.get("title_status") or ("collected" if row.get("recent_titles") else "missing")),
+            clean_unicode(row.get("title_error") or ("" if row.get("recent_titles") else "采集器未返回最近标题")),
             now(),
         ),
     )
@@ -1891,12 +3261,12 @@ def insert_candidate_row(conn: sqlite3.Connection, project_id: str, row: dict[st
             candidate_id,
             project_id,
             profile_id,
-            row.get("platform", "pgy"),
+            clean_unicode(row.get("platform", "pgy")),
             status,
             jdump(scores),
-            reason,
-            risk,
-            evidence,
+            clean_unicode(reason),
+            clean_unicode(risk),
+            clean_unicode(evidence),
             0,
             0,
             now(),
@@ -1906,15 +3276,16 @@ def insert_candidate_row(conn: sqlite3.Connection, project_id: str, row: dict[st
 
 
 @app.post("/api/projects/{project_id}/collect")
-async def run_local_collection(project_id: str, target_count: int = Query(200, ge=1, le=1000)) -> dict[str, Any]:
+async def run_local_collection(project_id: str, target_count: int = Query(0, ge=0, le=1000)) -> dict[str, Any]:
     with db() as conn:
         analysis = get_project_analysis(conn, project_id)
         task = conn.execute(
             "select * from collection_tasks where project_id=? and platform='pgy'",
             (project_id,),
         ).fetchone()
+        requested_target = target_count or planned_collection_target(analysis)
         if not task:
-            target = max(200, target_count)
+            target = requested_target
             conn.execute(
                 """
                 insert into collection_tasks(id,project_id,platform,status,target_count,collected_count,error,created_at,updated_at)
@@ -1923,7 +3294,7 @@ async def run_local_collection(project_id: str, target_count: int = Query(200, g
                 (make_id("task"), project_id, "pgy", "queued", target, 0, "", now(), now()),
             )
         else:
-            target = max(int(task["target_count"]), target_count)
+            target = max(int(task["target_count"]), requested_target)
 
         conn.execute("update collection_tasks set status='running', target_count=?, updated_at=? where project_id=? and platform='pgy'", (target, now(), project_id))
         clear_project_selection(conn, project_id)
@@ -1996,6 +3367,91 @@ def mark_recommendations_as_media(
         mark_media_library_profile(conn, item.get("profileId", ""), project_id, source_type, note)
 
 
+def mark_client_selected_recommendation(
+    conn: sqlite3.Connection,
+    recommendation_id: str,
+    note: str = "",
+) -> None:
+    row = conn.execute(
+        """
+        select
+          r.project_id,
+          r.id recommendation_id,
+          c.profile_id,
+          cr.name creator_name,
+          p.platform,
+          p.platform_id,
+          p.followers,
+          p.image_quote,
+          p.video_quote,
+          c.reason,
+          c.scores_json,
+          pr.brand,
+          pr.analysis_json
+        from recommendations r
+        join candidates c on c.id=r.candidate_id
+        join creator_platform_profiles p on p.id=c.profile_id
+        join creators cr on cr.id=p.creator_id
+        join projects pr on pr.id=r.project_id
+        where r.id=?
+        """,
+        (recommendation_id,),
+    ).fetchone()
+    if not row:
+        return
+    project_id = row["project_id"]
+    creator_name = row["creator_name"]
+    analysis = jload(row["analysis_json"], {})
+    brand = analysis.get("brand") or row["brand"] or "未知品牌"
+    keywords = "、".join((analysis.get("keywords") or [])[:12])
+    scores = jload(row["scores_json"], {})
+    quote = int(row["video_quote"] or row["image_quote"] or 0)
+    mark_media_library_profile(
+        conn,
+        row["profile_id"],
+        project_id,
+        "client_selected",
+        note or f"客户选中：{brand}",
+    )
+    exists = conn.execute(
+        "select 1 from feedback where recommendation_id=? and client_passed='通过' limit 1",
+        (recommendation_id,),
+    ).fetchone()
+    if exists:
+        return
+    feedback_id = make_id("fb")
+    feedback_note = note or f"客户选中账号：{creator_name}；报价 {money_to_text(quote)}；推荐分 {scores.get('total', '')}。"
+    conn.execute(
+        """
+        insert into feedback(id,project_id,recommendation_id,creator_name,usability,client_passed,keyword_accuracy,replaced_reason,note,created_at)
+        values(?,?,?,?,?,?,?,?,?,?)
+        """,
+        (feedback_id, project_id, recommendation_id, creator_name, "客户选中", "通过", "精准", "", feedback_note, now()),
+    )
+    memory_rows = [
+        {
+            "scope": "creator",
+            "key": f"{brand}:客户选中:{creator_name}",
+            "value": f"{brand} 客户选中达人 {creator_name}。平台ID={row['platform_id']}，粉丝={row['followers']}万，报价={money_to_text(quote)}，标题/内容理由：{row['reason']}。{note}",
+            "weight": 1.6,
+        },
+        {
+            "scope": "brand",
+            "key": f"{brand}:客户选中画像",
+            "value": f"{brand} 客户通过账号：{creator_name}。关键词={keywords}；推荐分={scores.get('total', '')}；标题分={scores.get('title', '')}。",
+            "weight": 1.0,
+        },
+    ]
+    for item in memory_rows:
+        conn.execute(
+            """
+            insert into memories(id,scope,memory_key,value,weight,source_project_id,source_feedback_id,created_at)
+            values(?,?,?,?,?,?,?,?)
+            """,
+            (make_id("mem"), item["scope"], item["key"], item["value"], item["weight"], project_id, feedback_id, now()),
+        )
+
+
 @app.post("/api/collector/ingest")
 async def collector_ingest(req: CollectorIngest) -> dict[str, Any]:
     """真实采集节点把蒲公英采到的数据写入候选池。"""
@@ -2003,7 +3459,7 @@ async def collector_ingest(req: CollectorIngest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="未知平台")
     with db() as conn:
         analysis = get_project_analysis(conn, req.project_id)
-        target = max(50, int(analysis.get("reportCountMin") or 0) * 2 or 50)
+        target = planned_collection_target(analysis)
         if not req.rows:
             task = upsert_collection_task(conn, req.project_id, req.platform, "error", target, 0, "采集器没有从当前蒲公英页面识别到达人")
             return {"ingested": 0, "task": dict(task)}
@@ -2078,6 +3534,12 @@ def normalize_ingest_row(platform: str, row: dict[str, Any]) -> dict[str, Any]:
             number /= 10000
         return number
 
+    def as_optional_number(value: Any, money: bool = False, count: bool = False) -> Optional[float]:
+        if value in (None, ""):
+            return None
+        number = as_number(value, money=money, count=count)
+        return number if number else None
+
     tags = as_list(pick("tags", "contentTags", "内容标签", "账号标签", "内容类目", "账号行业"))
     audience_tags = as_list(pick("audience_tags", "audienceTags", "人群标签", "TA标签", "账号画像"))
     recent_titles = as_list(pick("recent_titles", "recentTitles", "最近50条标题", "最近标题", "笔记标题", "作品标题"))
@@ -2085,6 +3547,37 @@ def normalize_ingest_row(platform: str, row: dict[str, Any]) -> dict[str, Any]:
     video_quote = int(as_number(pick("video_quote", "videoQuote", "视频报价", "报价"), money=True))
     if not video_quote:
         video_quote = image_quote
+    exposure_median_value = as_optional_number(pick("exposure_median", "exposureMedian", "曝光中位数", "中位曝光", "曝光中位"), count=True)
+    read_median_value = as_optional_number(pick("read_median", "readMedian", "阅读中位数", "中位阅读"), count=True)
+    interaction_median_value = as_optional_number(pick("interaction_median", "interactionMedian", "互动中位数", "中位互动量"), count=True)
+    exposure_median = int(exposure_median_value) if exposure_median_value is not None else None
+    read_median = int(read_median_value) if read_median_value is not None else None
+    interaction_median = int(interaction_median_value) if interaction_median_value is not None else None
+    estimated_cpm = as_optional_number(pick("estimated_cpm", "estimatedCpm", "预估CPM", "预估cpm", "数据表现-预估CPM", "cpm", "CPM"))
+    estimated_read_unit_price = as_optional_number(pick("estimated_read_unit_price", "estimatedReadUnitPrice", "readUnitPrice", "预估阅读单价", "数据表现-预估阅读单价", "阅读单价"))
+    estimated_interaction_unit_price = as_optional_number(pick("estimated_interaction_unit_price", "estimatedInteractionUnitPrice", "interactionUnitPrice", "预估互动单价", "数据表现-预估互动单价", "互动单价", "cpe", "CPE"))
+    metric_filter = pick("metric_filter", "metricFilter", "数据口径", "metric_filter_json", "metricFilterJson") or {
+        "business": "日常笔记",
+        "noteType": "图文+视频",
+        "dateRange": "近30日",
+        "traffic": "全流量",
+    }
+    metric_source = pick("metric_source", "metricSource", "metric_source_json", "metricSourceJson") or {}
+    if isinstance(metric_filter, str):
+        metric_filter_json = metric_filter
+    else:
+        metric_filter_json = jdump(metric_filter)
+    if isinstance(metric_source, str):
+        metric_source_json = metric_source
+    else:
+        metric_source_json = jdump(metric_source)
+    metric_values = [exposure_median, read_median, interaction_median, estimated_cpm, estimated_read_unit_price, estimated_interaction_unit_price]
+    metric_status = str(pick("metric_status", "metricStatus", "指标状态") or "").strip()
+    metric_error = str(pick("metric_error", "metricError", "指标失败原因") or "").strip()
+    if not metric_status:
+        metric_status = "collected" if all(bool(value) for value in metric_values) else "failed"
+    if metric_status == "failed" and not metric_error:
+        metric_error = "蒲公英详情页核心指标未采集完整"
     title_status = str(pick("title_status", "titleStatus", "标题状态") or "").strip()
     title_error = str(pick("title_error", "titleError", "标题采集失败原因", "标题失败原因") or "").strip()
     if not title_status:
@@ -2111,11 +3604,18 @@ def normalize_ingest_row(platform: str, row: dict[str, Any]) -> dict[str, Any]:
         "video_quote": video_quote,
         "supports_link": True,
         "rebate_pct": as_number(pick("rebate_pct", "rebatePct", "返点", "返点比例")),
-        "exposure_median": int(as_number(pick("exposure_median", "exposureMedian", "曝光中位数", "中位曝光", "曝光中位"), count=True)),
-        "read_median": int(as_number(pick("read_median", "readMedian", "阅读中位数", "中位阅读"), count=True)),
-        "interaction_median": int(as_number(pick("interaction_median", "interactionMedian", "互动中位数", "中位互动量"), count=True)),
-        "cpm": as_number(pick("cpm", "CPM", "预期CPM", "预估CPM")),
-        "cpe": as_number(pick("cpe", "CPE", "预期CPE", "预估CPE")),
+        "exposure_median": exposure_median,
+        "read_median": read_median,
+        "interaction_median": interaction_median,
+        "cpm": estimated_cpm,
+        "cpe": estimated_interaction_unit_price,
+        "estimated_cpm": estimated_cpm,
+        "estimated_read_unit_price": estimated_read_unit_price,
+        "estimated_interaction_unit_price": estimated_interaction_unit_price,
+        "metric_status": metric_status,
+        "metric_error": metric_error,
+        "metric_filter_json": metric_filter_json,
+        "metric_source_json": metric_source_json,
         "vertical_score": as_number(pick("vertical_score", "verticalScore", "垂直度分")) or 75,
         "recent_titles": recent_titles,
         "title_status": title_status,
@@ -2167,7 +3667,34 @@ def required_field_issues(row: dict[str, Any]) -> list[str]:
         issues.append("缺小红书号")
     if not is_valid_pgy_home_url(row.get("home_url")):
         issues.append("缺蒲公英主页")
+    metric_issues = required_metric_issues(row)
+    issues.extend(metric_issues)
     return issues
+
+
+def required_metric_issues(row: dict[str, Any]) -> list[str]:
+    if row.get("platform", "pgy") != "pgy":
+        return []
+    metric_status = str(row.get("metric_status") or "").strip()
+    metric_error = str(row.get("metric_error") or "").strip()
+    required = [
+        ("exposure_median", "曝光中位数"),
+        ("read_median", "阅读中位数"),
+        ("interaction_median", "互动中位数"),
+        ("estimated_cpm", "预估CPM"),
+        ("estimated_read_unit_price", "预估阅读单价"),
+        ("estimated_interaction_unit_price", "预估互动单价"),
+    ]
+    missing = [label for key, label in required if not row.get(key)]
+    if not missing and metric_status == "collected":
+        return []
+    if metric_status == "unavailable" or "官网暂无" in metric_error or "官网无数据" in metric_error or "官网未展示" in metric_error:
+        return [metric_error or f"官网暂无数据：{'、'.join(missing)}"]
+    if missing:
+        return [f"指标待修复：缺{ '、'.join(missing) }"]
+    if metric_status in {"failed", "missing"}:
+        return [f"指标待修复：{metric_error or '蒲公英详情页核心指标未采集完整'}"]
+    return []
 
 
 def title_status_label(status: str, titles: list[str], error: str = "") -> str:
@@ -2181,6 +3708,10 @@ def title_status_label(status: str, titles: list[str], error: str = "") -> str:
 
 
 def next_repair_action(reason: str) -> str:
+    if "官网暂无" in reason or "官网无数据" in reason or "官网未展示" in reason:
+        return "蒲公英官网当前未展示该指标，人工确认是否可提报；不合适则换同类账号"
+    if "指标待修复" in reason or "预估CPM" in reason or "预估阅读单价" in reason:
+        return "自动重新打开蒲公英详情页，进入笔记数据，按规模/按成本补采官网指标"
     if "详情打不开" in reason:
         return "自动重试详情页3次，仍失败后人工确认入口"
     if "缺蒲公英主页" in reason:
@@ -2218,23 +3749,23 @@ def insert_repair_record(
             project_id,
             candidate_id,
             profile_id,
-            row.get("platform", "pgy"),
+            clean_unicode(row.get("platform", "pgy")),
             status,
-            row.get("name", ""),
-            row.get("platform_id", ""),
-            row.get("home_url", ""),
+            clean_unicode(row.get("name", "")),
+            clean_unicode(row.get("platform_id", "")),
+            clean_unicode(row.get("home_url", "")),
             jdump(row),
-            row.get("source_keyword", ""),
-            row.get("source_url", ""),
-            row.get("current_url", ""),
-            reason,
+            clean_unicode(row.get("source_keyword", "")),
+            clean_unicode(row.get("source_url", "")),
+            clean_unicode(row.get("current_url", "")),
+            clean_unicode(reason),
             next_repair_action(reason),
             int(row.get("retry_count") or 0),
-            str(row.get("page_excerpt") or "")[:1200],
-            str(row.get("screenshot_path") or ""),
-            title_status,
-            title_error,
-            str(row.get("note") or ""),
+            clean_unicode(str(row.get("page_excerpt") or "")[:1200]),
+            clean_unicode(str(row.get("screenshot_path") or "")),
+            clean_unicode(title_status),
+            clean_unicode(title_error),
+            clean_unicode(str(row.get("note") or "")),
             now(),
             now(),
             "",
@@ -2266,6 +3797,13 @@ def candidate_query() -> str:
         m.interaction_median,
         m.cpm,
         m.cpe,
+        m.estimated_cpm,
+        m.estimated_read_unit_price,
+        m.estimated_interaction_unit_price,
+        coalesce(m.metric_status, '') metric_status,
+        coalesce(m.metric_error, '') metric_error,
+        coalesce(m.metric_filter_json, '{}') metric_filter_json,
+        coalesce(m.metric_source_json, '{}') metric_source_json,
         m.vertical_score,
         m.recent_titles_json,
         coalesce(m.title_status, '') title_status,
@@ -2282,6 +3820,8 @@ def row_candidate(row: sqlite3.Row) -> dict[str, Any]:
     recent_titles = jload(row["recent_titles_json"], [])
     title_status = row["title_status"] or ("collected" if recent_titles else "missing")
     title_error = row["title_error"] or ("" if recent_titles else "采集器未返回最近标题")
+    cpm_value = row["estimated_cpm"] if row["platform"] == "pgy" else (row["estimated_cpm"] if row["estimated_cpm"] is not None else row["cpm"])
+    cpe_value = row["estimated_interaction_unit_price"] if row["platform"] == "pgy" else (row["estimated_interaction_unit_price"] if row["estimated_interaction_unit_price"] is not None else row["cpe"])
     return {
         "id": row["id"],
         "projectId": row["project_id"],
@@ -2306,8 +3846,17 @@ def row_candidate(row: sqlite3.Row) -> dict[str, Any]:
         "exposureMedian": row["exposure_median"],
         "readMedian": row["read_median"],
         "interactionMedian": row["interaction_median"],
-        "cpm": row["cpm"],
-        "cpe": row["cpe"],
+        "cpm": cpm_value,
+        "cpe": cpe_value,
+        "estimatedCpm": row["estimated_cpm"],
+        "estimatedReadUnitPrice": row["estimated_read_unit_price"],
+        "estimatedInteractionUnitPrice": row["estimated_interaction_unit_price"],
+        "readUnitPrice": row["estimated_read_unit_price"],
+        "interactionUnitPrice": row["estimated_interaction_unit_price"],
+        "metricStatus": row["metric_status"],
+        "metricError": row["metric_error"],
+        "metricFilter": jload(row["metric_filter_json"], {}),
+        "metricSource": jload(row["metric_source_json"], {}),
         "verticalScore": row["vertical_score"],
         "recentTitles": recent_titles,
         "titleStatus": title_status,
@@ -2333,7 +3882,11 @@ def row_database_creator(row: sqlite3.Row) -> dict[str, Any]:
     recent_titles = jload(row["recent_titles_json"], [])
     title_status = row["title_status"] or ("collected" if recent_titles else "missing")
     title_error = row["title_error"] or ("" if recent_titles else "采集器未返回最近标题")
-    if project_names:
+    cpm_value = row["estimated_cpm"] if row["platform"] == "pgy" else (row["estimated_cpm"] if row["estimated_cpm"] is not None else row["cpm"])
+    cpe_value = row["estimated_interaction_unit_price"] if row["platform"] == "pgy" else (row["estimated_interaction_unit_price"] if row["estimated_interaction_unit_price"] is not None else row["cpe"])
+    if source_type == "client_selected" and project_names:
+        source = f"客户选中：{'、'.join(project_names)}"
+    elif project_names:
         source = f"项目沉淀：{'、'.join(project_names)}"
     elif source_type == "manual":
         source = "人工修正"
@@ -2360,8 +3913,17 @@ def row_database_creator(row: sqlite3.Row) -> dict[str, Any]:
         "exposureMedian": row["exposure_median"],
         "readMedian": row["read_median"],
         "interactionMedian": row["interaction_median"],
-        "cpm": row["cpm"],
-        "cpe": row["cpe"],
+        "cpm": cpm_value,
+        "cpe": cpe_value,
+        "estimatedCpm": row["estimated_cpm"],
+        "estimatedReadUnitPrice": row["estimated_read_unit_price"],
+        "estimatedInteractionUnitPrice": row["estimated_interaction_unit_price"],
+        "readUnitPrice": row["estimated_read_unit_price"],
+        "interactionUnitPrice": row["estimated_interaction_unit_price"],
+        "metricStatus": row["metric_status"],
+        "metricError": row["metric_error"],
+        "metricFilter": jload(row["metric_filter_json"], {}),
+        "metricSource": jload(row["metric_source_json"], {}),
         "verticalScore": row["vertical_score"],
         "recentTitles": recent_titles,
         "titleStatus": title_status,
@@ -2386,6 +3948,8 @@ def row_repair_record(row: sqlite3.Row) -> dict[str, Any]:
         recent_titles = []
     title_status = row["title_status"] or list_data.get("title_status") or ("collected" if recent_titles else "missing")
     title_error = row["title_error"] or list_data.get("title_error") or ("" if recent_titles else "待补采标题")
+    cpm_value = list_data.get("estimated_cpm") if row["platform"] == "pgy" else (list_data.get("estimated_cpm") or list_data.get("cpm"))
+    cpe_value = list_data.get("estimated_interaction_unit_price") if row["platform"] == "pgy" else (list_data.get("estimated_interaction_unit_price") or list_data.get("cpe"))
     return {
         "repairId": row["id"],
         "projectId": row["project_id"],
@@ -2407,11 +3971,20 @@ def row_repair_record(row: sqlite3.Row) -> dict[str, Any]:
         "imageQuote": list_data.get("image_quote", 0),
         "videoQuote": list_data.get("video_quote", 0),
         "rebatePct": list_data.get("rebate_pct", 0),
-        "exposureMedian": list_data.get("exposure_median", 0),
-        "readMedian": list_data.get("read_median", 0),
-        "interactionMedian": list_data.get("interaction_median", 0),
-        "cpm": list_data.get("cpm", 0),
-        "cpe": list_data.get("cpe", 0),
+        "exposureMedian": list_data.get("exposure_median"),
+        "readMedian": list_data.get("read_median"),
+        "interactionMedian": list_data.get("interaction_median"),
+        "cpm": cpm_value,
+        "cpe": cpe_value,
+        "estimatedCpm": list_data.get("estimated_cpm"),
+        "estimatedReadUnitPrice": list_data.get("estimated_read_unit_price"),
+        "estimatedInteractionUnitPrice": list_data.get("estimated_interaction_unit_price"),
+        "readUnitPrice": list_data.get("estimated_read_unit_price"),
+        "interactionUnitPrice": list_data.get("estimated_interaction_unit_price"),
+        "metricStatus": list_data.get("metric_status", ""),
+        "metricError": list_data.get("metric_error", ""),
+        "metricFilter": jload(list_data.get("metric_filter_json", "{}"), {}),
+        "metricSource": jload(list_data.get("metric_source_json", "{}"), {}),
         "verticalScore": list_data.get("vertical_score", 0),
         "recentTitles": recent_titles,
         "titleStatus": title_status,
@@ -2463,11 +4036,18 @@ async def list_database_creators(
         cr.name,
         cr.primary_category,
         cr.persona,
-        coalesce(m.exposure_median, 0) exposure_median,
-        coalesce(m.read_median, 0) read_median,
-        coalesce(m.interaction_median, 0) interaction_median,
-        coalesce(m.cpm, 0) cpm,
-        coalesce(m.cpe, 0) cpe,
+        m.exposure_median,
+        m.read_median,
+        m.interaction_median,
+        m.cpm,
+        m.cpe,
+        m.estimated_cpm,
+        m.estimated_read_unit_price,
+        m.estimated_interaction_unit_price,
+        coalesce(m.metric_status, '') metric_status,
+        coalesce(m.metric_error, '') metric_error,
+        coalesce(m.metric_filter_json, '{}') metric_filter_json,
+        coalesce(m.metric_source_json, '{}') metric_source_json,
         coalesce(m.vertical_score, 0) vertical_score,
         coalesce(m.recent_titles_json, '[]') recent_titles_json,
         coalesce(m.title_status, '') title_status,
@@ -2587,20 +4167,42 @@ async def resolve_repair_record(repair_id: str, req: RepairRecordUpdate) -> dict
     return {"repair": row_repair_record(updated), "candidateId": candidate_id}
 
 
-def recommendation_quote(row: dict[str, Any], analysis: dict[str, Any]) -> int:
+def form_requirement_mode(analysis: dict[str, Any]) -> str:
     form_text = str(analysis.get("preferredForm") or "") + " " + " ".join(analysis.get("forms") or [])
-    if "视频" in form_text:
-        return int(row.get("videoQuote") or row.get("quoteHigh") or row.get("imageQuote") or 0)
-    return int(row.get("imageQuote") or row.get("quoteLow") or row.get("videoQuote") or 0)
+    if not form_text.strip() or re.search(r"不限|待确认", form_text):
+        return "any"
+    if re.search(r"优先视频|视频合作|报备视频", form_text):
+        return "video"
+    has_video = "视频" in form_text
+    has_image = "图文" in form_text
+    if has_video and not has_image:
+        return "video"
+    if has_image and not has_video:
+        return "image"
+    return "any"
+
+
+def recommendation_quote(row: dict[str, Any], analysis: dict[str, Any]) -> int:
+    mode = form_requirement_mode(analysis)
+    if mode == "video":
+        return int(row.get("videoQuote") or row.get("quoteHigh") or 0)
+    if mode == "image":
+        return int(row.get("imageQuote") or row.get("quoteLow") or 0)
+    return int(row.get("videoQuote") or row.get("quoteHigh") or row.get("imageQuote") or row.get("quoteLow") or 0)
 
 
 def passes_recommendation_hard_filter(row: dict[str, Any], analysis: dict[str, Any]) -> bool:
     platforms = analysis.get("platforms") or ["pgy"]
     if platforms and row.get("platform") not in platforms:
         return False
-    if not content_relevance_summary(row, analysis)["pass"]:
+    relevance = content_relevance_summary(row, analysis)
+    if not relevance["pass"]:
+        return False
+    if (relevance["terms"]["domain"] or relevance["terms"]["action"]) and not title_relevance_summary(row, analysis)["pass"]:
         return False
     quote = recommendation_quote(row, analysis)
+    if not quote:
+        return False
     budget_min = int(analysis.get("budgetMin") or 0)
     budget_max = int(analysis.get("budgetMax") or 0)
     if budget_min and quote < budget_min:
@@ -2623,6 +4225,20 @@ def candidate_matches_analysis_tag(row: dict[str, Any], tag: str) -> bool:
     return bool(tag and tag in audience_tag_hits(row, [tag]))
 
 
+def pgy_metric_complete(row: dict[str, Any]) -> bool:
+    if row.get("platform", "pgy") != "pgy":
+        return True
+    values = [
+        row.get("exposureMedian"),
+        row.get("readMedian"),
+        row.get("interactionMedian"),
+        row.get("estimatedCpm") or row.get("cpm"),
+        row.get("estimatedReadUnitPrice") or row.get("readUnitPrice"),
+        row.get("estimatedInteractionUnitPrice") or row.get("interactionUnitPrice") or row.get("cpe"),
+    ]
+    return all(bool(value) for value in values)
+
+
 def recommendation_issue_labels(row: dict[str, Any], analysis: dict[str, Any], checks: dict[str, bool]) -> list[str]:
     issues = []
     metrics = analysis.get("metrics") or {}
@@ -2633,19 +4249,36 @@ def recommendation_issue_labels(row: dict[str, Any], analysis: dict[str, Any], c
     required_tags = analysis.get("requiredAudienceTags") or []
     title_status = str(row.get("titleStatus") or "").strip()
     recent_titles = row.get("recentTitles") or []
+    form_mode = form_requirement_mode(analysis)
 
     if not checks.get("platform", False):
         issues.append("平台不符")
-    if not checks.get("content", False):
+    if not checks.get("content", False) and checks.get("reviewableContent", False):
+        issues.append("内容待复核")
+    elif not checks.get("content", False):
         issues.append("内容不相关")
+    if not checks.get("title", True):
+        issues.append("标题不匹配")
+    if not checks.get("quote", False):
+        issues.append("视频报价缺失" if form_mode == "video" else ("图文报价缺失" if form_mode == "image" else "报价缺失"))
     if not checks.get("budgetMin", False):
         issues.append("低于预算下限")
     if not checks.get("budgetMax", False):
         issues.append("超过预算上限")
+    if not checks.get("metricsComplete", True):
+        issues.append("指标待修复")
     if cpm_max is not None and not checks.get("cpm", False):
-        issues.append("CPM缺失" if not cpm else "CPM超标")
+        issues.append(
+            "CPM缺失"
+            if not cpm
+            else f"CPM超标：要求<{metric_number_text(cpm_max)}，实际{metric_number_text(cpm)}"
+        )
     if cpe_max is not None and not checks.get("cpe", False):
-        issues.append("CPE缺失" if not cpe else "CPE超标")
+        issues.append(
+            "CPE缺失"
+            if not cpe
+            else f"CPE超标：要求<{metric_number_text(cpe_max)}，实际{metric_number_text(cpe)}"
+        )
     if required_tags and not audience_tag_hits(row, required_tags):
         issues.append("标签待复核")
     if not recent_titles or title_status in {"missing", "failed"}:
@@ -2663,13 +4296,24 @@ def recommendation_gate_details(row: dict[str, Any], analysis: dict[str, Any]) -
     cpe_max = metric_limit(metrics.get("cpeMax"))
     cpm = float(row.get("cpm") or 0)
     cpe = float(row.get("cpe") or 0)
+    metrics_complete = pgy_metric_complete(row)
     relevance = content_relevance_summary(row, analysis)
+    title_relevance = title_relevance_summary(row, analysis)
+    adjacent_relevance = adjacent_content_relevance_summary(row, analysis)
+    required_tags = analysis.get("requiredAudienceTags") or []
+    tag_hits = audience_tag_hits(row, required_tags)
+    title_required = bool(relevance["terms"]["domain"] or relevance["terms"]["action"])
+    reviewable_content = relevance["pass"] or title_relevance["pass"] or adjacent_relevance["pass"] or bool(tag_hits)
 
     checks = {
         "platform": (not platforms) or row.get("platform") in platforms,
         "content": relevance["pass"],
+        "reviewableContent": reviewable_content,
+        "title": (not title_required) or title_relevance["pass"],
+        "quote": bool(quote),
         "budgetMin": (not budget_min) or quote >= budget_min,
         "budgetMax": (not budget_max) or quote <= budget_max,
+        "metricsComplete": metrics_complete,
         "cpm": cpm_max is None or (bool(cpm) and cpm <= float(cpm_max)),
         "cpe": cpe_max is None or (bool(cpe) and cpe <= float(cpe_max)),
     }
@@ -2678,9 +4322,11 @@ def recommendation_gate_details(row: dict[str, Any], analysis: dict[str, Any]) -
     backup_pass = (
         not strict_pass
         and checks["platform"]
-        and checks["content"]
+        and checks["reviewableContent"]
+        and checks["quote"]
         and checks["budgetMin"]
         and checks["budgetMax"]
+        and checks["metricsComplete"]
     )
     tier = "strict" if strict_pass else ("backup" if backup_pass else "not_recommended")
 
@@ -2690,10 +4336,21 @@ def recommendation_gate_details(row: dict[str, Any], analysis: dict[str, Any]) -
         "cpe": cpe,
         "checks": checks,
         "content": {
+            "coreDomainTerms": relevance["terms"].get("coreDomain") or [],
             "domainTerms": relevance["terms"]["domain"],
             "actionTerms": relevance["terms"]["action"],
+            "coreDomainHits": relevance.get("coreDomainHits") or [],
+            "strongCoreDomainHits": relevance.get("strongCoreDomainHits") or [],
             "domainHits": relevance["domainHits"],
             "actionHits": relevance["actionHits"],
+            "titleCoreDomainHits": title_relevance.get("coreDomainHits") or [],
+            "titleStrongCoreDomainHits": title_relevance.get("strongCoreDomainHits") or [],
+            "titleDomainHits": title_relevance["domainHits"],
+            "titleActionHits": title_relevance["actionHits"],
+            "matchedTitles": title_relevance["matchedTitles"],
+            "titleScore": title_relevance["score"],
+            "adjacentHits": adjacent_relevance["hits"],
+            "tagHits": tag_hits,
         },
         "issues": issues,
         "currentHardPass": passes_recommendation_hard_filter(row, analysis),
@@ -2747,9 +4404,11 @@ def build_recommendation_diagnostics(conn: sqlite3.Connection, project_id: str) 
         "total": len(rows),
         "platform": sum(1 for gate in gates if gate["checks"]["platform"]),
         "content": sum(1 for gate in gates if gate["checks"]["content"]),
+        "reviewableContent": sum(1 for gate in gates if gate["checks"].get("reviewableContent")),
         "budgetMin": sum(1 for gate in gates if gate["checks"]["budgetMin"]),
         "budgetMax": sum(1 for gate in gates if gate["checks"]["budgetMax"]),
         "budgetRange": sum(1 for gate in gates if gate["checks"]["budgetMin"] and gate["checks"]["budgetMax"]),
+        "title": sum(1 for gate in gates if gate["checks"].get("title", True)),
         "cpm": sum(1 for gate in gates if gate["checks"]["cpm"]),
         "cpe": sum(1 for gate in gates if gate["checks"]["cpe"]),
         "currentHard": sum(1 for gate in gates if gate["currentHardPass"]),
@@ -2789,6 +4448,30 @@ def build_recommendation_diagnostics(conn: sqlite3.Connection, project_id: str) 
         }
         for tag in required_tags
     ]
+    target = int(analysis.get("reportCountMin") or analysis.get("recommendationTarget") or 0)
+    follower_distribution = []
+    for spec in parse_follower_distribution(analysis, target):
+        recommended_count = sum(
+            1
+            for row in rows
+            if row["id"] in recommendation_ids and candidate_matches_follower_spec(row, spec)
+        )
+        candidate_count = sum(1 for row in rows if candidate_matches_follower_spec(row, spec))
+        strict_count = sum(
+            1
+            for row, gate in zip(rows, gates)
+            if gate["strictPass"] and candidate_matches_follower_spec(row, spec)
+        )
+        follower_distribution.append(
+            {
+                "label": spec["label"],
+                "target": spec["target"],
+                "recommended": recommended_count,
+                "candidateCount": candidate_count,
+                "strictCount": strict_count,
+                "missing": max(0, spec["target"] - recommended_count),
+            }
+        )
 
     top_candidates = []
     for row, gate in zip(rows[:30], gates[:30]):
@@ -2804,6 +4487,9 @@ def build_recommendation_diagnostics(conn: sqlite3.Connection, project_id: str) 
                 "tags": row.get("tags", []),
                 "audienceTags": row.get("audienceTags", []),
                 "contentHits": [*gate["content"]["domainHits"], *gate["content"]["actionHits"]],
+                "titleHits": [*gate["content"]["titleDomainHits"], *gate["content"]["titleActionHits"]],
+                "matchedTitles": gate["content"]["matchedTitles"],
+                "titleScore": gate["content"]["titleScore"],
                 "currentHardPass": gate["currentHardPass"],
                 "strictPass": gate["strictPass"],
                 "backupPass": gate["backupPass"],
@@ -2836,6 +4522,7 @@ def build_recommendation_diagnostics(conn: sqlite3.Connection, project_id: str) 
         "repairCounts": repair_counts,
         "recommendationBuckets": recommendation_buckets,
         "tagCoverage": tag_coverage,
+        "followerDistribution": follower_distribution,
         "topCandidates": top_candidates,
         "recommendationCount": len(recommendation_ids),
     }
@@ -2901,6 +4588,65 @@ async def update_candidate_status(candidate_id: str, req: CandidateStatusUpdate)
     return {"candidate": row_candidate(row)}
 
 
+def parse_follower_distribution(analysis: dict[str, Any], target: int) -> list[dict[str, Any]]:
+    specs: list[dict[str, Any]] = []
+    for raw in analysis.get("accountDistribution") or []:
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        percent_match = re.search(r"(\d+(?:\.\d+)?)\s*%", text)
+        if not percent_match:
+            continue
+        range_text = re.sub(r"\d+(?:\.\d+)?\s*%", "", text)
+        normalized = range_text.replace("—", "-").replace("–", "-").replace("~", "-").replace("至", "-").replace("到", "-")
+        min_followers: Optional[float] = None
+        max_followers: Optional[float] = None
+        range_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:万|w|W)?\s*-\s*(\d+(?:\.\d+)?)\s*(?:万|w|W)?", normalized)
+        if range_match:
+            min_followers = float(range_match.group(1))
+            max_followers = float(range_match.group(2))
+        else:
+            min_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:万|w|W)?\s*(?:粉)?\s*(?:以上|及以上|\+)", normalized)
+            max_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:万|w|W)?\s*(?:粉)?\s*(?:以下|以内)", normalized)
+            if min_match:
+                min_followers = float(min_match.group(1))
+            if max_match:
+                max_followers = float(max_match.group(1))
+        if min_followers is None and max_followers is None:
+            continue
+        percent = float(percent_match.group(1))
+        raw_target = max(0.0, target * percent / 100)
+        specs.append(
+            {
+                "label": text,
+                "min": min_followers,
+                "max": max_followers,
+                "rawTarget": raw_target,
+                "target": int(math.floor(raw_target)),
+                "fraction": raw_target - math.floor(raw_target),
+            }
+        )
+    desired_total = min(target, int(round(sum(spec["rawTarget"] for spec in specs))))
+    remainder = max(0, desired_total - sum(spec["target"] for spec in specs))
+    for spec in sorted(specs, key=lambda item: item["fraction"], reverse=True):
+        if remainder <= 0:
+            break
+        spec["target"] += 1
+        remainder -= 1
+    return [spec for spec in specs if spec["target"] > 0]
+
+
+def candidate_matches_follower_spec(row: dict[str, Any], spec: dict[str, Any]) -> bool:
+    followers = float(row.get("followers") or 0)
+    min_followers = spec.get("min")
+    max_followers = spec.get("max")
+    if min_followers is not None and followers < float(min_followers):
+        return False
+    if max_followers is not None and followers >= float(max_followers):
+        return False
+    return True
+
+
 def save_auto_recommendations(conn: sqlite3.Connection, project_id: str, target: int) -> list[dict[str, Any]]:
     analysis = get_project_analysis(conn, project_id)
     rows = [
@@ -2920,6 +4666,7 @@ def save_auto_recommendations(conn: sqlite3.Connection, project_id: str, target:
         return []
 
     required_tags = analysis.get("requiredAudienceTags") or []
+    follower_distribution = parse_follower_distribution(analysis, target)
     selected: list[dict[str, Any]] = []
     used_ids = set()
 
@@ -2933,6 +4680,17 @@ def save_auto_recommendations(conn: sqlite3.Connection, project_id: str, target:
             if match:
                 selected.append(match)
                 used_ids.add(match["id"])
+        for spec in follower_distribution:
+            if len(selected) >= target:
+                return
+            current = sum(1 for row in selected if candidate_matches_follower_spec(row, spec))
+            while current < spec["target"] and len(selected) < target:
+                match = next((row for row in pool if row["id"] not in used_ids and candidate_matches_follower_spec(row, spec)), None)
+                if not match:
+                    break
+                selected.append(match)
+                used_ids.add(match["id"])
+                current += 1
         for row in pool:
             if len(selected) >= target:
                 return
@@ -2944,7 +4702,17 @@ def save_auto_recommendations(conn: sqlite3.Connection, project_id: str, target:
     if len(selected) < target:
         append_with_coverage(backup_rows)
 
-    for index, row in enumerate(selected[:target], start=1):
+    ranked_selected = sorted(
+        selected[:target],
+        key=lambda item: (
+            1 if gates[item["id"]]["tier"] == "strict" else 0,
+            int((item.get("scores") or {}).get("total") or 0),
+            int((item.get("scores") or {}).get("title") or 0),
+        ),
+        reverse=True,
+    )
+
+    for index, row in enumerate(ranked_selected, start=1):
         gate = gates[row["id"]]
         tier_label = gate["tierLabel"]
         tier_issues = "、".join(gate["tierIssues"])
@@ -3045,7 +4813,9 @@ async def update_recommendation_status(recommendation_id: str, req: Recommendati
     params.append(recommendation_id)
     with db() as conn:
         conn.execute(f"update recommendations set {','.join(sets)} where id=?", params)
-        if req.locked:
+        if req.status == "client_selected":
+            mark_client_selected_recommendation(conn, recommendation_id, req.note)
+        elif req.status in {"pending", "client_unselected", "client_rejected"}:
             row = conn.execute(
                 """
                 select r.project_id, c.profile_id
@@ -3056,13 +4826,23 @@ async def update_recommendation_status(recommendation_id: str, req: Recommendati
                 (recommendation_id,),
             ).fetchone()
             if row:
-                mark_media_library_profile(
-                    conn,
-                    row["profile_id"],
-                    row["project_id"],
-                    "locked_recommendation",
-                    "推荐名单锁定后沉淀",
+                conn.execute(
+                    """
+                    delete from media_library_entries
+                    where profile_id=? and source_project_id=? and source_type='client_selected'
+                    """,
+                    (row["profile_id"], row["project_id"]),
                 )
+                feedback_ids = [
+                    feedback["id"]
+                    for feedback in conn.execute(
+                        "select id from feedback where recommendation_id=? and client_passed='通过'",
+                        (recommendation_id,),
+                    ).fetchall()
+                ]
+                for feedback_id in feedback_ids:
+                    conn.execute("delete from memories where source_feedback_id=?", (feedback_id,))
+                    conn.execute("delete from feedback where id=?", (feedback_id,))
     return {"ok": True}
 
 
@@ -3089,14 +4869,6 @@ async def create_feedback(project_id: str, req: FeedbackCreate) -> dict[str, Any
                 values(?,?,?,?,?,?,?,?)
                 """,
                 (make_id("mem"), item["scope"], item["key"], item["value"], item["weight"], project_id, feedback_id, now()),
-            )
-        if req.usability in {"可用", "部分可用"} or req.client_passed in {"通过", "部分通过"}:
-            mark_recommendations_as_media(
-                conn,
-                project_id,
-                get_recommendations_for_project(conn, project_id),
-                "positive_feedback",
-                "反馈可用或客户通过后沉淀",
             )
         conn.execute("update projects set status='feedback_saved', updated_at=? where id=?", (now(), project_id))
         feedback = conn.execute("select * from feedback where id=?", (feedback_id,)).fetchone()
@@ -3157,14 +4929,36 @@ async def delete_memory(memory_id: str) -> dict[str, Any]:
     return {"ok": True}
 
 
+def metric_status_label(candidate: dict[str, Any]) -> str:
+    status = str(candidate.get("metricStatus") or candidate.get("metric_status") or "").strip()
+    error = str(candidate.get("metricError") or candidate.get("metric_error") or "").strip()
+    if status == "collected":
+        return "已采集官网指标"
+    if status == "unavailable" or "官网暂无" in error or "官网无数据" in error or "官网未展示" in error:
+        return error or "官网暂无该指标"
+    if status == "failed":
+        return error or "抓取失败，待修复"
+    if status == "missing":
+        return error or "未采集指标，待补采"
+    return error or status
+
+
 def export_row(candidate: dict[str, Any], rank: Optional[int] = None) -> dict[str, Any]:
     titles = candidate.get("recentTitles") or []
     scores = candidate.get("scores") or {}
-    quote_for_unit = int(candidate.get("videoQuote") or candidate.get("imageQuote") or candidate.get("quoteHigh") or 0)
-    read_median = int(candidate.get("readMedian") or 0)
-    interaction_median = int(candidate.get("interactionMedian") or 0)
-    read_unit_price = round(quote_for_unit / read_median, 2) if quote_for_unit and read_median else ""
-    interaction_unit_price = candidate.get("cpe") or (round(quote_for_unit / interaction_median, 2) if quote_for_unit and interaction_median else "")
+    metric_filter = candidate.get("metricFilter") or {}
+    if isinstance(metric_filter, dict):
+        metric_filter_label = " / ".join(str(metric_filter.get(key) or "") for key in ["business", "noteType", "dateRange", "traffic"]).strip(" /")
+    else:
+        metric_filter_label = str(metric_filter or "")
+    if candidate.get("platform") == "pgy":
+        estimated_cpm = candidate.get("estimatedCpm")
+        read_unit_price = candidate.get("estimatedReadUnitPrice") or ""
+        interaction_unit_price = candidate.get("estimatedInteractionUnitPrice") or ""
+    else:
+        estimated_cpm = candidate.get("estimatedCpm") if candidate.get("estimatedCpm") is not None else candidate.get("cpm")
+        read_unit_price = candidate.get("estimatedReadUnitPrice") or candidate.get("readUnitPrice") or ""
+        interaction_unit_price = candidate.get("estimatedInteractionUnitPrice") or candidate.get("interactionUnitPrice") or candidate.get("cpe") or ""
     tier = candidate.get("recommendationTier") or candidate.get("tier") or ""
     tier_label = candidate.get("tierLabel") or {"strict": "严格达标", "backup": "可备选", "not_recommended": "不建议"}.get(tier, "")
     tier_issues = candidate.get("tierIssues") or candidate.get("issues") or []
@@ -3173,6 +4967,7 @@ def export_row(candidate: dict[str, Any], rank: Optional[int] = None) -> dict[st
         "推荐分层": tier_label,
         "未达标原因": "、".join(tier_issues),
         "是否严格达标": "是" if tier == "strict" or candidate.get("strictPass") else "否",
+        "客户状态": candidate.get("recommendationStatus", ""),
         "达人昵称": candidate.get("name", ""),
         "平台": candidate.get("platformLabel", ""),
         "小红书号": candidate.get("platformId", ""),
@@ -3193,11 +4988,15 @@ def export_row(candidate: dict[str, Any], rank: Optional[int] = None) -> dict[st
         "曝光中位数": candidate.get("exposureMedian", ""),
         "阅读中位数": candidate.get("readMedian", ""),
         "互动中位数": candidate.get("interactionMedian", ""),
-        "CPM": candidate.get("cpm", ""),
-        "阅读单价": read_unit_price,
-        "互动单价": interaction_unit_price,
+        "预估CPM": estimated_cpm or "",
+        "预估阅读单价": read_unit_price,
+        "预估互动单价": interaction_unit_price,
+        "数据口径": metric_filter_label,
+        "指标状态": metric_status_label(candidate),
+        "指标失败原因": candidate.get("metricError", ""),
         "预算匹配分": scores.get("budget", ""),
         "内容相关分": scores.get("content", ""),
+        "标题匹配分": scores.get("title", ""),
         "数据表现分": scores.get("performance", ""),
         "历史反馈分": scores.get("history", ""),
         "垂直度分": scores.get("vertical", ""),
@@ -3234,7 +5033,6 @@ async def export_project(project_id: str, scope: str = Query("all", pattern="^(s
         recs = get_recommendations_for_project(conn, project_id)
         if scope != "all":
             recs = [item for item in recs if item.get("recommendationTier") == scope]
-        mark_recommendations_as_media(conn, project_id, recs, "exported_recommendation", f"导出推荐名单：{scope}")
         repair_rows = [
             row_repair_record(row)
             for row in conn.execute(
@@ -3461,9 +5259,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 if __name__ == "__main__":
     import uvicorn
 
-    print("🚀 萌力互动 · 智能媒体库")
+    print("萌力互动本地 AI 选号系统启动中")
     print(f"数据文件: {DB_PATH}")
-    print(f"访问地址: http://{SERVER_HOST}:{SERVER_PORT}")
-    if PUBLIC_URL:
-        print(f"公网地址: {PUBLIC_URL}")
-    uvicorn.run(app, host=SERVER_HOST, port=SERVER_PORT, log_level="info")
+    print("访问地址: http://127.0.0.1:8890")
+    uvicorn.run(app, host="127.0.0.1", port=8890, log_level="info")

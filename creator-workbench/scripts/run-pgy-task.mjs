@@ -23,6 +23,12 @@ const SEARCH_URL = "https://pgy.xiaohongshu.com/solar/pre-trade/note/kol";
 const MAX_PAGES_PER_KEYWORD = Number(process.env.MENGLI_PGY_MAX_PAGES || 8);
 const DEFAULT_TARGET_COUNT = 30;
 const MAX_COLLECTION_ROUNDS = 3;
+const DEFAULT_METRIC_FILTER = Object.freeze({
+  business: "日常笔记",
+  noteType: "图文+视频",
+  dateRange: "近30日",
+  traffic: "全流量"
+});
 
 if (!TASK_ID) {
   console.error("用法：node creator-workbench/scripts/run-pgy-task.mjs codex_xxx");
@@ -70,13 +76,26 @@ function normalizeKeywords(task) {
   const payload = task.payload || {};
   const analysis = payload.analysis || {};
   const collector = payload.collector || {};
+  const synonymGroups = analysis.synonymGroups && typeof analysis.synonymGroups === "object" ? analysis.synonymGroups : {};
+  const synonymTerms = Object.values(synonymGroups).flatMap(value => Array.isArray(value) ? value : [value]);
+  const directSearch = [];
+  for (const item of [
+    ...(collector.keywords || []),
+    ...(analysis.searchKeywords || [])
+  ]) {
+    const text = String(item || "").replace(/类$/, "").trim();
+    if (text && !directSearch.includes(text)) directSearch.push(text);
+  }
   const raw = [
     payload.brand,
-    payload.brief,
     ...(collector.keywords || []),
+    ...(analysis.searchKeywords || []),
     ...(analysis.keywords || []),
     ...(analysis.creatorTypes || []),
-    ...(analysis.requiredAudienceTags || [])
+    ...(analysis.requiredAudienceTags || []),
+    ...(analysis.contentAngles || []),
+    ...synonymTerms,
+    payload.brief
   ];
   const compact = [];
   for (const item of raw) {
@@ -84,8 +103,14 @@ function normalizeKeywords(task) {
     if (text && !compact.includes(text)) compact.push(text);
   }
   const haystack = compact.join(" ");
+  const explicitFootwear = /拖鞋|鞋履|凉拖|凉鞋|鞋子|鞋款|运动鞋|单鞋|靴/.test(haystack);
   const domainRules = [
-    {test: /拖鞋|鞋履|鞋|凉拖|凉鞋|穿搭|潮流|白领|单品/, terms: ["拖鞋", "鞋履", "穿搭", "潮流穿搭", "家居拖鞋", "夏季拖鞋", "凉拖"]},
+    {test: /电脑|笔记本|轻薄本|办公本|数码|科技|国补|YOGA|联想|桌面|办公/, terms: ["电脑推荐", "笔记本电脑推荐", "轻薄本推荐", "办公电脑推荐", "电脑测评", "轻薄本测评", "数码好物", "电脑国补", "国补笔记本", "桌面搭配"]},
+    {test: /拖鞋|鞋履|凉拖|凉鞋|鞋子|鞋款|运动鞋|单鞋|靴/, terms: ["拖鞋", "鞋履", "家居拖鞋", "夏季拖鞋", "凉拖"]},
+    {test: /穿搭|时尚|服装|衣服|优衣库|搭配|OOTD|潮流/, terms: ["时尚穿搭", "穿搭", "精致日常", "购物分享", "好物推荐"]},
+    {test: /设计|绘画|手工|拼豆|定制|创意|裸辞创业/, terms: ["设计", "创意手作", "绘画", "手工", "拼豆"]},
+    {test: /AI|美图|Mitoto|新鲜事物|好看|好玩|体验/, terms: ["AI体验", "新鲜事物体验", "好看好物", "好玩好物"]},
+    {test: /宠物|家庭|毕业|乐迷|情侣|有梗/, terms: ["宠物生活", "家庭日常", "学生日常", "乐迷生活", "情侣日常", "精致日常"]},
     {test: /美食|零食|坚果|早餐|轻食|养生/, terms: ["美食", "零食", "坚果", "养生"]},
     {test: /护肤|美妆|彩妆|防晒|身体护理|头发/, terms: ["护肤", "美妆", "防晒", "身体护理"]},
     {test: /家居|日用|收纳|清洁|好物/, terms: ["家居", "日用", "家居好物", "生活好物"]},
@@ -95,7 +120,15 @@ function normalizeKeywords(task) {
   for (const rule of domainRules) {
     if (rule.test.test(haystack)) domains.push(...rule.terms);
   }
-  const knownTerms = ["拖鞋", "鞋履", "穿搭", "潮流穿搭", "家居拖鞋", "凉拖", "美食", "零食", "坚果", "养生", "护肤", "美妆", "家居", "日用"];
+  const knownTerms = [
+    "电脑推荐", "笔记本电脑推荐", "轻薄本推荐", "办公电脑推荐", "电脑测评", "轻薄本测评",
+    "电脑", "笔记本电脑", "轻薄本", "办公电脑", "数码好物", "数码测评", "电脑国补", "国补笔记本", "桌面搭配",
+    ...(explicitFootwear ? ["拖鞋", "鞋履", "家居拖鞋", "凉拖"] : []),
+    "时尚穿搭", "穿搭", "精致日常", "购物分享", "好物推荐",
+    "设计", "创意手作", "绘画", "手工", "拼豆",
+    "AI体验", "新鲜事物体验", "宠物生活", "家庭日常", "学生日常", "乐迷生活", "情侣日常",
+    "美食", "零食", "坚果", "养生", "护肤", "美妆", "家居", "日用"
+  ];
   domains.push(...knownTerms.filter(term => compact.some(item => item.includes(term))));
   domains = [...new Set(domains)].slice(0, 8);
   const audiences = [
@@ -103,10 +136,11 @@ function normalizeKeywords(task) {
     ...(haystack.includes("白领") ? ["白领", "通勤"] : []),
     ...(haystack.includes("小镇中年") ? ["小镇中年", "中年"] : [])
   ].map(item => String(item || "").trim()).filter(Boolean);
-  const actions = ["种草", "开箱", "测评", "直推"].filter(term => compact.some(item => item.includes(term)) || haystack.includes(term));
+  const actions = ["种草", "开箱", "测评", "分享", "体验", "推荐", "直推"].filter(term => compact.some(item => item.includes(term)) || haystack.includes(term));
   const combos = [];
   for (const audience of audiences) {
     for (const domain of domains.length ? domains.slice(0, 4) : compact.slice(0, 3)) {
+      if (audience.includes(domain)) continue;
       const text = `${domain}${audience}`;
       if (!combos.includes(text)) combos.push(text);
     }
@@ -117,11 +151,23 @@ function normalizeKeywords(task) {
       if (!combos.includes(text)) combos.push(text);
     }
   }
-  for (const text of ["白领穿搭", "通勤穿搭", "小镇中年穿搭", "拖鞋开箱", "拖鞋种草", "鞋履种草", "鞋履开箱", "夏季拖鞋", "家居拖鞋", "潮流穿搭种草", "单品直推", "办公室零食", "早餐轻食", "低脂轻食", "坚果测评", "零食开箱", "美食开箱测评"]) {
-    if (compact.some(item => item.includes(text.slice(0, 2))) && !combos.includes(text)) combos.push(text);
+  const specialCombos = [
+    ...(/电脑|笔记本|轻薄本|办公本|数码|科技|国补|YOGA|联想|桌面|办公/.test(haystack)
+      ? ["电脑推荐", "笔记本电脑推荐", "轻薄本推荐", "办公电脑推荐", "职场电脑推荐", "电脑测评", "轻薄本测评", "数码好物推荐", "电脑国补", "国补笔记本", "办公好物", "桌面搭配"]
+      : []),
+    ...(explicitFootwear ? ["拖鞋开箱", "拖鞋种草", "鞋履种草", "鞋履开箱", "夏季拖鞋", "家居拖鞋"] : []),
+    ...(/穿搭|时尚|服装|衣服|优衣库|搭配|OOTD|潮流/.test(haystack) ? ["时尚穿搭", "穿搭种草", "购物分享", "精致日常", "好物推荐"] : []),
+    ...(/设计|绘画|手工|拼豆|定制|创意|裸辞创业/.test(haystack) ? ["设计博主", "手工博主", "绘画博主", "拼豆手作", "创意手作"] : []),
+    ...(/AI|美图|Mitoto|新鲜事物|好看|好玩|体验/.test(haystack) ? ["AI体验", "AI修图", "美图体验", "新鲜事物体验", "好看好物", "好玩好物"] : []),
+    ...(/宠物|家庭|毕业|乐迷|情侣|有梗/.test(haystack) ? ["宠物生活", "家庭日常", "学生日常", "乐迷日常", "情侣日常", "有梗生活"] : []),
+    ...(/美食|零食|坚果|早餐|轻食|养生/.test(haystack) ? ["办公室零食", "早餐轻食", "低脂轻食", "坚果测评", "零食开箱", "美食开箱测评"] : []),
+  ];
+  for (const text of specialCombos) {
+    if (!combos.includes(text)) combos.push(text);
   }
-  const merged = [...combos, ...compact];
-  return merged.slice(0, 24).length ? merged.slice(0, 24) : ["美食种草", "美食开箱测评", "坚果", "零食"];
+  const merged = [...directSearch, ...specialCombos, ...combos, ...compact];
+  const deduped = [...new Set(merged.map(item => String(item || "").trim()).filter(Boolean))];
+  return deduped.slice(0, 30).length ? deduped.slice(0, 30) : ["美食种草", "美食开箱测评", "坚果", "零食"];
 }
 
 async function ensureLoggedIn(page, target) {
@@ -406,6 +452,103 @@ function parseMoney(value) {
   return parseCount(value);
 }
 
+function parseMetricNumber(value, { count = false } = {}) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const text = String(value || "").replace(/[,，￥¥]/g, "").trim();
+  const match = text.match(/([0-9]+(?:\.[0-9]+)?)\s*(万|w|W|千|k|K)?/);
+  if (!match) return null;
+  let num = Number(match[1]);
+  if (count && /万|w/i.test(match[2] || "")) num *= 10000;
+  if (count && /千|k/i.test(match[2] || "")) num *= 1000;
+  return Number.isFinite(num) ? num : null;
+}
+
+function normalizeKey(value) {
+  return String(value || "").replace(/[_\-\s]/g, "").toLowerCase();
+}
+
+function findValueByKeys(payload, keys) {
+  const wanted = new Set(keys.map(normalizeKey));
+  const seen = new Set();
+  const visit = (value) => {
+    if (value == null) return null;
+    if (typeof value !== "object") return null;
+    if (seen.has(value)) return null;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const found = visit(item);
+        if (found != null && found !== "") return found;
+      }
+      return null;
+    }
+    for (const [key, item] of Object.entries(value)) {
+      if (wanted.has(normalizeKey(key)) && item != null && item !== "") return item;
+    }
+    for (const item of Object.values(value)) {
+      const found = visit(item);
+      if (found != null && found !== "") return found;
+    }
+    return null;
+  };
+  return visit(payload);
+}
+
+function metricComplete(metrics) {
+  return Boolean(
+    metrics.exposure_median &&
+    metrics.read_median &&
+    metrics.interaction_median &&
+    metrics.estimated_cpm &&
+    metrics.estimated_read_unit_price &&
+    metrics.estimated_interaction_unit_price
+  );
+}
+
+function missingMetricLabels(metrics) {
+  return [
+    ["exposure_median", "曝光中位数"],
+    ["read_median", "阅读中位数"],
+    ["interaction_median", "互动中位数"],
+    ["estimated_cpm", "预估CPM"],
+    ["estimated_read_unit_price", "预估阅读单价"],
+    ["estimated_interaction_unit_price", "预估互动单价"]
+  ].filter(([key]) => !metrics[key]).map(([, label]) => label);
+}
+
+const METRIC_LABELS = Object.freeze({
+  exposure_median: "曝光中位数",
+  read_median: "阅读中位数",
+  interaction_median: "互动中位数",
+  estimated_cpm: "预估CPM",
+  estimated_read_unit_price: "预估阅读单价",
+  estimated_interaction_unit_price: "预估互动单价"
+});
+
+function metricUnavailableInText(text, labels) {
+  const lines = String(text || "").split(/\n+/).map(line => line.trim()).filter(Boolean);
+  const normalizedLabels = labels.map(label => String(label).replace(/\s+/g, "").toLowerCase());
+  const noDataPattern = /^[-—–/\\]+$|暂无|无数据|暂无数据|未展示|不适用/;
+  for (let index = 0; index < lines.length; index += 1) {
+    const compact = lines[index].replace(/\s+/g, "").toLowerCase();
+    if (!normalizedLabels.some(label => compact.includes(label))) continue;
+    const afterLabel = compact.replace(new RegExp(normalizedLabels.join("|"), "i"), "");
+    if (noDataPattern.test(afterLabel)) return true;
+    for (let offset = 1; offset <= 4 && index + offset < lines.length; offset += 1) {
+      const line = lines[index + offset].replace(/\s+/g, "");
+      if (noDataPattern.test(line)) return true;
+      if (parseMetricNumber(line)) return false;
+    }
+  }
+  return false;
+}
+
+function metricUnavailableLabels(metrics, unavailable = {}) {
+  return Object.entries(METRIC_LABELS)
+    .filter(([key]) => !metrics[key] && unavailable[key])
+    .map(([, label]) => label);
+}
+
 function uniqueText(items) {
   const out = [];
   for (const item of items) {
@@ -449,30 +592,6 @@ function normalizePgyApiKol(kol, sourceKeyword, analysis = {}) {
   const redId = String(kol.redId || kol.red_id || "").trim();
   const imageQuote = parseMoney(kol.picturePrice ?? kol.imageQuote ?? kol.lowerPrice);
   const videoQuote = parseMoney(kol.videoPrice ?? kol.videoQuote ?? kol.lowerPrice);
-  const preferredQuote = analysis.preferredForm === "视频" ? (videoQuote || imageQuote) : (imageQuote || videoQuote);
-  const exposureMedian = parseCount(
-    analysis.preferredForm === "视频"
-      ? (kol.accumVideoCommonImpMedinNum30d || kol.accumCommonImpMedinNum30d || kol.accumCoopImpMedinNum30d || kol.predictiveExposure)
-      : (kol.accumPicCommonImpMedinNum30d || kol.accumCommonImpMedinNum30d || kol.accumCoopImpMedinNum30d || kol.predictiveExposure)
-  );
-  const readMedian = parseCount(
-    analysis.preferredForm === "视频"
-      ? (kol.videoClickMidNum || kol.clickMidNum || kol.readMidCoop30)
-      : (kol.pictureClickMidNum || kol.clickMidNum || kol.readMidCoop30)
-  );
-  const interactionMedian = parseCount(
-    analysis.preferredForm === "视频"
-      ? (kol.videoInterMidNum || kol.interMidNum || kol.interMidCoop30)
-      : (kol.pictureInterMidNum || kol.interMidNum || kol.interMidCoop30)
-  );
-  const officialCpm = Number(
-    analysis.preferredForm === "视频" ? (kol.estimateVideoCpm || 0) : (kol.estimatePictureCpm || 0)
-  );
-  const officialEngageCost = Number(
-    analysis.preferredForm === "视频" ? (kol.estimateVideoEngageCost || 0) : (kol.estimatePictureEngageCost || 0)
-  );
-  const cpm = officialCpm || (preferredQuote && exposureMedian ? Number((preferredQuote / exposureMedian * 1000).toFixed(1)) : 0);
-  const cpe = officialEngageCost || (preferredQuote && interactionMedian ? Number((preferredQuote / interactionMedian).toFixed(1)) : 0);
   const contentTags = uniqueText([
     ...flattenContentTags(kol.contentTags),
     ...(kol.featureTags || []),
@@ -500,11 +619,18 @@ function normalizePgyApiKol(kol, sourceKeyword, analysis = {}) {
     video_quote: videoQuote || imageQuote,
     quote_low: parseMoney(kol.lowerPrice || imageQuote || videoQuote),
     quote_high: Math.max(imageQuote || 0, videoQuote || 0, parseMoney(kol.lowerPrice || 0)),
-    exposure_median: exposureMedian,
-    read_median: readMedian,
-    interaction_median: interactionMedian,
-    cpm,
-    cpe,
+    exposure_median: 0,
+    read_median: 0,
+    interaction_median: 0,
+    cpm: 0,
+    cpe: 0,
+    estimated_cpm: null,
+    estimated_read_unit_price: null,
+    estimated_interaction_unit_price: null,
+    metric_status: "missing",
+    metric_error: "详情页指标待补采",
+    metric_filter: DEFAULT_METRIC_FILTER,
+    metric_source: {},
     vertical_score: verticalScoreFromKol(kol, contentTags, audienceTags, analysis),
     tags: contentTags,
     audience_tags: audienceTags,
@@ -520,13 +646,8 @@ function normalizePgyApiKol(kol, sourceKeyword, analysis = {}) {
       name: kol.name,
       contentTags,
       audienceTags,
-      readMedian,
-      interactionMedian,
-      exposureMedian,
       imageQuote,
       videoQuote,
-      cpm,
-      cpe,
     }).slice(0, 500),
   };
 }
@@ -618,6 +739,262 @@ function extractTitlesFromDetailText(body) {
   return uniqueText(titles).slice(0, 50);
 }
 
+async function clickVisibleText(page, label) {
+  return page.evaluate((targetLabel) => {
+    const visible = (el) => {
+      if (!el || !(el instanceof Element)) return false;
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+    };
+    const compact = (text) => String(text || "").replace(/\s+/g, "").trim();
+    const wanted = compact(targetLabel);
+    const candidates = [...document.querySelectorAll("button,[role='button'],.d-tabs-tab,.d-tab-item,.d-segmented-item,span,div")]
+      .filter(visible)
+      .filter(el => {
+        const text = compact(el.innerText || el.textContent || "");
+        return text === wanted || (text.length <= wanted.length + 8 && text.includes(wanted));
+      });
+    const node = candidates[0];
+    if (!node) return false;
+    node.scrollIntoView({block: "center", inline: "center"});
+    node.click();
+    return true;
+  }, label).catch(() => false);
+}
+
+function pickMetricFromText(text, labels, { count = false } = {}) {
+  const lines = String(text || "").split(/\n+/).map(line => line.trim()).filter(Boolean);
+  const normalizedLabels = labels.map(label => String(label).replace(/\s+/g, "").toLowerCase());
+  const isWanted = (line) => {
+    const compact = line.replace(/\s+/g, "").toLowerCase();
+    return normalizedLabels.some(label => compact.includes(label));
+  };
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!isWanted(lines[index])) continue;
+    const sameLine = lines[index].replace(/[，,]/g, "");
+    const afterLabel = sameLine.replace(new RegExp(labels.map(label => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "i"), "");
+    const sameLineNumber = parseMetricNumber(afterLabel, { count });
+    if (sameLineNumber) return sameLineNumber;
+    for (let offset = 1; offset <= 5 && index + offset < lines.length; offset += 1) {
+      const line = lines[index + offset];
+      if (/^\d{4}-\d{2}-\d{2}/.test(line)) continue;
+      const value = parseMetricNumber(line, { count });
+      if (value) return value;
+    }
+  }
+  return null;
+}
+
+async function pickDataPerformanceCardMetrics(page, metricDefinitions) {
+  return page.evaluate((definitions) => {
+    const normalize = (text) => String(text || "")
+      .replace(/\s+/g, "")
+      .replace(/[()]/g, token => (token === "(" ? "（" : "）"))
+      .trim();
+    const visible = (el) => {
+      if (!el || !(el instanceof Element)) return false;
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+    };
+    const parseValue = (text, count) => {
+      const match = String(text || "").replace(/,/g, "").match(/(-|[0-9]+(?:\.[0-9]+)?\s*(?:万|w|W|k|K)?)/);
+      if (!match || match[1] === "-") return null;
+      const valueText = match[1].replace(/\s+/g, "");
+      const number = Number(valueText.replace(/万|w|W|k|K/g, ""));
+      if (!Number.isFinite(number) || number === 0) return null;
+      if (/[万wW]$/.test(valueText)) return count ? Math.round(number * 10000) : number;
+      if (/[kK]$/.test(valueText)) return count ? Math.round(number * 1000) : number;
+      return count ? Math.round(number) : number;
+    };
+    const pickFromCardText = (card, label, count) => {
+      const normalizedLabel = normalize(label);
+      const text = normalize(card.innerText || "");
+      const index = text.indexOf(normalizedLabel);
+      if (index < 0) return null;
+      return parseValue(text.slice(index + normalizedLabel.length, index + normalizedLabel.length + 80), count);
+    };
+    const findCard = (labelElement) => {
+      let current = labelElement;
+      for (let depth = 0; current && depth < 6; depth += 1) {
+        const text = current.innerText || "";
+        if (text.includes(labelElement.innerText?.trim() || "") && /-|[0-9]/.test(text)) {
+          const rect = current.getBoundingClientRect();
+          if (rect.width >= 80 && rect.height >= 35 && rect.width <= 700 && rect.height <= 280) {
+            return current;
+          }
+        }
+        current = current.parentElement;
+      }
+      return labelElement.parentElement;
+    };
+    const pickOne = (labels, count) => {
+      for (const label of labels) {
+        const wanted = normalize(label);
+        const labelElement = Array.from(document.querySelectorAll("button,[role='tab'],[role='button'],span,div,p,strong"))
+          .filter(visible)
+          .filter(el => normalize(el.innerText || el.textContent || "") === wanted)
+          .sort((a, b) => (a.innerText || "").length - (b.innerText || "").length)[0];
+        if (!labelElement) continue;
+        const card = findCard(labelElement);
+        if (!card) continue;
+        const normalizedLabel = normalize(label);
+        const candidates = Array.from(card.querySelectorAll("span,div,p,strong"))
+          .filter(visible)
+          .filter(el => el !== card)
+          .map(el => normalize(el.innerText || el.textContent || ""))
+          .filter(text => text && text !== normalizedLabel && !/^\d{4}-\d{2}-\d{2}/.test(text))
+          .filter(text => /^-|^[0-9][0-9,]*(?:\.[0-9]+)?(?:万|w|W|k|K)?$/.test(text));
+        for (const text of candidates) {
+          const value = parseValue(text, count);
+          if (value !== null) return value;
+        }
+        const fallback = pickFromCardText(card, label, count);
+        if (fallback !== null) return fallback;
+      }
+      return null;
+    };
+    return Object.fromEntries(definitions.map(def => [def.key, pickOne(def.labels, Boolean(def.count))]));
+  }, metricDefinitions).catch(() => ({}));
+}
+
+async function collectDetailDomMetrics(page) {
+  await clickVisibleText(page, "笔记数据");
+  await page.waitForTimeout(700);
+  await clickVisibleText(page, "按规模");
+  await page.waitForTimeout(600);
+  const scaleCardMetrics = await pickDataPerformanceCardMetrics(page, [
+    {key: "exposure_median", labels: ["曝光中位数"], count: true},
+    {key: "read_median", labels: ["阅读中位数"], count: true},
+    {key: "interaction_median", labels: ["互动中位数", "中位互动量"], count: true}
+  ]);
+  const scaleText = await page.locator("body").innerText({timeout: 8000}).catch(() => "");
+  await clickVisibleText(page, "按成本");
+  await page.waitForTimeout(700);
+  const costCardMetrics = await pickDataPerformanceCardMetrics(page, [
+    {key: "estimated_cpm", labels: ["预估CPM", "预估cpm"]},
+    {key: "estimated_read_unit_price", labels: ["预估阅读单价", "阅读单价"]},
+    {key: "estimated_interaction_unit_price", labels: ["预估互动单价", "互动单价"]}
+  ]);
+  const costText = await page.locator("body").innerText({timeout: 8000}).catch(() => "");
+  const unavailable = {
+    exposure_median: metricUnavailableInText(scaleText, ["曝光中位数"]),
+    read_median: metricUnavailableInText(scaleText, ["阅读中位数"]),
+    interaction_median: metricUnavailableInText(scaleText, ["互动中位数", "中位互动量"]),
+    estimated_cpm: metricUnavailableInText(costText, ["预估CPM", "预估cpm"]),
+    estimated_read_unit_price: metricUnavailableInText(costText, ["预估阅读单价", "阅读单价"]),
+    estimated_interaction_unit_price: metricUnavailableInText(costText, ["预估互动单价", "互动单价"])
+  };
+  return {
+    values: {
+      exposure_median: scaleCardMetrics.exposure_median || pickMetricFromText(scaleText, ["曝光中位数"], {count: true}),
+      read_median: scaleCardMetrics.read_median || pickMetricFromText(scaleText, ["阅读中位数"], {count: true}),
+      interaction_median: scaleCardMetrics.interaction_median || pickMetricFromText(scaleText, ["互动中位数", "中位互动量"], {count: true}),
+      estimated_cpm: costCardMetrics.estimated_cpm || pickMetricFromText(costText, ["预估CPM", "预估cpm"]),
+      estimated_read_unit_price: costCardMetrics.estimated_read_unit_price || pickMetricFromText(costText, ["预估阅读单价", "阅读单价"]),
+      estimated_interaction_unit_price: costCardMetrics.estimated_interaction_unit_price || pickMetricFromText(costText, ["预估互动单价", "互动单价"])
+    },
+    unavailable,
+    textProbe: `${scaleText}\n${costText}`.slice(0, 800)
+  };
+}
+
+async function fetchJsonInPgyPage(page, url, options = {}) {
+  return page.evaluate(async ({url: targetUrl, options: requestOptions}) => {
+    const resp = await fetch(targetUrl, {
+      credentials: "include",
+      ...requestOptions,
+      headers: {
+        "content-type": "application/json",
+        ...(requestOptions.headers || {})
+      }
+    });
+    const text = await resp.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch (_) { data = text; }
+    return {ok: resp.ok, status: resp.status, data};
+  }, {url, options}).catch(err => ({ok: false, status: 0, error: err.message || String(err)}));
+}
+
+async function collectDetailApiMetrics(page, userId) {
+  const query = `userId=${encodeURIComponent(userId)}&business=0&noteType=3&dateType=1&advertiseSwitch=1`;
+  const urls = [
+    `https://pgy.xiaohongshu.com/api/solar/kol/data_v3/notes_rate?${query}`,
+    `https://pgy.xiaohongshu.com/api/solar/kol/dataV3/notesRate?${query}`
+  ];
+  const core = await fetchJsonInPgyPage(page, "https://pgy.xiaohongshu.com/api/pgy/kol/data/core_data", {
+    method: "POST",
+    body: JSON.stringify({userId, business: "0", noteType: 3, dateType: 1, advertiseSwitch: 1})
+  });
+  const rates = [];
+  for (const url of urls) {
+    const result = await fetchJsonInPgyPage(page, url);
+    rates.push(result);
+    if (result.ok) break;
+  }
+  const payloads = [core.data, ...rates.map(item => item.data)].filter(Boolean);
+  const values = {
+    exposure_median: parseMetricNumber(findValueByKeys(payloads, ["impMedian", "mImpNum", "exposureMedian", "mediumImpNum"]), {count: true}),
+    read_median: parseMetricNumber(findValueByKeys(payloads, ["readMedian", "clickMidNum", "mReadNum", "mediumReadNum"]), {count: true}),
+    interaction_median: parseMetricNumber(findValueByKeys(payloads, ["mEngagementNum", "mEngagementNumMcn", "interactionMedian", "interMidNum", "mediumEngagementNum"]), {count: true}),
+    estimated_cpm: parseMetricNumber(findValueByKeys(payloads, ["estimateCpm", "estimateCPM", "cpm", "avgCpm", "estimateAvgCpm", "expectedCpm", "mCpm"])),
+    estimated_read_unit_price: parseMetricNumber(findValueByKeys(payloads, ["cpv", "estimateReadPrice", "estimateReadCost", "readCost", "readPrice", "readUnitPrice", "costPerRead"])),
+    estimated_interaction_unit_price: parseMetricNumber(findValueByKeys(payloads, ["cpe", "estimateEngageCost", "estimateEngagePrice", "estimateInteractionCost", "interactionCost", "interactionPrice", "costPerInteraction"]))
+  };
+  return {
+    values,
+    ok: core.ok || rates.some(item => item.ok),
+    probe: {coreStatus: core.status, rateStatuses: rates.map(item => item.status)}
+  };
+}
+
+function mergeDetailMetrics(domMetrics, apiMetrics) {
+  const result = {};
+  const source = {};
+  for (const key of ["exposure_median", "read_median", "interaction_median", "estimated_cpm", "estimated_read_unit_price", "estimated_interaction_unit_price"]) {
+    if (domMetrics.values[key]) {
+      result[key] = domMetrics.values[key];
+      source[key] = "页面DOM";
+    } else if (apiMetrics.values[key]) {
+      result[key] = apiMetrics.values[key];
+      source[key] = "蒲公英接口";
+    } else {
+      result[key] = null;
+      source[key] = "未采集";
+    }
+  }
+  return {values: result, source};
+}
+
+async function collectPgyDetailMetrics(page, userId) {
+  const domMetrics = await collectDetailDomMetrics(page);
+  const apiMetrics = userId ? await collectDetailApiMetrics(page, userId) : {values: {}, ok: false};
+  const merged = mergeDetailMetrics(domMetrics, apiMetrics);
+  const complete = metricComplete(merged.values);
+  const unavailableLabels = metricUnavailableLabels(merged.values, domMetrics.unavailable || {});
+  const missingLabels = missingMetricLabels(merged.values);
+  const status = complete ? "collected" : (unavailableLabels.length ? "unavailable" : "failed");
+  const error = complete
+    ? ""
+    : unavailableLabels.length
+      ? `官网暂无数据：${unavailableLabels.join("、")}${missingLabels.filter(label => !unavailableLabels.includes(label)).length ? `；未采集到：${missingLabels.filter(label => !unavailableLabels.includes(label)).join("、")}` : ""}`
+      : `未采集到官网指标：${missingLabels.join("、")}`;
+  return {
+    ...merged.values,
+    cpm: merged.values.estimated_cpm || null,
+    cpe: merged.values.estimated_interaction_unit_price || null,
+    metric_status: status,
+    metric_error: error,
+    metric_filter: DEFAULT_METRIC_FILTER,
+    metric_source: merged.source,
+    metric_probe: {
+      domText: domMetrics.textProbe,
+      api: apiMetrics.probe || {}
+    }
+  };
+}
+
 async function enrichRowsWithDetailPages(context, rows, updateEvery = async () => {}) {
   const detailPage = await context.newPage();
   try {
@@ -625,18 +1002,31 @@ async function enrichRowsWithDetailPages(context, rows, updateEvery = async () =
       const row = rows[index];
       if (!row.home_url) {
         row.title_status = "failed";
-        row.title_error = "缺蒲公英主页，无法打开详情页补标题";
+        row.title_error = "缺蒲公英主页，无法打开详情页补指标/标题";
         continue;
       }
       try {
-        await detailPage.goto(row.home_url, {waitUntil: "domcontentloaded", timeout: 45000});
+        const userId = String(row.home_url || "").match(/blogger-detail\/([^/?#]+)/)?.[1] || "";
         let body = "";
         let titles = [];
-        for (let attempt = 0; attempt < 7; attempt += 1) {
-          await detailPage.waitForTimeout(attempt === 0 ? 2600 : 900);
-          body = await detailPage.locator("body").innerText({timeout: 8000});
+        let detailMetrics = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          if (attempt === 0) {
+            await detailPage.goto(row.home_url, {waitUntil: "domcontentloaded", timeout: 45000});
+          } else {
+            await detailPage.reload({waitUntil: "domcontentloaded", timeout: 45000}).catch(() => detailPage.goto(row.home_url, {waitUntil: "domcontentloaded", timeout: 45000}));
+          }
+          await detailPage.waitForTimeout(attempt === 0 ? 2600 : 1200);
+          detailMetrics = await collectPgyDetailMetrics(detailPage, userId).catch(err => ({
+            metric_status: "failed",
+            metric_error: `详情页指标采集失败：${err.message || err}`,
+            metric_filter: DEFAULT_METRIC_FILTER,
+            metric_source: {},
+            metric_probe: {}
+          }));
+          body = await detailPage.locator("body").innerText({timeout: 8000}).catch(() => "");
           titles = extractTitlesFromDetailText(body);
-          if (titles.length) break;
+          if (detailMetrics.metric_status === "collected" && titles.length) break;
           await detailPage.evaluate(() => {
             const target = [...document.querySelectorAll("*")]
               .find(el => (el.innerText || "").trim() === "笔记案例");
@@ -647,13 +1037,22 @@ async function enrichRowsWithDetailPages(context, rows, updateEvery = async () =
         }
         const redIdMatch = body.match(/小红书号[:：]?\s*\n?\s*([A-Za-z0-9_.-]+)/);
         if (redIdMatch && redIdMatch[1] && !row.platform_id) row.platform_id = redIdMatch[1].trim();
+        Object.assign(row, detailMetrics || {});
         row.recent_titles = titles;
         row.title_status = titles.length ? "collected" : "failed";
         row.title_error = titles.length ? "" : "详情页未识别到笔记案例标题";
-        row.page_excerpt = body.slice(0, 500);
+        row.page_excerpt = JSON.stringify({
+          metric_error: row.metric_error || "",
+          metric_probe: row.metric_probe || {},
+          page_text: body.slice(0, 500)
+        }).slice(0, 1000);
       } catch (err) {
         row.title_status = "failed";
         row.title_error = `详情页打开失败：${err.message || err}`;
+        row.metric_status = "failed";
+        row.metric_error = `详情页打开失败：${err.message || err}`;
+        row.metric_filter = DEFAULT_METRIC_FILTER;
+        row.metric_source = {};
       }
       if ((index + 1) % 10 === 0 || index === rows.length - 1) {
         await updateEvery(index + 1, rows.length);
@@ -732,10 +1131,6 @@ async function extractRows(page) {
       const firstCellLines = (cells[0] || "").split("\n").map(line => line.trim()).filter(Boolean);
       const personaParts = firstCellLines.filter(line => line !== name && !/^\d+\+$/.test(line)).slice(0, 8);
       const quote = directNumber(cells[5]) || pickNumber(body, [/¥\s*([0-9.,]+\s*(?:万|w|W|k|K)?)/, /全部报价[^0-9]*([0-9.,]+\s*(?:万|w|W|k|K)?)/]);
-      const readMedian = directNumber(cells[3]) || pickNumber(body, [/阅读中位数?[^0-9]*([0-9.,]+\s*(?:万|w|W|k|K)?)/]);
-      const interactionMedian = directNumber(cells[4]) || pickNumber(body, [/互动中位数?[^0-9]*([0-9.,]+\s*(?:万|w|W|k|K)?)/, /互动量?[^0-9]*([0-9.,]+\s*(?:万|w|W|k|K)?)/]);
-      const inferredCpm = quote && readMedian ? Number((quote / readMedian * 1000).toFixed(1)) : 0;
-      const inferredCpe = quote && interactionMedian ? Number((quote / interactionMedian).toFixed(1)) : 0;
       return {
         name,
         platform_id: platformId,
@@ -745,11 +1140,23 @@ async function extractRows(page) {
         followers: directNumber(cells[2]) || pickNumber(body, [/粉丝(?:数|量)?[^0-9]*([0-9.,]+\s*(?:万|w|W|k|K)?)/, /([0-9.,]+\s*(?:万|w|W|k|K)?)\s*粉丝/]),
         image_quote: quote,
         video_quote: quote,
-        exposure_median: pickNumber(body, [/曝光中位数?[^0-9]*([0-9.,]+\s*(?:万|w|W|k|K)?)/]),
-        read_median: readMedian,
-        interaction_median: interactionMedian,
-        cpm: pickNumber(body, [/(?:CPM|cpm)[^0-9]*([0-9.]+)/]) || inferredCpm,
-        cpe: pickNumber(body, [/(?:CPE|cpe|互动单价)[^0-9]*([0-9.]+)/]) || inferredCpe,
+        exposure_median: 0,
+        read_median: 0,
+        interaction_median: 0,
+        cpm: 0,
+        cpe: 0,
+        estimated_cpm: null,
+        estimated_read_unit_price: null,
+        estimated_interaction_unit_price: null,
+        metric_status: "missing",
+        metric_error: "详情页指标待补采",
+        metric_filter: {
+          business: "日常笔记",
+          noteType: "图文+视频",
+          dateRange: "近30日",
+          traffic: "全流量"
+        },
+        metric_source: {},
         tags,
         recent_titles: [],
         source_url: location.href,
@@ -924,7 +1331,7 @@ async function main() {
       await updateTask("running", `第 ${round} 轮：已拿到 ${rowsToIngest.length} 个账号ID，本轮补详情 ${rowsToEnrich.length} 个，正式目标 ${target} 个。`, rowsToIngest.length, {keywords, target, listTarget, round});
       if (rowsToEnrich.length) {
         await enrichRowsWithDetailPages(context, rowsToEnrich, async (done, total) => {
-          await updateTask("running", `第 ${round} 轮：详情页补标题 ${done}/${total}。`, rowsToIngest.length, {keywords, target, listTarget, round});
+          await updateTask("running", `第 ${round} 轮：详情页补指标/标题 ${done}/${total}。`, rowsToIngest.length, {keywords, target, listTarget, round});
         });
         rowsToEnrich.forEach(row => {
           row.__detailChecked = true;
