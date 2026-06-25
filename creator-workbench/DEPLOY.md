@@ -3,12 +3,15 @@
 ## 架构
 
 ```
-Vercel (www.mengliai.cn)              Railway (media-api.mengliai.cn)
+Vercel (www.mengliai.cn)              Railway / 云服务器 (media-api.mengliai.cn)
 ┌─────────────────────┐              ┌─────────────────────────┐
 │ 前端 index.html      │   fetch     │ FastAPI (server.py)      │
 │ find-page.js         │ ─────────→  │ SQLite / PostgreSQL      │
-│ MEDIA_API_BASE 配置   │  跨域 HTTPS │ Playwright 爬虫（本地）    │
+│ MEDIA_API_BASE 配置   │  跨域 HTTPS │ 任务队列 / 推荐引擎        │
 └─────────────────────┘              └─────────────────────────┘
+                                               ▲
+                                               │ MENGLI_SERVER
+                                      本机 pgy-worker + 已登录 Chrome
 ```
 
 ---
@@ -95,12 +98,26 @@ GET https://media-api.mengliai.cn/api/health
 
 ### Playwright 爬虫
 
-Playwright 爬虫（`run-pgy-task.mjs`）是 Node.js 脚本，**不能在 Railway 的 Python 容器中运行**。
+Playwright 爬虫（`run-pgy-task.mjs`）依赖本机 Chrome 登录态，第一版**不放在 Railway / Web 服务器里跑**。服务器只负责保存 queued 任务；你电脑上的常驻 worker 自动认领任务、打开 Chrome 采集蒲公英并回传结果。
 
 解决方案：
-- **本地运行**：在本地电脑执行 `node run-pgy-task.mjs <task_id>`
-- **单独部署**：在 Railway 创建第二个 Node.js 服务专门跑爬虫
-- **定时任务**：使用 GitHub Actions 或 cron 定时触发
+- **本地运行**：在你的电脑执行 `MENGLI_SERVER=https://media-api.mengliai.cn node creator-workbench/scripts/pgy-worker.mjs`
+- **固定采集电脑 / 云桌面**：后续可以把同一条 worker 命令放到专用机器常驻
+- **不要在主 Web 服务启用 worker**：Web 服务环境变量保持 `MENGLI_COLLECTOR_WORKER_ENABLED=0`
+
+如果主站和媒体库 FastAPI 不是同一个服务，前端必须配置：
+
+```js
+localStorage.setItem("mengli_media_api_base", "https://media-api.mengliai.cn")
+```
+
+或在页面脚本中提前设置：
+
+```html
+<script>
+  window.MEDIA_API_BASE = "https://media-api.mengliai.cn";
+</script>
+```
 
 ### 回滚方案
 

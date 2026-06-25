@@ -2059,6 +2059,12 @@ async def list_codex_tasks(
     return {"tasks": rows}
 
 
+@app.post("/api/codex-tasks/claim-next")
+async def claim_next_codex_task() -> dict[str, Any]:
+    task = reserve_next_collector_task()
+    return {"task": task}
+
+
 @app.get("/api/codex-tasks/{task_id}")
 async def get_codex_task(task_id: str) -> dict[str, Any]:
     with db() as conn:

@@ -105,6 +105,21 @@ worker 会自动运行：
 node creator-workbench/scripts/run-pgy-task.mjs codex_xxx
 ```
 
+如果网页已经部署到主站，采集仍然建议放在你的电脑上跑，不放服务器。此时网页负责创建 queued 任务，服务器负责保存任务和推荐结果，你电脑上的常驻 worker 负责领取任务并打开本机 Chrome：
+
+```bash
+cd /path/to/mengli-kols
+MENGLI_SERVER=https://你的媒体库后端域名 node creator-workbench/scripts/pgy-worker.mjs
+```
+
+同时主站前端需要配置媒体库 API 地址：
+
+```js
+localStorage.setItem("mengli_media_api_base", "https://你的媒体库后端域名")
+```
+
+如果主站和媒体库后端不是同一个服务，但没有配置这个地址，点击“开始找号”会打到错误的 `/api`，表现为跳到推荐结果但没有采集数据。
+
 runner 会使用专用浏览器 profile：
 
 ```text

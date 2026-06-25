@@ -2232,6 +2232,12 @@ const DATABASE_PAGE_SIZE = 20;
 let databasePage = 1;
 const MEDIA_SUPABASE_URL = window.MEDIA_SUPABASE_URL || 'https://fjlxlkokmcdfmwskgvsp.supabase.co';
 const MEDIA_SUPABASE_ANON_KEY = window.MEDIA_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZqbHhsa29rbWNkZm13c2tndnNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NTQ4OTMsImV4cCI6MjA5NjAzMDg5M30.LcFIuu1dmiU09IptN3vYKE0NkDighHnOkbepHbubfaU';
+function normalizeMediaApiBase(value){
+  const clean = String(value || '').trim().replace(/\/$/, '');
+  return clean.replace(/\/api$/i, '');
+}
+
+const MEDIA_API_BASE = normalizeMediaApiBase(window.MEDIA_API_BASE || localStorage.getItem('mengli_media_api_base') || '');
 let mediaSupabaseClient = null;
 let mediaPermissionPromise = null;
 let mediaPermissionState = {
@@ -2403,14 +2409,46 @@ function getCurrentProject(){
 }
 
 async function apiJson(url, options={}){
-  const resp = await fetch(url, {
+  const requestUrl = mediaApiUrl(url);
+  const resp = await fetch(requestUrl, {
     ...options,
     headers: {'Content-Type':'application/json', ...mediaPermissionHeaders(), ...(options.headers || {})},
     cache: 'no-store'
   });
   const text = await resp.text();
-  const data = text ? JSON.parse(text) : {};
-  if(!resp.ok) throw new Error(data.detail || data.error || '本地接口调用失败');
+  let data = {};
+  try{
+    data = text ? JSON.parse(text) : {};
+  }catch(err){
+    throw new Error(`媒体库接口返回的不是 JSON：${requestUrl}。请检查 MEDIA_API_BASE 是否指向智能媒体库 FastAPI 后端。`);
+  }
+  if(!resp.ok) throw new Error(data.detail || data.error || `媒体库接口调用失败：${requestUrl}`);
+  return data;
+}
+
+function mediaApiUrl(url){
+  if(/^https?:\/\//i.test(url)) return url;
+  if(MEDIA_API_BASE && url.startsWith('/')) return `${MEDIA_API_BASE}${url}`;
+  return url;
+}
+
+function mediaApiBaseLabel(){
+  return MEDIA_API_BASE || `${window.location.origin}/api`;
+}
+
+async function ensureMediaApiReady(){
+  const healthUrl = mediaApiUrl('/api/health');
+  const resp = await fetch(healthUrl, {cache:'no-store', headers: mediaPermissionHeaders()});
+  const text = await resp.text();
+  let data = {};
+  try{
+    data = text ? JSON.parse(text) : {};
+  }catch(err){
+    throw new Error(`没有连到智能媒体库后端。当前检测地址：${healthUrl}。如果主站和媒体库后端不是同一个服务，请在页面配置 window.MEDIA_API_BASE 或 localStorage.mengli_media_api_base。`);
+  }
+  if(!resp.ok || !data.ok){
+    throw new Error(`智能媒体库后端健康检查失败：${healthUrl}`);
+  }
   return data;
 }
 
@@ -2936,7 +2974,7 @@ TA：22-50岁
 【数据要求】CPM＜70，CPE<8`;
   let brief = fallback;
   try{
-    const resp = await fetch('/api/demo-brief', {cache:'no-store'});
+    const resp = await fetch(mediaApiUrl('/api/demo-brief'), {cache:'no-store'});
     const data = await resp.json();
     if(data.brief) brief = data.brief;
   }catch(e){}
@@ -3382,7 +3420,7 @@ async function analyzeBrief(options={}){
   correctionButtons.forEach(button => button.disabled = true);
 
   try{
-    const resp = await fetch('/api/brief-intelligence', {
+    const resp = await fetch(mediaApiUrl('/api/brief-intelligence'), {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ brief: requestBrief, project: project.name, provider: selectedBriefProvider })
@@ -5213,10 +5251,11 @@ async function startFindFlow(){
   const button = window.event?.currentTarget;
   if(button) button.disabled = true;
   try{
+    await ensureMediaApiReady();
     const data = await startRealCollection(analysis);
     showFindView('results');
     const taskId = data.codexTask?.id || activeCodexTask?.id || '';
-    alert(`后台采集器已接收任务：${taskId}。请保持本机服务和已登录蒲公英的 Chrome 可用，页面会自动刷新采集状态。`);
+    alert(`后台采集器已接收任务：${taskId}。请保持你电脑上的 pgy-worker 已启动，并确认它连接到：${mediaApiBaseLabel()}`);
   }catch(err){
     alert('启动真实采集失败：' + (err.message || err));
   }finally{
@@ -5291,10 +5330,10 @@ function renderResultEmptyState(empty){
   if(['queued','running','searching','login_required'].includes(status)){
     const label = statusLabel(status);
     const target = task?.target || activeCodexTask?.target || 0;
-    empty.innerHTML = `<div class="icon">...</div><h3>${escapeHtml(label)}，采集完成后才会生成推荐</h3><p class="muted-text">目标 ${target || '-'} 个；当前不会使用演示数据或旧项目推荐。</p>`;
+    empty.innerHTML = `<div class="icon">...</div><h3>${escapeHtml(label)}，采集完成后才会生成推荐</h3><p class="muted-text">目标 ${target || '-'} 个；当前不会使用演示数据或旧项目推荐。请确认你电脑上的 worker 正在连接：${escapeHtml(mediaApiBaseLabel())}</p>`;
     return;
   }
-  empty.innerHTML = '<div class="icon">+</div><h3>还没有真实推荐结果</h3><p class="muted-text">请先开始找号并等待蒲公英采集完成。</p>';
+  empty.innerHTML = `<div class="icon">+</div><h3>还没有真实推荐结果</h3><p class="muted-text">请先开始找号并等待蒲公英采集完成。如果点击后一直空白，请检查媒体库 API：${escapeHtml(mediaApiBaseLabel())}</p>`;
 }
 
 function renderResultsView(){
@@ -5355,7 +5394,8 @@ function renderCollectorStatusPanel(){
     <div class="platform-card-main">
       <div>
         <div class="platform-name">后台采集器找号 · ${escapeHtml(statusText)}</div>
-        <div class="platform-meta">执行方式：固定 worker 使用已登录 Chrome 自动采集蒲公英；AI 只负责 brief 策略，不直接替你随意选号。</div>
+        <div class="platform-meta">执行方式：你电脑上的固定 worker 使用已登录 Chrome 自动采集蒲公英；AI 只负责 brief 策略，不直接替你随意选号。</div>
+        <div class="platform-meta">媒体库 API：${escapeHtml(mediaApiBaseLabel())}</div>
         <div class="platform-meta">目标 ${task?.target || collector?.targetCount || 30} 个，正式入库 ${task?.collected || 0} 个。关键词：${escapeHtml(keywordText)}</div>
         <div class="platform-meta">${taskMeta}</div>
         ${task?.error ? `<div class="task-meta" style="color:#c2410c">${escapeHtml(task.error)}</div>` : ''}
@@ -5698,7 +5738,7 @@ function getRecommendationRowsByScope(scope = 'all'){
 async function downloadBackendRecommendationExport(scope, fallbackFilename){
   const project = getCurrentProject();
   if(!project?.serverId) return false;
-  const resp = await fetch(`/api/projects/${project.serverId}/export?scope=${encodeURIComponent(scope)}`, {cache:'no-store', headers: mediaPermissionHeaders()});
+  const resp = await fetch(mediaApiUrl(`/api/projects/${project.serverId}/export?scope=${encodeURIComponent(scope)}`), {cache:'no-store', headers: mediaPermissionHeaders()});
   if(!resp.ok) return false;
   const blob = await resp.blob();
   const disposition = resp.headers.get('content-disposition') || '';

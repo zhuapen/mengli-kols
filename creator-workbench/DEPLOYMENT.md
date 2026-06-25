@@ -24,7 +24,21 @@ SUPABASE_URL=https://fjlxlkokmcdfmwskgvsp.supabase.co
 SUPABASE_ANON_KEY=...
 ```
 
-如果前端是独立主站，需要把主站里的 `MEDIA_API_BASE` 指向 Railway 服务地址。
+如果前端是独立主站，需要把主站里的 `MEDIA_API_BASE` 指向 Railway / 云服务器上的智能媒体库 FastAPI 服务地址。不要填到 `/api` 结尾，推荐填服务根地址，例如：
+
+```html
+<script>
+  window.MEDIA_API_BASE = "https://你的媒体库后端域名";
+</script>
+```
+
+临时联调也可以在浏览器控制台设置，刷新页面后生效：
+
+```js
+localStorage.setItem("mengli_media_api_base", "https://你的媒体库后端域名")
+```
+
+如果不配置，页面会默认请求当前主站的 `/api/health`。当主站 API 和媒体库 FastAPI 不是同一个服务时，点击“开始找号”会无法创建采集任务，结果页也不会有真实推荐。
 
 ## 本机采集 worker
 
@@ -36,6 +50,23 @@ CODEX_EXECUTABLE=codex
 MENGLI_COLLECTOR_WORKER_ENABLED=1
 MENGLI_SERVER=https://你的服务器域名
 ```
+
+启动 worker：
+
+```bash
+cd /path/to/mengli-kols
+MENGLI_SERVER=https://你的媒体库后端域名 node creator-workbench/scripts/pgy-worker.mjs
+```
+
+worker 会轮询服务器上的 queued 找号任务，认领后调用 `run-pgy-task.mjs` 打开本机 Chrome 采集蒲公英。服务器上的 `MENGLI_COLLECTOR_WORKER_ENABLED` 仍建议保持 `0`，避免云服务器尝试启动无登录态的浏览器。
+
+联调时请确认：
+
+1. 网站页面能访问 `https://你的媒体库后端域名/api/health`，且返回 `{"ok": true, ...}`。
+2. 浏览器里 `MEDIA_API_BASE` 指向同一个媒体库后端。
+3. 本机 worker 的 `MENGLI_SERVER` 也指向同一个媒体库后端。
+4. worker 只在一台采集电脑上运行，第一版先避免多机并发造成蒲公英登录态或风控问题。
+5. worker 终端出现 `已连接媒体库后端` 后，再在网页点击“开始找号”。
 
 首次运行会使用：
 
