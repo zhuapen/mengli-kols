@@ -61,6 +61,12 @@ BRIEF_COMPAT_MODEL_NAME = os.getenv("BRIEF_COMPAT_MODEL_NAME", "").strip()
 BRIEF_COMPAT_API_BASE = os.getenv("BRIEF_COMPAT_API_BASE", "").rstrip("/")
 BRIEF_COMPAT_PROVIDER_NAME = os.getenv("BRIEF_COMPAT_PROVIDER_NAME", "openai-compatible").strip() or "openai-compatible"
 CODEX_EXECUTABLE = os.getenv("CODEX_EXECUTABLE", "codex").strip() or "codex"
+CODEX_FALLBACK_EXECUTABLES = [
+    "/Applications/Codex.app/Contents/Resources/codex",
+    str(Path.home() / ".npm-global/bin/codex"),
+    "/opt/homebrew/bin/codex",
+    "/usr/local/bin/codex",
+]
 BRIEF_INTELLIGENCE_TIMEOUT = int(os.getenv("BRIEF_INTELLIGENCE_TIMEOUT", "180"))
 MENGLI_SERVER_BASE = os.getenv("MENGLI_SERVER", "http://127.0.0.1:8890").rstrip("/")
 COLLECTOR_WORKER_POLL_SECONDS = float(os.getenv("MENGLI_COLLECTOR_WORKER_POLL_SECONDS", "3"))
@@ -1672,14 +1678,22 @@ def call_codex_brief_intelligence(brief: str, local_analysis: dict[str, Any]) ->
     if not executable and "/" in CODEX_EXECUTABLE:
         executable = CODEX_EXECUTABLE if Path(CODEX_EXECUTABLE).exists() else ""
     if not executable:
-        raise RuntimeError("找不到 Codex CLI，请确认已安装并登录 Codex")
+        for candidate in CODEX_FALLBACK_EXECUTABLES:
+            if Path(candidate).exists():
+                executable = candidate
+                break
+    if not executable:
+        raise RuntimeError("找不到 Codex CLI，请确认已安装并登录 Codex，或设置 CODEX_EXECUTABLE=/Applications/Codex.app/Contents/Resources/codex")
     prompt = build_brief_intelligence_prompt(brief)
     cmd = [executable, "exec", "--skip-git-repo-check", "--ephemeral", "-C", str(ROOT_DIR), prompt]
     if BRIEF_MODEL_NAME:
         cmd[2:2] = ["--model", BRIEF_MODEL_NAME]
+    env = os.environ.copy()
+    env["PATH"] = f"{Path(executable).parent}:{env.get('PATH', '')}"
     completed = subprocess.run(
         cmd,
         cwd=str(ROOT_DIR),
+        env=env,
         text=True,
         capture_output=True,
         timeout=BRIEF_INTELLIGENCE_TIMEOUT,

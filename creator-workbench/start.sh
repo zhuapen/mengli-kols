@@ -7,6 +7,9 @@
 
 cd "$(dirname "$0")"
 
+export PATH="/Applications/Codex.app/Contents/Resources:$PATH"
+export CODEX_EXECUTABLE="${CODEX_EXECUTABLE:-/Applications/Codex.app/Contents/Resources/codex}"
+
 echo "🚀 萌力互动 · 智能媒体库"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
